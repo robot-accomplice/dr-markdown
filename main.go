@@ -4,6 +4,7 @@ import (
 	"embed"
 
 	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
@@ -21,9 +22,10 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		OnStartup:     app.startup,
-		OnBeforeClose: app.beforeClose,
-		Bind:          []interface{}{app},
+		LogLevelProduction: logger.ERROR,
+		OnStartup:          app.startup,
+		OnBeforeClose:      app.beforeClose,
+		Bind:               []interface{}{app},
 	})
 	if err != nil {
 		println("Error:", err.Error())

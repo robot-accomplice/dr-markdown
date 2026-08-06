@@ -1,0 +1,73 @@
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleName</key>
+        <string>Dr. Markdown</string>
+        <key>CFBundleDisplayName</key>
+        <string>Dr. Markdown</string>
+        <key>CFBundleExecutable</key>
+        <string>dr-markdown</string>
+        <key>CFBundleIdentifier</key>
+        <string>com.drmarkdown.app</string>
+        <key>CFBundleVersion</key>
+        <string>1.0.0</string>
+        <key>CFBundleShortVersionString</key>
+        <string>1.0.0</string>
+        <key>CFBundleIconFile</key>
+        <string>iconfile</string>
+        <key>LSMinimumSystemVersion</key>
+        <string>11.0</string>
+        <key>NSPrincipalClass</key>
+        <string>NSApplication</string>
+        <key>NSHighResolutionCapable</key>
+        <true/>
+        <key>LSApplicationCategoryType</key>
+        <string>public.app-category.productivity</string>
+        <key>CFBundleDocumentTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleTypeName</key>
+                <string>Markdown Document</string>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>LSItemContentTypes</key>
+                <array>
+                    <string>net.daringfireball.markdown</string>
+                </array>
+                <key>CFBundleTypeExtensions</key>
+                <array>
+                    <string>md</string>
+                    <string>markdown</string>
+                </array>
+            </dict>
+        </array>
+        <key>UTImportedTypeDeclarations</key>
+        <array>
+            <dict>
+                <key>UTTypeIdentifier</key>
+                <string>net.daringfireball.markdown</string>
+                <key>UTTypeDescription</key>
+                <string>Markdown Document</string>
+                <key>UTTypeConformsTo</key>
+                <array>
+                    <string>public.plain-text</string>
+                </array>
+                <key>UTTypeTagSpecification</key>
+                <dict>
+                    <key>public.filename-extension</key>
+                    <array>
+                        <string>md</string>
+                        <string>markdown</string>
+                    </array>
+                    <key>public.mime-type</key>
+                    <array>
+                        <string>text/markdown</string>
+                        <string>text/x-markdown</string>
+                    </array>
+                </dict>
+            </dict>
+        </array>
+    </dict>
+</plist>
