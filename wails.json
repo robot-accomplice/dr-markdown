@@ -1,0 +1,11 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "dr-markdown",
+  "outputfilename": "dr-markdown",
+  "frontend:dir": "frontend/dist",
+  "frontend:install": "",
+  "frontend:build": "",
+  "author": {
+    "name": "jmachen"
+  }
+}
