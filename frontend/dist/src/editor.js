@@ -55,7 +55,9 @@ export class WysiwygEditor {
   // Replaces the whole document by rebuilding the editor (see Global
   // Constraints: rebuild strategy). Used on open and on raw→WYSIWYG return.
   async setMarkdown(host, markdown) {
-    await this.#crepe.destroy()
+    // Crepe's destroy can race its async feature mounting and throw on a
+    // half-mounted feature; the rebuild below clears the host DOM anyway.
+    await this.#crepe.destroy().catch(() => {})
     await this.#build(host, markdown)
   }
 

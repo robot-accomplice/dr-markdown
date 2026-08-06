@@ -102,3 +102,41 @@ func TestEditorBoots(t *testing.T) {
 		t.Errorf("mode = %q, want wysiwyg", mode)
 	}
 }
+
+func TestModeToggleRoundTrip(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	fixture := "# Toggle Test\\n\\nSome **bold** text.\\n"
+	var res string
+	evalJS(t, ctx, "window.__app.setMarkdown(\""+fixture+"\").then(() => 'ok')", &res)
+
+	// To raw mode: content must match exactly.
+	evalJS(t, ctx, "window.__app.toggleMode().then(() => 'ok')", &res)
+	var mode string
+	evalJS(t, ctx, "window.__app.state.mode", &mode)
+	if mode != "raw" {
+		t.Fatalf("mode = %q, want raw", mode)
+	}
+	var rawText string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &rawText)
+	want := "# Toggle Test\n\nSome **bold** text.\n"
+	if rawText != want {
+		t.Errorf("raw content = %q, want %q", rawText, want)
+	}
+
+	// Edit in raw mode, toggle back: edit must survive.
+	evalJS(t, ctx, "window.__app.debugReplaceRaw(\"# Edited\\n\\nNew paragraph.\\n\"); 'ok'", &res)
+	evalJS(t, ctx, "window.__app.toggleMode().then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.state.mode", &mode)
+	if mode != "wysiwyg" {
+		t.Fatalf("mode = %q, want wysiwyg", mode)
+	}
+	var md string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	if !strings.Contains(md, "# Edited") || !strings.Contains(md, "New paragraph.") {
+		t.Errorf("after toggle back, markdown = %q, want the raw edits", md)
+	}
+}
