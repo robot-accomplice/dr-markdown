@@ -8,6 +8,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -219,5 +220,46 @@ globalThis.go = { main: { App: {
 	}, 600))`, &pushed)
 	if !pushed {
 		t.Errorf("bridge did not receive SetDirty(true) + UpdateContent; calls were pushed via debugSimulateEdit")
+	}
+}
+
+func TestRoundTripCorpus(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	files, err := filepath.Glob(filepath.Join("..", "testdata", "roundtrip", "*.md"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no round-trip fixtures found: %v", err)
+	}
+
+	for _, f := range files {
+		t.Run(filepath.Base(f), func(t *testing.T) {
+			data, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := string(data)
+			aJSON, _ := json.Marshal(a)
+
+			var b string
+			evalJS(t, ctx,
+				"window.__app.setMarkdown("+string(aJSON)+").then(() => window.__app.getMarkdown())",
+				&b)
+
+			bJSON, _ := json.Marshal(b)
+			var c string
+			evalJS(t, ctx,
+				"window.__app.setMarkdown("+string(bJSON)+").then(() => window.__app.getMarkdown())",
+				&c)
+
+			if b != c {
+				t.Errorf("unstable round-trip:\n--- B ---\n%q\n--- C ---\n%q", b, c)
+			}
+			if strings.HasSuffix(f, ".canonical.md") && a != b {
+				t.Errorf("canonical fixture rewritten:\n--- A ---\n%q\n--- B ---\n%q", a, b)
+			}
+		})
 	}
 }
