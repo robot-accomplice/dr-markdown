@@ -1,0 +1,10 @@
+.superpowers/
+/build/*
+!build/appicon.png
+!build/darwin/
+/bin
+/dr-markdown
+/dr-markdown.exe
+*.app
+.DS_Store
+/frontend/dist/wailsjs/
