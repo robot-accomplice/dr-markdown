@@ -73,13 +73,13 @@ async function toggleMode() {
 // --- files ---
 
 async function openDocument() {
-  cancelPendingPush()
   if (state.dirty) {
     // Ask Go to resolve the dirty buffer (Save / Don't Save / Cancel);
     // a false answer means Cancel — keep the current document.
     const proceed = await bridge.resolveUnsavedChanges()
     if (!proceed) return
   }
+  cancelPendingPush()
   const res = await bridge.openDocument()
   if (!res || (!res.path && !res.content)) return // canceled or unavailable
   await setMarkdown(res.content)
