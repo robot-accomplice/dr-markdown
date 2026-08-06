@@ -1,6 +1,7 @@
-// App bootstrap, state, and mode toggle. File wiring arrives in Tasks 6–7.
+// App bootstrap, state, mode toggle, and file wiring.
 import { loadTheme, WysiwygEditor } from './editor.js'
 import { RawEditor } from './rawmode.js'
+import { bridge } from './bridge.js'
 
 const WELCOME = `# Welcome to Dr. Markdown
 
@@ -26,6 +27,9 @@ const els = {
   raw: document.getElementById('raw'),
   docTitle: document.getElementById('doc-title'),
   btnToggle: document.getElementById('btn-toggle-mode'),
+  btnOpen: document.getElementById('btn-open'),
+  btnSave: document.getElementById('btn-save'),
+  btnSaveAs: document.getElementById('btn-save-as'),
 }
 
 const wysiwyg = new WysiwygEditor()
@@ -43,7 +47,10 @@ async function setMarkdown(md) {
   }
 }
 
-// CommonMark parsing is total — any raw text can become a WYSIWYG doc.
+function refreshTitle() {
+  els.docTitle.textContent = (state.path || 'untitled') + (state.dirty ? ' •' : '')
+}
+
 async function toggleMode() {
   if (state.mode === 'wysiwyg') {
     const md = wysiwyg.getMarkdown()
@@ -63,16 +70,65 @@ async function toggleMode() {
   }
 }
 
-function onEdited(_md) {
-  // Dirty tracking arrives in Task 7.
+// --- files ---
+
+async function openDocument() {
+  const res = await bridge.openDocument()
+  if (!res || (!res.path && !res.content)) return // canceled or unavailable
+  await setMarkdown(res.content)
+  state.path = res.path
+  state.savedText = res.content
+  state.dirty = false
+  bridge.setDirty(false)
+  refreshTitle()
 }
+
+async function save() {
+  const md = getMarkdown()
+  if (!state.path) {
+    return saveAs()
+  }
+  await bridge.saveDocument(state.path, md)
+  state.savedText = md
+  state.dirty = false
+  bridge.setDirty(false)
+  refreshTitle()
+}
+
+async function saveAs() {
+  const md = getMarkdown()
+  const path = await bridge.saveDocumentAs(md)
+  if (!path) return // canceled
+  state.path = path
+  state.savedText = md
+  state.dirty = false
+  refreshTitle()
+}
+
+// --- dirty tracking arrives in Task 7 ---
+function onEdited(_md) {}
 
 function wire() {
   els.btnToggle.addEventListener('click', toggleMode)
+  els.btnOpen.addEventListener('click', openDocument)
+  els.btnSave.addEventListener('click', save)
+  els.btnSaveAs.addEventListener('click', saveAs)
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+    const mod = e.ctrlKey || e.metaKey
+    if (!mod) return
+    const key = e.key.toLowerCase()
+    if (key === 'e') {
       e.preventDefault()
       toggleMode()
+    } else if (key === 'o') {
+      e.preventDefault()
+      openDocument()
+    } else if (key === 's' && e.shiftKey) {
+      e.preventDefault()
+      saveAs()
+    } else if (key === 's') {
+      e.preventDefault()
+      save()
     }
   })
 }
@@ -82,6 +138,7 @@ async function boot() {
   await wysiwyg.create(els.wysiwyg, WELCOME, onEdited)
   state.savedText = WELCOME
   wire()
+  refreshTitle()
 
   // Test/service hooks used by the chromedp e2e suite.
   window.__app = {
@@ -90,6 +147,9 @@ async function boot() {
     getMarkdown,
     setMarkdown,
     toggleMode,
+    openDocument,
+    save,
+    saveAs,
     debugReplaceRaw: (text) => raw.replaceAll(text),
   }
 }

@@ -140,3 +140,50 @@ func TestModeToggleRoundTrip(t *testing.T) {
 		t.Errorf("after toggle back, markdown = %q, want the raw edits", md)
 	}
 }
+
+func TestFileFlowWithStubBridge(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	stub := `globalThis.__calls = [];
+globalThis.go = { main: { App: {
+  OpenDocument: async () => ({ path: '/tmp/fake.md', content: "# From Stub\n" }),
+  SaveDocument: async (p, c) => { globalThis.__calls.push(['save', p, c]); },
+  SaveDocumentAs: async (c) => { globalThis.__calls.push(['saveAs', c]); return '/tmp/fake.md'; },
+  SetDirty: (d) => { globalThis.__calls.push(['dirty', d]); },
+  UpdateContent: (c) => { globalThis.__calls.push(['content', c]); },
+} } }; 'ok'`
+	var res string
+	evalJS(t, ctx, stub, &res)
+
+	// Open: editor shows stub content, path recorded.
+	evalJS(t, ctx, "window.__app.openDocument().then(() => 'ok')", &res)
+	var md, path string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	evalJS(t, ctx, "window.__app.state.path", &path)
+	if !strings.Contains(md, "# From Stub") {
+		t.Errorf("after open, markdown = %q", md)
+	}
+	if path != "/tmp/fake.md" {
+		t.Errorf("path = %q, want /tmp/fake.md", path)
+	}
+
+	// Save: routes to SaveDocument with the current path and content.
+	evalJS(t, ctx, "window.__app.save().then(() => 'ok')", &res)
+	var savedPath, savedContent string
+	evalJS(t, ctx, "globalThis.__calls.filter(c => c[0] === 'save')[0][1]", &savedPath)
+	evalJS(t, ctx, "globalThis.__calls.filter(c => c[0] === 'save')[0][2]", &savedContent)
+	if savedPath != "/tmp/fake.md" {
+		t.Errorf("save path = %q", savedPath)
+	}
+	if !strings.Contains(savedContent, "# From Stub") {
+		t.Errorf("save content = %q", savedContent)
+	}
+	var dirty bool
+	evalJS(t, ctx, "window.__app.state.dirty", &dirty)
+	if dirty {
+		t.Error("dirty should be false after save")
+	}
+}
