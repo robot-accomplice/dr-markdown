@@ -1,0 +1,7 @@
+.superpowers/
+/build
+/bin
+/dr-markdown
+/dr-markdown.exe
+*.app
+.DS_Store
