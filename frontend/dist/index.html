@@ -1,3 +1,24 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Dr. Markdown</title></head>
-<body>placeholder — replaced in Task 4</body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dr. Markdown</title>
+  <link rel="stylesheet" href="src/app.css">
+</head>
+<body>
+  <div id="toolbar">
+    <button id="btn-open" title="Open (Ctrl/Cmd+O)">Open</button>
+    <button id="btn-save" title="Save (Ctrl/Cmd+S)">Save</button>
+    <button id="btn-save-as" title="Save As (Ctrl/Cmd+Shift+S)">Save As</button>
+    <span class="sep"></span>
+    <button id="btn-toggle-mode" title="Toggle raw markdown (Ctrl/Cmd+E)">Raw</button>
+    <span id="doc-title">untitled</span>
+  </div>
+  <div id="editor-host">
+    <div id="wysiwyg"></div>
+    <div id="raw" hidden></div>
+  </div>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
