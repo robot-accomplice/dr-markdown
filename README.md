@@ -1,4 +1,4 @@
-# Dr. Markdown
+# Dr. Markdown, .MD
 
 A native WYSIWYG markdown editor — Go + Wails, no Node.js anywhere.
 
