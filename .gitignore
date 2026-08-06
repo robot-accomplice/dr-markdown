@@ -5,3 +5,4 @@
 /dr-markdown.exe
 *.app
 .DS_Store
+/frontend/dist/wailsjs/

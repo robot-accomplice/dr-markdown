@@ -7,13 +7,19 @@ import { EditorView, basicSetup } from '../vendor/codemirror.bundle.mjs'
 export class RawEditor {
   #view = null
 
-  open(host, markdown) {
+  // onChange(markdown), when given, fires on every document change so the
+  // caller can wire raw-mode edits into dirty tracking.
+  open(host, markdown, onChange) {
     host.replaceChildren()
-    this.#view = new EditorView({
-      parent: host,
-      doc: markdown,
-      extensions: [basicSetup, EditorView.lineWrapping],
-    })
+    const extensions = [basicSetup, EditorView.lineWrapping]
+    if (onChange) {
+      extensions.push(
+        EditorView.updateListener.of((u) => {
+          if (u.docChanged) onChange(u.state.doc.toString())
+        })
+      )
+    }
+    this.#view = new EditorView({ parent: host, doc: markdown, extensions })
   }
 
   getMarkdown() {

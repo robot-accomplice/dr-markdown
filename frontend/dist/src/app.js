@@ -56,7 +56,7 @@ async function toggleMode() {
     const md = wysiwyg.getMarkdown()
     els.wysiwyg.hidden = true
     els.raw.hidden = false
-    raw.open(els.raw, md)
+    raw.open(els.raw, md, onEdited)
     state.mode = 'raw'
     els.btnToggle.textContent = 'WYSIWYG'
   } else {
@@ -73,6 +73,13 @@ async function toggleMode() {
 // --- files ---
 
 async function openDocument() {
+  cancelPendingPush()
+  if (state.dirty) {
+    // Ask Go to resolve the dirty buffer (Save / Don't Save / Cancel);
+    // a false answer means Cancel — keep the current document.
+    const proceed = await bridge.resolveUnsavedChanges()
+    if (!proceed) return
+  }
   const res = await bridge.openDocument()
   if (!res || (!res.path && !res.content)) return // canceled or unavailable
   await setMarkdown(res.content)
@@ -80,6 +87,7 @@ async function openDocument() {
   state.savedText = res.content
   state.dirty = false
   bridge.setDirty(false)
+  lastPushedDirty = false
   refreshTitle()
 }
 
@@ -89,9 +97,11 @@ async function save() {
     return saveAs()
   }
   await bridge.saveDocument(state.path, md)
+  cancelPendingPush()
   state.savedText = md
   state.dirty = false
   bridge.setDirty(false)
+  lastPushedDirty = false
   refreshTitle()
 }
 
@@ -99,26 +109,42 @@ async function saveAs() {
   const md = getMarkdown()
   const path = await bridge.saveDocumentAs(md)
   if (!path) return // canceled
+  cancelPendingPush()
   state.path = path
   state.savedText = md
   state.dirty = false
+  lastPushedDirty = false
   refreshTitle()
 }
 
 // --- dirty tracking ---
-// Debounce pushes to Go: every keystroke would be too chatty over the
-// bridge. 300ms after the last edit, Go gets the latest content (for the
-// close-guard save path) and the dirty flag.
+// The dirty flag is pushed to Go immediately when it changes (so the
+// native close guard and title are always current); only the full content
+// push is debounced — every keystroke would be too chatty over the bridge.
+// 300ms after the last edit, Go gets the latest content (for the
+// close-guard save path).
 let pushTimer = null
+let lastPushedDirty = null
 
 function onEdited(md) {
   state.dirty = md !== state.savedText
   refreshTitle()
+  if (state.dirty !== lastPushedDirty) {
+    bridge.setDirty(state.dirty)
+    lastPushedDirty = state.dirty
+  }
   clearTimeout(pushTimer)
   pushTimer = setTimeout(() => {
     bridge.updateContent(md)
-    bridge.setDirty(state.dirty)
   }, 300)
+}
+
+// cancelPendingPush drops any debounced content push; called before the
+// document is replaced (open/save) so a stale push can't overwrite fresh
+// state in Go.
+function cancelPendingPush() {
+  clearTimeout(pushTimer)
+  pushTimer = null
 }
 
 function wire() {

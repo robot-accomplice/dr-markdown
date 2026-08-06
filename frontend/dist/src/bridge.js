@@ -17,4 +17,6 @@ export const bridge = {
     wails()?.SaveDocumentAs(content) ?? missing('SaveDocumentAs'),
   setDirty: (d) => wails()?.SetDirty(d),
   updateContent: (c) => wails()?.UpdateContent(c),
+  resolveUnsavedChanges: () =>
+    wails()?.ResolveUnsavedChanges() ?? missing('ResolveUnsavedChanges'),
 }

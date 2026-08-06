@@ -122,6 +122,21 @@ func (a *App) UpdateContent(content string) {
 	a.mu.Unlock()
 }
 
+// ResolveUnsavedChanges reports whether the frontend may discard the
+// current dirty buffer (e.g. to open another document). Not dirty: true
+// immediately. Otherwise it shows the same Save / Don't Save / Cancel
+// dialog as the close guard; Save saves first, Don't Save proceeds, and
+// Cancel (or a dialog/save failure) aborts.
+func (a *App) ResolveUnsavedChanges() bool {
+	a.mu.Lock()
+	dirty := a.dirty
+	a.mu.Unlock()
+	if !dirty {
+		return true
+	}
+	return !a.promptUnsaved()
+}
+
 // beforeClose implements the unsaved-changes guard: Save / Don't Save /
 // Cancel, matching the spec's error-handling contract.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
@@ -131,7 +146,13 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	if !dirty {
 		return false
 	}
-	choice, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+	return a.promptUnsaved()
+}
+
+// promptUnsaved shows the Save / Don't Save / Cancel dialog and returns
+// whether the pending action (close, open, …) must be prevented.
+func (a *App) promptUnsaved() (prevent bool) {
+	choice, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 		Type:          runtime.QuestionDialog,
 		Title:         "Unsaved Changes",
 		Message:       "Save changes before closing?",

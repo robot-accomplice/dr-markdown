@@ -211,15 +211,132 @@ globalThis.go = { main: { App: {
 		t.Error("state.dirty should be true after edit")
 	}
 
-	// Debounced push: wait for it, then assert SetDirty(true) and
-	// UpdateContent reached the bridge.
+	// SetDirty is pushed immediately (not debounced): it must already be
+	// at the bridge, while UpdateContent is still pending its 300ms flush.
+	var dirtyNow, contentNow bool
+	evalJS(t, ctx, "globalThis.__calls.some(c => c[0] === 'dirty' && c[1] === true)", &dirtyNow)
+	evalJS(t, ctx, "globalThis.__calls.some(c => c[0] === 'content')", &contentNow)
+	if !dirtyNow {
+		t.Error("bridge should have received SetDirty(true) immediately")
+	}
+	if contentNow {
+		t.Error("UpdateContent should still be debounced right after the edit")
+	}
+
+	// Debounced push: wait for it, then assert UpdateContent reached the
+	// bridge too.
+	var pushed bool
+	evalJS(t, ctx, `new Promise(r => setTimeout(() => {
+		r(globalThis.__calls.some(c => c[0] === 'content' && c[1].includes('# Changed')))
+	}, 600))`, &pushed)
+	if !pushed {
+		t.Errorf("bridge did not receive debounced UpdateContent; calls were pushed via debugSimulateEdit")
+	}
+}
+
+func TestRawModeDirtyTracking(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	stub := `globalThis.__calls = [];
+globalThis.go = { main: { App: {
+  SetDirty: (d) => { globalThis.__calls.push(['dirty', d]); },
+  UpdateContent: (c) => { globalThis.__calls.push(['content', c]); },
+} } }; 'ok'`
+	var res string
+	evalJS(t, ctx, stub, &res)
+
+	// Switch to raw mode, then edit through CodeMirror's dispatch path
+	// (same as typing): the updateListener must feed dirty tracking.
+	evalJS(t, ctx, "window.__app.toggleMode().then(() => 'ok')", &res)
+	var mode string
+	evalJS(t, ctx, "window.__app.state.mode", &mode)
+	if mode != "raw" {
+		t.Fatalf("mode = %q, want raw", mode)
+	}
+	evalJS(t, ctx, "window.__app.debugReplaceRaw('# Changed\\n'); 'ok'", &res)
+
+	var dirty bool
+	evalJS(t, ctx, "window.__app.state.dirty", &dirty)
+	if !dirty {
+		t.Error("state.dirty should be true after a raw-mode edit")
+	}
+
+	// Immediate SetDirty(true) plus debounced UpdateContent with the new text.
 	var pushed bool
 	evalJS(t, ctx, `new Promise(r => setTimeout(() => {
 		r(globalThis.__calls.some(c => c[0] === 'dirty' && c[1] === true) &&
 		  globalThis.__calls.some(c => c[0] === 'content' && c[1].includes('# Changed')))
 	}, 600))`, &pushed)
 	if !pushed {
-		t.Errorf("bridge did not receive SetDirty(true) + UpdateContent; calls were pushed via debugSimulateEdit")
+		t.Errorf("raw-mode edit did not reach the bridge; calls = see page state")
+	}
+}
+
+func TestOpenOverDirtyGuard(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	stub := `globalThis.__calls = [];
+globalThis.__resolveResult = false;
+globalThis.go = { main: { App: {
+  OpenDocument: async () => {
+    globalThis.__calls.push(['open']);
+    return { path: '/tmp/guard.md', content: "# Opened Doc\n" };
+  },
+  ResolveUnsavedChanges: async () => {
+    globalThis.__calls.push(['resolve']);
+    return globalThis.__resolveResult;
+  },
+  SetDirty: (d) => { globalThis.__calls.push(['dirty', d]); },
+  UpdateContent: (c) => { globalThis.__calls.push(['content', c]); },
+} } }; 'ok'`
+	var res string
+	evalJS(t, ctx, stub, &res)
+
+	// Dirty the buffer, then try to open while the guard says "Cancel":
+	// the open must be aborted before OpenDocument is even called.
+	evalJS(t, ctx, "window.__app.debugSimulateEdit('# Dirty Edit\\n'); 'ok'", &res)
+	var before string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &before)
+	evalJS(t, ctx, "window.__app.openDocument().then(() => 'ok')", &res)
+
+	var after string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &after)
+	if after != before {
+		t.Errorf("open was not aborted: content changed to %q", after)
+	}
+	var openCalls int
+	evalJS(t, ctx, "globalThis.__calls.filter(c => c[0] === 'open').length", &openCalls)
+	if openCalls != 0 {
+		t.Errorf("OpenDocument called %d times despite guard", openCalls)
+	}
+	var resolveCalls int
+	evalJS(t, ctx, "globalThis.__calls.filter(c => c[0] === 'resolve').length", &resolveCalls)
+	if resolveCalls != 1 {
+		t.Errorf("ResolveUnsavedChanges called %d times, want 1", resolveCalls)
+	}
+
+	// Guard says "proceed": the open must go through.
+	evalJS(t, ctx, "globalThis.__resolveResult = true; 'ok'", &res)
+	evalJS(t, ctx, "window.__app.openDocument().then(() => 'ok')", &res)
+	var md string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	if !strings.Contains(md, "# Opened Doc") {
+		t.Errorf("open did not proceed; markdown = %q", md)
+	}
+	evalJS(t, ctx, "globalThis.__calls.filter(c => c[0] === 'open').length", &openCalls)
+	if openCalls != 1 {
+		t.Errorf("OpenDocument called %d times, want 1", openCalls)
+	}
+	var dirty bool
+	evalJS(t, ctx, "window.__app.state.dirty", &dirty)
+	if dirty {
+		t.Error("dirty should be false after the guarded open went through")
 	}
 }
 

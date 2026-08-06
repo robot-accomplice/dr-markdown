@@ -26,8 +26,9 @@ fetch "https://esm.sh/@milkdown/crepe@${CREPE_VERSION}/es2022/crepe.bundle.mjs" 
 # is a guarded `typeof __Process$<"u"` check (lezer parse logging), so replace
 # the import with an inline undefined stub to keep the bundle self-contained.
 if grep -q 'import __Process\$ from "/node/process.mjs";' "$VENDOR/crepe.bundle.mjs"; then
-  sed -i '' 's|import __Process\$ from "/node/process.mjs";|const __Process$=void 0;|' \
-    "$VENDOR/crepe.bundle.mjs"
+  # Portable in-place edit (GNU/BSD sed safe): -i.bak works on both.
+  sed -i.bak 's|import __Process\$ from "/node/process.mjs";|const __Process$=void 0;|' \
+    "$VENDOR/crepe.bundle.mjs" && rm "$VENDOR/crepe.bundle.mjs.bak"
   echo "patched out /node/process.mjs import in crepe.bundle.mjs"
 fi
 
