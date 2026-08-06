@@ -1,9 +1,9 @@
-// Command genbanner renders the Dr. Markdown 1600x800 README banner: a deep
-// indigo full-bleed background with a subtle vertical gradient, the white
-// "M-down-arrow" glyph on the left (same stroke geometry as tools/genicon),
-// and the "Dr. Markdown" wordmark plus tagline on the right. The glyph is
-// pure stdlib polygon filling; the text is rendered with
-// golang.org/x/image/font from a macOS system font.
+// Command genbanner renders the Dr. Markdown, .MD 1600x420 README banner: a
+// medical-scrubs teal full-bleed background with a subtle vertical gradient,
+// the white "M + stethoscope" mark on the left (same stroke geometry as
+// tools/genicon), and the full "Dr. Markdown, .MD" wordmark plus tagline on
+// the right. The mark is pure stdlib polygon filling; the text is rendered
+// with golang.org/x/image/font from a macOS system font.
 //
 // Usage: go run ./tools/genbanner -out docs/assets/banner.png
 package main
@@ -27,15 +27,15 @@ import (
 
 const (
 	width  = 1600
-	height = 800
-	margin = 120.0
+	height = 420
+	margin = 80.0
 )
 
 var (
-	indigoTop = color.RGBA{38, 36, 104, 255} // gradient start (darker)
-	indigoBot = color.RGBA{64, 60, 150, 255} // gradient end (lighter)
-	white     = color.RGBA{255, 255, 255, 255}
-	tint      = color.RGBA{199, 196, 245, 255} // indigo-tinted white for tagline
+	tealTop = color.RGBA{17, 94, 89, 255}    // gradient start (darker)
+	tealBot = color.RGBA{15, 118, 110, 255}  // gradient end (lighter)
+	white   = color.RGBA{255, 255, 255, 255}
+	tint    = color.RGBA{153, 246, 228, 255} // light teal tint for tagline
 )
 
 type pt struct{ x, y float64 }
@@ -94,37 +94,70 @@ func stroke(img *image.RGBA, a, b pt, w float64, c color.RGBA) {
 	}
 }
 
-// background fills the canvas with a top-to-bottom indigo gradient.
-func background(img *image.RGBA) {
-	for y := 0; y < height; y++ {
-		t := float64(y) / float64(height-1)
-		c := color.RGBA{
-			R: uint8(float64(indigoTop.R)*(1-t) + float64(indigoBot.R)*t),
-			G: uint8(float64(indigoTop.G)*(1-t) + float64(indigoBot.G)*t),
-			B: uint8(float64(indigoTop.B)*(1-t) + float64(indigoBot.B)*t),
-			A: 255,
+// disc fills a solid disc of radius r centered at p.
+func disc(img *image.RGBA, p pt, r float64, c color.RGBA) {
+	for y := int(p.y - r); y <= int(p.y+r); y++ {
+		for x := int(p.x - r); x <= int(p.x+r); x++ {
+			if math.Hypot(float64(x)+0.5-p.x, float64(y)+0.5-p.y) <= r {
+				img.SetRGBA(x, y, c)
+			}
 		}
-		draw.Draw(img, image.Rect(0, y, width, y+1), &image.Uniform{c}, image.Point{}, draw.Src)
 	}
 }
 
-// glyph draws the "M↓" glyph with its bounding box top-left at (ox, oy) and
-// height h. Geometry matches tools/genicon, scaled from its 374px-tall "M".
-// Returns the total width occupied (including stroke caps).
+// bgAt returns the background gradient color at absolute row y.
+func bgAt(y float64) color.RGBA {
+	t := y / float64(height-1)
+	return color.RGBA{
+		R: uint8(float64(tealTop.R)*(1-t) + float64(tealBot.R)*t),
+		G: uint8(float64(tealTop.G)*(1-t) + float64(tealBot.G)*t),
+		B: uint8(float64(tealTop.B)*(1-t) + float64(tealBot.B)*t),
+		A: 255,
+	}
+}
+
+// background fills the canvas with a top-to-bottom teal gradient.
+func background(img *image.RGBA) {
+	for y := 0; y < height; y++ {
+		draw.Draw(img, image.Rect(0, y, width, y+1), &image.Uniform{bgAt(float64(y))}, image.Point{}, draw.Src)
+	}
+}
+
+// glyph draws the "M + stethoscope" mark with its bounding box (including
+// stroke caps) at top-left (ox, oy), scaled to height h. The mark reads
+// "Markdown, MD": a bold M followed by a stethoscope — two binaural tubes
+// with round ear tips joining into a single tube that descends and curves
+// right into a chestpiece with a two-tone diaphragm. Returns the total
+// width occupied.
 func glyph(img *image.RGBA, ox, oy, h float64, c color.RGBA) float64 {
-	s := h / 374.0
-	w := 72.0 * s
-	at := func(x, y float64) pt { return pt{ox + (x-210)*s, oy + (y-330)*s} }
+	// Local coordinate space: the M spans x 210..560, y 330..704 with stroke
+	// width 72; including caps and the chestpiece the mark's bounding box is
+	// x 174..926, y 294..752.
+	s := h / 458.0
+	w := 72.0 * s  // M stroke width
+	tw := 56.0 * s // stethoscope tube width, slightly finer than the M
+	at := func(x, y float64) pt { return pt{ox + (x-174)*s, oy + (y-294)*s} }
 	// "M" — four strokes.
 	stroke(img, at(210, 704), at(210, 330), w, c)
 	stroke(img, at(210, 330), at(385, 560), w, c)
 	stroke(img, at(385, 560), at(560, 330), w, c)
 	stroke(img, at(560, 330), at(560, 704), w, c)
-	// Down-arrow — shaft plus two diagonal barbs.
-	stroke(img, at(750, 330), at(750, 640), w, c)
-	stroke(img, at(750, 700), at(630, 540), w, c)
-	stroke(img, at(750, 700), at(870, 540), w, c)
-	return (870-210)*s + w // rightmost barb endpoint plus cap radius
+	// Stethoscope — binaural tubes opening upward, each tipped with an
+	// earpiece disc.
+	stroke(img, at(668, 352), at(748, 512), tw, c)
+	stroke(img, at(832, 352), at(752, 512), tw, c)
+	disc(img, at(668, 346), 38*s, c)
+	disc(img, at(832, 346), 38*s, c)
+	// Single tube descending from the junction, arcing right.
+	stroke(img, at(750, 512), at(746, 578), tw, c)
+	stroke(img, at(746, 578), at(752, 634), tw, c)
+	stroke(img, at(752, 634), at(776, 674), tw, c)
+	stroke(img, at(776, 674), at(812, 694), tw, c)
+	// Chestpiece — white disc with a background-teal diaphragm inside.
+	cp := at(862, 688)
+	disc(img, cp, 64*s, c)
+	disc(img, cp, 30*s, bgAt(cp.y))
+	return (926 - 174) * s
 }
 
 // loadFonts tries each candidate path in order and returns (bold, regular)
@@ -209,12 +242,12 @@ func main() {
 	}
 	log.Printf("font: %s", fontDesc)
 
-	const wordmark = "Dr. Markdown"
+	const wordmark = "Dr. Markdown, .MD"
 	const tagline = "A native WYSIWYG markdown editor"
 
 	// Target sizes, scaled down uniformly if the row would overflow.
-	glyphH, wmSize, tagSize, gap := 400.0, 180.0, 64.0, 60.0
-	glyphW := (870-210)*(glyphH/374.0) + 72.0*(glyphH/374.0)
+	glyphH, wmSize, tagSize, gap := 260.0, 110.0, 48.0, 64.0
+	glyphW := (926 - 174) * (glyphH / 458.0)
 
 	measure := func(f *sfnt.Font, size float64, s string) float64 {
 		fc := face(f, size)

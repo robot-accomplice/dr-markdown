@@ -1,6 +1,9 @@
-// Command genicon renders the Dr. Markdown 1024x1024 app icon using only
-// the Go standard library: an indigo rounded-rectangle background with a
-// white "M-down-arrow" markdown glyph centered on it.
+// Command genicon renders the Dr. Markdown, .MD 1024x1024 app icon using
+// only the Go standard library: a medical-scrubs teal rounded-rectangle
+// background with a white "M + stethoscope" mark centered on it. The mark
+// is a bolder, simplified sibling of the banner mark in tools/genbanner so
+// it survives small (64px) rendering: chunky Y-tubes with ear tips and an
+// emphasized two-tone chestpiece.
 //
 // Usage: go run ./tools/genicon -out build/appicon.png
 package main
@@ -19,8 +22,8 @@ import (
 const size = 1024
 
 var (
-	indigo = color.RGBA{79, 70, 229, 255}
-	white  = color.RGBA{255, 255, 255, 255}
+	teal  = color.RGBA{15, 118, 110, 255}
+	white = color.RGBA{255, 255, 255, 255}
 )
 
 type pt struct{ x, y float64 }
@@ -79,6 +82,17 @@ func stroke(img *image.RGBA, a, b pt, w float64, c color.RGBA) {
 	}
 }
 
+// disc fills a solid disc of radius r centered at p.
+func disc(img *image.RGBA, p pt, r float64, c color.RGBA) {
+	for y := int(p.y - r); y <= int(p.y+r); y++ {
+		for x := int(p.x - r); x <= int(p.x+r); x++ {
+			if math.Hypot(float64(x)+0.5-p.x, float64(y)+0.5-p.y) <= r {
+				img.SetRGBA(x, y, c)
+			}
+		}
+	}
+}
+
 // roundedRect fills the full canvas with a rounded rectangle of radius r.
 func roundedRect(img *image.RGBA, r float64, c color.RGBA) {
 	draw.Draw(img, img.Bounds(), &image.Uniform{c}, image.Point{}, draw.Src)
@@ -102,18 +116,35 @@ func main() {
 	flag.Parse()
 
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
-	roundedRect(img, 200, indigo)
+	roundedRect(img, 200, teal)
 
-	const w = 72.0 // stroke width
-	// "M" — four strokes, occupying x 200..560, y 320..704.
-	stroke(img, pt{210, 704}, pt{210, 330}, w, white)
-	stroke(img, pt{210, 330}, pt{385, 560}, w, white)
-	stroke(img, pt{385, 560}, pt{560, 330}, w, white)
-	stroke(img, pt{560, 330}, pt{560, 704}, w, white)
-	// Down-arrow — shaft plus two diagonal barbs, x ~650..850.
-	stroke(img, pt{750, 330}, pt{750, 640}, w, white)
-	stroke(img, pt{750, 700}, pt{630, 540}, w, white)
-	stroke(img, pt{750, 700}, pt{870, 540}, w, white)
+	// The mark is designed in the coordinate space below, then scaled by k
+	// about the canvas center and shifted so its bounding box is centered.
+	const k = 1.0
+	const ox, oy = -52.0, -11.0
+	P := func(x, y float64) pt {
+		return pt{512 + (x-512)*k + ox, 512 + (y-512)*k + oy}
+	}
+
+	// "M" — four bold strokes.
+	const mw = 84.0
+	stroke(img, P(240, 740), P(240, 300), mw*k, white)
+	stroke(img, P(240, 300), P(380, 500), mw*k, white)
+	stroke(img, P(380, 500), P(520, 300), mw*k, white)
+	stroke(img, P(520, 300), P(520, 740), mw*k, white)
+	// Stethoscope — Y-tubes with ear tips, single tube arcing right into a
+	// large two-tone chestpiece.
+	const tw = 64.0
+	stroke(img, P(648, 330), P(716, 486), tw*k, white)
+	stroke(img, P(784, 330), P(716, 486), tw*k, white)
+	disc(img, P(648, 318), 48*k, white)
+	disc(img, P(784, 318), 48*k, white)
+	stroke(img, P(716, 486), P(712, 566), tw*k, white)
+	stroke(img, P(712, 566), P(722, 636), tw*k, white)
+	stroke(img, P(722, 636), P(752, 690), tw*k, white)
+	stroke(img, P(752, 690), P(800, 714), tw*k, white)
+	disc(img, P(846, 702), 84*k, white)
+	disc(img, P(846, 702), 40*k, teal)
 
 	f, err := os.Create(*out)
 	if err != nil {
