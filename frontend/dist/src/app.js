@@ -105,8 +105,21 @@ async function saveAs() {
   refreshTitle()
 }
 
-// --- dirty tracking arrives in Task 7 ---
-function onEdited(_md) {}
+// --- dirty tracking ---
+// Debounce pushes to Go: every keystroke would be too chatty over the
+// bridge. 300ms after the last edit, Go gets the latest content (for the
+// close-guard save path) and the dirty flag.
+let pushTimer = null
+
+function onEdited(md) {
+  state.dirty = md !== state.savedText
+  refreshTitle()
+  clearTimeout(pushTimer)
+  pushTimer = setTimeout(() => {
+    bridge.updateContent(md)
+    bridge.setDirty(state.dirty)
+  }, 300)
+}
 
 function wire() {
   els.btnToggle.addEventListener('click', toggleMode)
@@ -151,6 +164,7 @@ async function boot() {
     save,
     saveAs,
     debugReplaceRaw: (text) => raw.replaceAll(text),
+    debugSimulateEdit: (md) => onEdited(md),
   }
 }
 

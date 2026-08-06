@@ -187,3 +187,37 @@ globalThis.go = { main: { App: {
 		t.Error("dirty should be false after save")
 	}
 }
+
+func TestDirtyWiringWithStubBridge(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	stub := `globalThis.__calls = [];
+globalThis.go = { main: { App: {
+  SetDirty: (d) => { globalThis.__calls.push(['dirty', d]); },
+  UpdateContent: (c) => { globalThis.__calls.push(['content', c]); },
+} } }; 'ok'`
+	var res string
+	evalJS(t, ctx, stub, &res)
+
+	evalJS(t, ctx, "window.__app.debugSimulateEdit('# Changed\\n'); 'ok'", &res)
+
+	var dirty bool
+	evalJS(t, ctx, "window.__app.state.dirty", &dirty)
+	if !dirty {
+		t.Error("state.dirty should be true after edit")
+	}
+
+	// Debounced push: wait for it, then assert SetDirty(true) and
+	// UpdateContent reached the bridge.
+	var pushed bool
+	evalJS(t, ctx, `new Promise(r => setTimeout(() => {
+		r(globalThis.__calls.some(c => c[0] === 'dirty' && c[1] === true) &&
+		  globalThis.__calls.some(c => c[0] === 'content' && c[1].includes('# Changed')))
+	}, 600))`, &pushed)
+	if !pushed {
+		t.Errorf("bridge did not receive SetDirty(true) + UpdateContent; calls were pushed via debugSimulateEdit")
+	}
+}

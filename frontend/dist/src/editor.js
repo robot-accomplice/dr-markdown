@@ -20,6 +20,11 @@ export async function loadTheme() {
 export class WysiwygEditor {
   #crepe = null
   #onChange = null
+  // Last serialized markdown we treated as the unedited baseline. Crepe
+  // fires an initial markdownUpdated when its async feature mounting
+  // finishes — a normalization pass, not a user edit — so events that
+  // serialize back to the baseline are ignored.
+  #baseline = ''
 
   async create(host, markdown, onChange) {
     this.#onChange = onChange
@@ -41,11 +46,14 @@ export class WysiwygEditor {
     })
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, md, prev) => {
-        if (md !== prev) this.#onChange?.(md)
+        if (md === prev || md === this.#baseline) return
+        this.#baseline = md
+        this.#onChange?.(md)
       })
     })
     await crepe.create()
     this.#crepe = crepe
+    this.#baseline = crepe.getMarkdown()
   }
 
   getMarkdown() {
