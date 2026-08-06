@@ -1,15 +1,56 @@
+![Dr. Markdown, .MD](docs/assets/banner.png)
+
 # Dr. Markdown, .MD
 
-A native WYSIWYG markdown editor — Go + Wails, no Node.js anywhere.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/robot-accomplice/dr-markdown)](go.mod)
+[![Wails v2.13](https://img.shields.io/badge/Wails-v2.13.0-red.svg)](https://wails.io)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-lightgrey.svg)](#building--installing-macos)
+[![Node.js](https://img.shields.io/badge/Node.js-not%20required-success.svg)](#architecture)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/robot-accomplice/dr-markdown/issues)
 
-## Development
+Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) with a real editing surface — Milkdown Crepe on ProseMirror, CodeMirror for raw mode — vendored as self-contained ESM bundles. Markdown on disk is the source of truth; what you see is what gets saved.
+
+**Why?** Typora set the bar for distraction-free markdown editing, then went closed and paid. Dr. Markdown is the open-source answer: MIT licensed, native via the OS webview (no Electron), and built with zero Node.js anywhere — not at development time, not at build time, not at runtime. If you have Go, you can build it.
+
+## Features
+
+### Available today
+
+- WYSIWYG editing of GitHub-flavored markdown: tables, task lists, strikethrough, and syntax-highlighted code blocks (via Milkdown Crepe's built-ins)
+- Raw markdown mode with a `Ctrl/Cmd+E` toggle — switch between rendered and source views without losing your place
+- Native open/save dialogs; files associate with the app on macOS
+- Atomic saves — a crashed write never leaves you a truncated file
+- Dirty tracking with an unsaved-changes close guard and an open-over-dirty guard
+- A 9-fixture round-trip corpus (markdown → WYSIWYG → markdown) driven by chromedp that gates every change
+- macOS packaging: `tools/build-macos.sh` produces a signed `.app` and a distributable `.dmg` with a custom icon
+
+### On the roadmap
+
+- **M3** — full ribbon toolbar
+- **M4** — mermaid inline rendering; proper YAML frontmatter handling
+- **M5** — images; HTML and PDF export
+- **M6** — themes, focus mode, status bar; Windows and Linux packaging
+
+## Screenshots
+
+Coming once the M3 ribbon lands — the current UI is a clean editing surface, not much to show off yet.
+
+## Getting started
+
+Prerequisites:
+
+- Go 1.26+
+- Wails CLI v2.13.0: `go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0`
+- Chrome (for the chromedp-based e2e tests)
+- macOS (only for the packaging step)
 
 ```sh
-go test ./...
-wails dev
+go test ./...   # unit + round-trip corpus + e2e
+wails dev       # live-reload development build
 ```
 
-## Release packaging (macOS)
+## Building & installing (macOS)
 
 ```sh
 tools/build-macos.sh                # darwin/arm64 build + DMG
@@ -20,13 +61,40 @@ tools/build-macos.sh --install      # also copies the .app to /Applications
 Outputs:
 
 - `build/bin/dr-markdown.app` — the app bundle
-- `build/dr-markdown.dmg` — distributable disk image
+- `build/dr-markdown.dmg` — drag the app to Applications and you're done
 
-The app icon is generated from `tools/genicon` (pure Go stdlib) into
-`build/appicon.png`; Wails encodes it to `iconfile.icns` during packaging.
-Bundle metadata lives in `build/darwin/Info.plist`.
+Builds are self-signed ad-hoc. On machines other than the build host, Gatekeeper will flag the app: right-click → Open (or remove the quarantine attribute). Developer ID signing and notarization are future work.
 
-Builds are self-signed ad-hoc. On other machines Gatekeeper will flag the
-app; right-click → Open, or remove the quarantine attribute. Real
-distribution (and anything App Store) requires a Developer ID certificate,
-signing, and notarization — not wired up yet.
+## Architecture
+
+Three layers, no Node anywhere:
+
+1. **Go shell** — Wails v2 window, native dialogs, atomic file I/O, dirty-state guards.
+2. **Vendored ESM bundles** — Milkdown Crepe and CodeMirror, pre-bundled once and committed; the app loads them as-is.
+3. **Hand-written app JS** — the glue: mode switching, load/save plumbing, dirty tracking.
+
+Markdown on disk is the source of truth. The WYSIWYG surface round-trips through it, and the chromedp round-trip corpus in `testdata/roundtrip` is the correctness gate — if a fixture doesn't round-trip, the change doesn't land. Full design notes: [docs/superpowers/specs/2026-08-05-dr-markdown-design.md](docs/superpowers/specs/2026-08-05-dr-markdown-design.md).
+
+## Tech stack
+
+| Component | Version |
+| --- | --- |
+| Go | 1.26.5 |
+| Wails | v2.13.0 |
+| Milkdown Crepe | 7.22.0 |
+| CodeMirror | 6.0.2 |
+| chromedp (e2e) | v0.16.0 |
+
+## Known limitations
+
+- YAML frontmatter is currently re-parsed as markdown body content (proper handling planned for M4).
+- Raw-mode syntax highlighting is deferred — CodeMirror currently runs without a markdown language pack.
+- Native-dialog flows (open/save/dirty guards) have manual checks pending beyond the automated corpus.
+
+## Contributing
+
+PRs welcome. `go test ./...` must stay green, and every fixture in the round-trip corpus must keep round-tripping. Hard constraint: no Node.js toolchain additions — the vendored ESM bundles are refreshed by maintainers via `tools/vendor.sh`, never by contributors at build time.
+
+## License
+
+[MIT](LICENSE)
