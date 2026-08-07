@@ -18,7 +18,15 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 ### Available today
 
 - WYSIWYG editing of GitHub-flavored markdown: tables, task lists, strikethrough, and syntax-highlighted code blocks (via Milkdown Crepe's built-ins)
-- Raw markdown mode with a `Ctrl/Cmd+E` toggle — switch between rendered and source views without losing your place
+- Raw and split markdown modes with formatted preview/source switching
+- Native syntax highlighting for raw markdown and language-tagged fenced code blocks
+- Mermaid Diagram rendering plus a guided Mermaid starter assistant
+- Contextual table, code-block language, diagram, and image controls on the document surface
+- Image import from the ribbon or by dropping files onto the window, copied into a `<document>.assets/` folder and referenced by relative path so the markdown stays portable
+- Image width, alt text, replace, reveal-in-Finder, and delete controls on the selected image; a missing asset renders as a visible broken state rather than blank space
+- Persistent settings for document font, code font, ligatures, editor width, default mode, and format-on-save
+- Recent markdown documents on the start screen, backed by native preference storage
+- Print and PDF export through the native print dialog path
 - Native open/save dialogs; files associate with the app on macOS
 - Atomic saves — a crashed write never leaves you a truncated file
 - Dirty tracking with an unsaved-changes close guard and an open-over-dirty guard
@@ -27,14 +35,42 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 
 ### On the roadmap
 
-- **M3** — full ribbon toolbar
-- **M4** — mermaid inline rendering; proper YAML frontmatter handling
-- **M5** — images; HTML and PDF export
-- **M6** — themes, focus mode, status bar; Windows and Linux packaging
+- Comments and review workflow
+- Direct PDF/HTML export artifacts beyond the OS print dialog path
+- Sharing, sync/Git, and extensions surfaces
+- Developer ID signing, notarization, and Windows/Linux packaging
 
 ## Screenshots
 
-Coming once the M3 ribbon lands — the current UI is a clean editing surface, not much to show off yet.
+Screenshots are generated from the checked-in frontend with:
+
+```sh
+go run ./tools/screenshots
+```
+
+Run that command whenever a UI-facing fix changes layout, chrome, controls, or
+visible editor behavior, and commit the refreshed files under
+`docs/assets/screenshots/`.
+
+### Start screen
+
+![Dr. Markdown start screen](docs/assets/screenshots/start.png)
+
+### Formatted editor
+
+![Dr. Markdown formatted editor](docs/assets/screenshots/formatted.png)
+
+### Raw editor
+
+![Dr. Markdown raw editor](docs/assets/screenshots/raw.png)
+
+### Split editor
+
+![Dr. Markdown split editor](docs/assets/screenshots/split.png)
+
+### Settings
+
+![Dr. Markdown settings](docs/assets/screenshots/settings.png)
 
 ## Getting started
 
@@ -83,12 +119,18 @@ Markdown on disk is the source of truth. The WYSIWYG surface round-trips through
 | Wails | v2.13.0 |
 | Milkdown Crepe | 7.22.0 |
 | CodeMirror | 6.0.2 |
+| Highlight.js | 11.11.1 |
+| Mermaid | 11.6.0 |
 | chromedp (e2e) | v0.16.0 |
 
 ## Known limitations
 
-- YAML frontmatter is currently re-parsed as markdown body content (proper handling planned for M4).
-- Raw-mode syntax highlighting is deferred — CodeMirror currently runs without a markdown language pack.
+- Code-block hover/right-click language editing targets rendered fenced blocks; deeper cursor-aware block editing is still future work.
+- Direct PDF file generation is not implemented; PDF export uses the OS print dialog's Save as PDF path.
+- Images must be inserted into a saved document — an unsaved document has no location to resolve a portable relative asset path against, so the import is refused up front.
+- Image sizing is written as an `<img src alt width>` tag because CommonMark has no size syntax; clearing the width restores plain `![alt](path)`.
+- Moving a markdown file without its `.assets` folder is detected and shown as a missing asset, but not repaired; asset folders are not garbage collected when an image is deleted from the document.
+- Raw/Split marker hiding preserves source caret alignment by hiding marker glyph visibility rather than reflowing source text.
 - Native-dialog flows (open/save/dirty guards) have manual checks pending beyond the automated corpus.
 
 ## Contributing

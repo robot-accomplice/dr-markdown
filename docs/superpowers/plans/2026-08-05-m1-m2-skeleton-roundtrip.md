@@ -70,7 +70,7 @@ testdata/roundtrip/*.md          # round-trip corpus (*.canonical.md / *.stable.
 Run:
 
 ```bash
-cd /Users/jmachen/code/dr-markdown-md
+cd ~/code/dr-markdown-md
 go mod init dr-markdown
 ```
 
@@ -79,7 +79,7 @@ go mod init dr-markdown
 ```
 MIT License
 
-Copyright (c) 2026 jmachen
+Copyright (c) 2026 Robot Accomplice
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -332,7 +332,7 @@ Expected: prints `v2.13.0`.
   "frontend:install": "",
   "frontend:build": "",
   "author": {
-    "name": "jmachen"
+    "name": "Robot Accomplice"
   }
 }
 ```

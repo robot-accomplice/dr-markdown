@@ -6,6 +6,8 @@ set -euo pipefail
 
 CREPE_VERSION="7.22.0"
 CODEMIRROR_VERSION="6.0.2"
+HIGHLIGHT_VERSION="11.11.1"
+MERMAID_VERSION="11.6.0"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR="$ROOT/frontend/dist/vendor"
@@ -36,6 +38,15 @@ fi
 # (see Global Constraints re: highlighting).
 fetch "https://esm.sh/codemirror@${CODEMIRROR_VERSION}/es2022/codemirror.bundle.mjs" \
   "$VENDOR/codemirror.bundle.mjs"
+
+# Highlight.js common browser build: syntax highlighting for markdown source
+# overlays and language-tagged fenced code blocks.
+fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@${HIGHLIGHT_VERSION}/build/highlight.min.js" \
+  "$VENDOR/highlight.min.js"
+
+# Mermaid browser build for rendered diagram blocks and assistant previews.
+fetch "https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.min.js" \
+  "$VENDOR/mermaid.min.js"
 
 # Crepe theme CSS: enumerate the published package, pull every theme file.
 LIST_URL="https://data.jsdelivr.com/v1/packages/npm/@milkdown/crepe@${CREPE_VERSION}?structure=flat"
