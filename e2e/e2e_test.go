@@ -1155,6 +1155,14 @@ func TestRibbonCompletionCommandsAreBacked(t *testing.T) {
 	bootApp(t, ctx, url)
 
 	var res string
+	// Image insertion is backed by the native import bridge, so the ribbon
+	// wiring can only be exercised with that binding stubbed.
+	evalJS(t, ctx, `globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		ImportImage: async () => ({ markdown: '![shot](doc.assets/shot.png)' }),
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; 'ok'`, &res)
 	evalJS(t, ctx, "window.__app.setMarkdown('# Ribbon Completion\\n').then(() => 'ok')", &res)
 
 	var homeCommands bool
@@ -1165,11 +1173,19 @@ func TestRibbonCompletionCommandsAreBacked(t *testing.T) {
 	}
 
 	evalJS(t, ctx, "window.__app.activateRibbonTab('insert'); 'ok'", &res)
-	evalJS(t, ctx, `document.querySelector('[data-command="image"]').click(); 'ok'`, &res)
+	// The image command round-trips through the native import bridge, so wait
+	// for the insertion to settle instead of reading markdown synchronously.
+	evalJS(t, ctx, `(async () => {
+		document.querySelector('[data-command="image"]').click()
+		for (let i = 0; i < 100 && !window.__app.getMarkdown().includes('doc.assets/shot.png'); i++) {
+			await new Promise((resolve) => setTimeout(resolve, 20))
+		}
+		return 'ok'
+	})()`, &res)
 	evalJS(t, ctx, `document.querySelector('[data-command="math"]').click(); 'ok'`, &res)
 	var md string
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
-	if !strings.Contains(md, "image-placeholder.png") || !strings.Contains(md, "$$") {
+	if !strings.Contains(md, "doc.assets/shot.png") || !strings.Contains(md, "$$") {
 		t.Fatalf("Image and Math commands should insert backed markdown, got %q", md)
 	}
 
@@ -1265,6 +1281,397 @@ func TestImageRibbonCommandImportsNativeAssetMarkdown(t *testing.T) {
 		!window.__app.getMarkdown().includes('image-placeholder.png')`, &imported)
 	if !imported {
 		t.Fatal("Image command should insert native imported asset markdown, not a placeholder")
+	}
+}
+
+// A rejected import is already reported by the native error dialog, so the
+// frontend must leave the document untouched rather than inserting a
+// non-portable placeholder or leaving the command chain in a rejected state.
+func TestImageRibbonCommandLeavesDocumentUnchangedWhenImportFails(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		ImportImage: async () => { throw new Error('Save the document before inserting images.') },
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; 'ok'`, &res)
+	evalJS(t, ctx, "window.__app.setMarkdown('# Import Failure\\n').then(() => 'ok')", &res)
+
+	var settled string
+	evalJS(t, ctx,
+		"window.__app.runCommand('image').then(() => 'resolved').catch(() => 'rejected')",
+		&settled)
+	if settled != "resolved" {
+		t.Fatalf("failed import should settle the command chain, got %q", settled)
+	}
+
+	var md string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	if strings.Contains(md, "![") {
+		t.Fatalf("failed import should not insert image markdown, got %q", md)
+	}
+}
+
+// Relative asset paths cannot resolve against the webview origin, so the
+// editor must inline them through the bridge or imported images never appear.
+func TestRenderedImagesResolveThroughAssetBridge(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.__loadedAssets = [];
+	globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async (documentPath, markdownPath) => {
+			globalThis.__loadedAssets.push([documentPath, markdownPath])
+			return { dataURI: 'data:image/png;base64,AAAA', exists: true, absolutePath: '/tmp/doc.assets/photo.png' }
+		},
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; 'ok'`, &res)
+	evalJS(t, ctx, `(() => {
+		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
+		doc.path = '/tmp/doc.md'
+		return 'ok'
+	})()`, &res)
+	evalJS(t, ctx,
+		"window.__app.setMarkdown('# Shot\\n\\n![photo](doc.assets/photo.png)\\n').then(() => 'ok')", &res)
+
+	var resolved bool
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			const img = document.querySelector('#wysiwyg img')
+			if (img && img.src.startsWith('data:image/png;base64,AAAA')) return true
+			await new Promise((resolve) => setTimeout(resolve, 20))
+		}
+		return false
+	})()`, &resolved)
+	if !resolved {
+		t.Fatal("relative image should be inlined from the asset bridge")
+	}
+
+	var requested string
+	evalJS(t, ctx, "JSON.stringify(globalThis.__loadedAssets[0] || [])", &requested)
+	if !strings.Contains(requested, "/tmp/doc.md") || !strings.Contains(requested, "doc.assets/photo.png") {
+		t.Fatalf("asset request = %s, want document path and markdown path", requested)
+	}
+}
+
+// A deleted or moved asset must be visibly broken rather than silently blank,
+// so the user can tell the difference between "no image" and "lost image".
+func TestMissingImageAssetRendersVisibleBrokenState(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => ({ dataURI: '', exists: false, absolutePath: '/tmp/doc.assets/gone.png' }),
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; 'ok'`, &res)
+	evalJS(t, ctx, `(() => {
+		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
+		doc.path = '/tmp/doc.md'
+		return 'ok'
+	})()`, &res)
+	evalJS(t, ctx,
+		"window.__app.setMarkdown('![gone](doc.assets/gone.png)\\n').then(() => 'ok')", &res)
+
+	var broken bool
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			const img = document.querySelector('#wysiwyg img[data-missing-asset]')
+			if (img) return true
+			await new Promise((resolve) => setTimeout(resolve, 20))
+		}
+		return false
+	})()`, &broken)
+	if !broken {
+		t.Fatal("missing asset should be marked with data-missing-asset for a visible broken state")
+	}
+}
+
+// Print and PDF export render from the preview pipeline, so images must be
+// inlined there too or exported artifacts lose every local image.
+func TestPrintExportInlinesImageAssets(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => ({ dataURI: 'data:image/png;base64,PRINTED', exists: true }),
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; window.print = () => { globalThis.__printed = true }; 'ok'`, &res)
+	evalJS(t, ctx, `(() => {
+		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
+		doc.path = '/tmp/doc.md'
+		return 'ok'
+	})()`, &res)
+	evalJS(t, ctx,
+		"window.__app.setMarkdown('![photo](doc.assets/photo.png)\\n').then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.printDocument('pdf').then(() => 'ok')", &res)
+
+	var inlined bool
+	evalJS(t, ctx,
+		`Boolean(document.querySelector('#print-root img[src^="data:image/png;base64,PRINTED"]'))`,
+		&inlined)
+	if !inlined {
+		t.Fatal("print/export render should inline image assets as data URIs")
+	}
+}
+
+// An opened document is untrusted input rendered in a webview that holds the
+// native file bindings, so inline <img> tags must not carry event handlers
+// through to the DOM.
+func TestPreviewDropsEventHandlersFromDocumentImageTags(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => ({ dataURI: '', exists: false }),
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; window.print = () => {}; 'ok'`, &res)
+	evalJS(t, ctx, `window.__app.setMarkdown('<img src="x.png" alt="a" width="100" onerror="globalThis.__pwned = true">\n').then(() => 'ok')`, &res)
+	evalJS(t, ctx, "window.__app.printDocument('print').then(() => 'ok')", &res)
+
+	var handlerCarried bool
+	evalJS(t, ctx,
+		`Array.from(document.querySelectorAll('#print-root img')).some((img) => img.hasAttribute('onerror'))`,
+		&handlerCarried)
+	if handlerCarried {
+		t.Fatal("document-supplied image tags must not carry event handlers into the DOM")
+	}
+
+	var widthKept string
+	evalJS(t, ctx,
+		`document.querySelector('#print-root img')?.getAttribute('width') ?? ''`, &widthKept)
+	if widthKept != "100" {
+		t.Fatalf("supported width attribute should survive sanitising, got %q", widthKept)
+	}
+}
+
+const twoImageDocument = "# Gallery\n\n![first](doc.assets/first.png)\n\n![second](doc.assets/second.png)\n"
+
+// bootImageDocument loads a two-image document with the asset bridge stubbed
+// and selects the image at the given index as the acted-on block.
+func bootImageDocument(t *testing.T, ctx context.Context, selectIndex int) {
+	t.Helper()
+	var res string
+	evalJS(t, ctx, `globalThis.__revealed = null;
+	globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => ({ dataURI: 'data:image/png;base64,AAAA', exists: true }),
+		RevealImageAsset: async (documentPath, markdownPath) => { globalThis.__revealed = [documentPath, markdownPath] },
+		ImportImage: async () => ({ markdown: '![swapped](doc.assets/swapped.png)', markdownPath: 'doc.assets/swapped.png' }),
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; 'ok'`, &res)
+	evalJS(t, ctx, `(() => {
+		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
+		doc.path = '/tmp/doc.md'
+		return 'ok'
+	})()`, &res)
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(twoImageDocument)+").then(() => 'ok')", &res)
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			const images = document.querySelectorAll('#wysiwyg img')
+			if (images.length >= 2) { images[`+strconv.Itoa(selectIndex)+`].click(); return 'ok' }
+			await new Promise((resolve) => setTimeout(resolve, 20))
+		}
+		return 'timeout'
+	})()`, &res)
+	if res != "ok" {
+		t.Fatalf("image document did not render two images: %q", res)
+	}
+}
+
+// Contextual controls must act on the selected image, not the first one found.
+func TestImageControlsActOnSelectedImageOnly(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+	bootImageDocument(t, ctx, 1)
+
+	var res string
+	evalJS(t, ctx, "window.__app.setImageAltText('renamed').then(() => 'ok')", &res)
+
+	var md string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	if !strings.Contains(md, "![first](doc.assets/first.png)") {
+		t.Errorf("unselected image must not change, got %q", md)
+	}
+	if !strings.Contains(md, "![renamed](doc.assets/second.png)") {
+		t.Errorf("selected image alt text should change, got %q", md)
+	}
+}
+
+// Sizing is expressed as an <img> tag because CommonMark has no size syntax;
+// clearing the width must return the image to portable markdown.
+func TestImageWidthRoundTripsBetweenMarkdownAndHTMLForms(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+	bootImageDocument(t, ctx, 0)
+
+	var res string
+	evalJS(t, ctx, "window.__app.setImageWidth('400').then(() => 'ok')", &res)
+	var sized string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &sized)
+	if !strings.Contains(sized, `<img src="doc.assets/first.png" alt="first" width="400">`) {
+		t.Fatalf("sized image should become an img tag, got %q", sized)
+	}
+	if !strings.Contains(sized, "![second](doc.assets/second.png)") {
+		t.Errorf("sibling image must be untouched, got %q", sized)
+	}
+
+	evalJS(t, ctx, "window.__app.setImageWidth('').then(() => 'ok')", &res)
+	var restored string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &restored)
+	if !strings.Contains(restored, "![first](doc.assets/first.png)") {
+		t.Fatalf("clearing width should restore portable markdown, got %q", restored)
+	}
+}
+
+func TestImageDeleteRemovesOnlySelectedImage(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+	bootImageDocument(t, ctx, 0)
+
+	var res string
+	evalJS(t, ctx, "window.__app.runCommand('image-delete').then(() => 'ok')", &res)
+
+	var md string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	if strings.Contains(md, "first.png") {
+		t.Errorf("selected image should be removed, got %q", md)
+	}
+	if !strings.Contains(md, "![second](doc.assets/second.png)") {
+		t.Errorf("sibling image should survive, got %q", md)
+	}
+}
+
+func TestImageReplaceSwapsSelectedImageSource(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+	bootImageDocument(t, ctx, 1)
+
+	var res string
+	evalJS(t, ctx, "window.__app.runCommand('image-replace').then(() => 'ok')", &res)
+
+	var md string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	if !strings.Contains(md, "doc.assets/swapped.png") {
+		t.Errorf("selected image source should be replaced, got %q", md)
+	}
+	if !strings.Contains(md, "![first](doc.assets/first.png)") {
+		t.Errorf("unselected image must not be replaced, got %q", md)
+	}
+	if strings.Contains(md, "second.png") {
+		t.Errorf("replaced source should not remain, got %q", md)
+	}
+}
+
+func TestImageRevealRoutesSelectedAssetToNativeReveal(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+	bootImageDocument(t, ctx, 1)
+
+	var res string
+	evalJS(t, ctx, "window.__app.runCommand('image-reveal').then(() => 'ok')", &res)
+
+	var revealed string
+	evalJS(t, ctx, "JSON.stringify(globalThis.__revealed || [])", &revealed)
+	if !strings.Contains(revealed, "doc.assets/second.png") {
+		t.Fatalf("reveal should target the selected asset, got %s", revealed)
+	}
+}
+
+func TestImageContextualControlsAppearForSelectedImage(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+	bootImageDocument(t, ctx, 0)
+
+	var controls bool
+	evalJS(t, ctx, `['image-replace','image-reveal','image-delete'].every((command) =>
+		document.querySelector('[data-context-group="image"] [data-context-command="' + command + '"]')) &&
+		document.querySelector('[data-context-group="image"] [data-context-image-width]') !== null &&
+		document.querySelector('[data-context-group="image"] [data-context-image-alt]') !== null`, &controls)
+	if !controls {
+		t.Fatal("selecting an image should expose width, alt, replace, reveal, and delete controls")
+	}
+}
+
+// Dropped image files import through the same asset policy as the ribbon
+// command; non-image files are ignored rather than copied into the assets dir.
+func TestDroppedImageFilesImportThroughAssetPolicy(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.__dropped = [];
+	globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => ({ dataURI: 'data:image/png;base64,AAAA', exists: true }),
+		ImportDroppedImage: async (documentPath, sourcePath) => {
+			globalThis.__dropped.push(sourcePath)
+			return { markdown: '![shot](doc.assets/shot.png)', markdownPath: 'doc.assets/shot.png' }
+		},
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; 'ok'`, &res)
+	evalJS(t, ctx, `(() => {
+		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
+		doc.path = '/tmp/doc.md'
+		return 'ok'
+	})()`, &res)
+	evalJS(t, ctx, "window.__app.setMarkdown('# Drop\\n').then(() => 'ok')", &res)
+	evalJS(t, ctx,
+		`window.__app.handleDroppedFiles(['/tmp/notes.txt', '/tmp/shot.png']).then(() => 'ok')`, &res)
+
+	var dropped string
+	evalJS(t, ctx, "JSON.stringify(globalThis.__dropped)", &dropped)
+	if strings.Contains(dropped, "notes.txt") {
+		t.Errorf("non-image drops should be ignored, got %s", dropped)
+	}
+	if !strings.Contains(dropped, "/tmp/shot.png") {
+		t.Fatalf("dropped image should import, got %s", dropped)
+	}
+
+	var md string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	if !strings.Contains(md, "![shot](doc.assets/shot.png)") {
+		t.Fatalf("dropped image markdown should be inserted, got %q", md)
 	}
 }
 

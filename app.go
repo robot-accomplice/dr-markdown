@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -56,6 +58,8 @@ type nativePort interface {
 	OpenMarkdownFile(context.Context) (string, error)
 	SaveMarkdownFile(context.Context, string) (string, error)
 	SelectImageFile(context.Context) (string, error)
+	RevealPath(context.Context, string) error
+	SubscribeFileDrop(context.Context)
 	ShowError(context.Context, string, string)
 	ConfirmUnsaved(context.Context) (string, error)
 	SetTitle(context.Context, string)
@@ -78,6 +82,7 @@ type preferencePort interface {
 
 type imageAssetPort interface {
 	ImportForDocument(documentPath string, sourcePath string) (imageassets.ImportedImage, error)
+	LoadForDocument(documentPath string, markdownPath string) (imageassets.LoadedImage, error)
 }
 
 func NewApp() *App {
@@ -104,7 +109,13 @@ func newAppWithDependencies(deps appDependencies) *App {
 	}
 }
 
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	// Wails resolves dropped files to real filesystem paths; the frontend's DOM
+	// drop event cannot. Subscribing through the native port keeps startup
+	// callable from tests that have no Wails runtime context.
+	a.native.SubscribeFileDrop(ctx)
+}
 
 // OpenResult is returned to the frontend when a document is opened.
 type OpenResult struct {
@@ -199,9 +210,19 @@ func (a *App) OpenRecentDocument(path string) (OpenResult, error) {
 	return a.openPath(path)
 }
 
+// errUnsavedImageImport rejects imports that cannot produce a portable
+// relative asset path because the document has no location on disk yet.
+var errUnsavedImageImport = errors.New("Save the document before inserting images.")
+
 // ImportImage selects an image, copies it into the document asset folder, and
 // returns markdown for insertion. A canceled picker returns an empty result.
+// An unsaved document is rejected before the picker opens, so the user is
+// never asked to choose a file the import could never have accepted.
 func (a *App) ImportImage(documentPath string) (imageassets.ImportedImage, error) {
+	if documentPath == "" {
+		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
+		return imageassets.ImportedImage{}, errUnsavedImageImport
+	}
 	sourcePath, err := a.native.SelectImageFile(a.ctx)
 	if err != nil {
 		return imageassets.ImportedImage{}, err
@@ -215,6 +236,48 @@ func (a *App) ImportImage(documentPath string) (imageassets.ImportedImage, error
 		return imageassets.ImportedImage{}, err
 	}
 	return result, nil
+}
+
+// ImportDroppedImage imports a file the user dropped onto the window. The
+// path is already known, so no picker is shown, but the same asset policy and
+// unsaved-document rejection apply as for the ribbon command.
+func (a *App) ImportDroppedImage(documentPath string, sourcePath string) (imageassets.ImportedImage, error) {
+	if documentPath == "" {
+		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
+		return imageassets.ImportedImage{}, errUnsavedImageImport
+	}
+	result, err := a.images.ImportForDocument(documentPath, sourcePath)
+	if err != nil {
+		a.native.ShowError(a.ctx, "Image Import Failed", err.Error())
+		return imageassets.ImportedImage{}, err
+	}
+	return result, nil
+}
+
+// LoadImageAsset inlines a document-relative image so the webview can render
+// it and so print/export artifacts stay self-contained.
+func (a *App) LoadImageAsset(documentPath string, markdownPath string) (imageassets.LoadedImage, error) {
+	return a.images.LoadForDocument(documentPath, markdownPath)
+}
+
+// RevealImageAsset shows an image asset in the OS file browser. A missing
+// asset is reported instead of silently doing nothing.
+func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
+	loaded, err := a.images.LoadForDocument(documentPath, markdownPath)
+	if err != nil {
+		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
+		return err
+	}
+	if !loaded.Exists {
+		err := fmt.Errorf("image asset is missing: %s", markdownPath)
+		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
+		return err
+	}
+	if err := a.native.RevealPath(a.ctx, loaded.AbsolutePath); err != nil {
+		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
+		return err
+	}
+	return nil
 }
 
 // ResolveUnsavedChanges reports whether the frontend may discard the
@@ -345,6 +408,20 @@ func (wailsNative) SelectImageFile(ctx context.Context) (string, error) {
 	})
 }
 
+// SubscribeFileDrop forwards Wails file-drop paths to the frontend, which
+// filters them to importable images.
+func (wailsNative) SubscribeFileDrop(ctx context.Context) {
+	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) {
+		runtime.EventsEmit(ctx, "files:dropped", paths)
+	})
+}
+
+// RevealPath selects the file in Finder rather than opening it, so the user
+// lands on the asset inside its document asset folder.
+func (wailsNative) RevealPath(_ context.Context, path string) error {
+	return exec.Command("open", "-R", path).Run()
+}
+
 func (wailsNative) ShowError(ctx context.Context, title string, message string) {
 	runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 		Type:    runtime.ErrorDialog,
@@ -390,4 +467,8 @@ type imageAssetAdapter struct{}
 
 func (imageAssetAdapter) ImportForDocument(documentPath string, sourcePath string) (imageassets.ImportedImage, error) {
 	return imageassets.ImportForDocument(documentPath, sourcePath)
+}
+
+func (imageAssetAdapter) LoadForDocument(documentPath string, markdownPath string) (imageassets.LoadedImage, error) {
+	return imageassets.LoadForDocument(documentPath, markdownPath)
 }

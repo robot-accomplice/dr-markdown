@@ -294,8 +294,7 @@ async function setMarkdown(md, { markSaved = false } = {}) {
   } else if (state.mode === 'raw') {
     raw.replaceAll(md)
   } else {
-    await wysiwyg.setMarkdown(els.wysiwyg, md)
-    await highlightFormattedCodeBlocks(md)
+    await renderWysiwyg(md)
   }
   const doc = activeDoc()
   doc.markdown = md
@@ -579,7 +578,12 @@ function handleRenderedBlockSelection(event) {
   if (state.mode !== 'wysiwyg') return
   const table = event.target.closest?.('#wysiwyg table')
   const diagram = event.target.closest?.('#wysiwyg .mermaid-render')
-  if (table) {
+  const image = event.target.closest?.('#wysiwyg img')
+  if (image) {
+    const imageIndex = Array.from(els.wysiwyg.querySelectorAll('img')).indexOf(image)
+    if (imageIndex < 0) return
+    state.editorContext = { blockType: 'image', imageIndex }
+  } else if (table) {
     const tables = Array.from(els.wysiwyg.querySelectorAll('table'))
     const tableIndex = tables.indexOf(table)
     if (tableIndex < 0) return
@@ -602,6 +606,9 @@ function refreshRenderedBlockSelection() {
   els.wysiwyg.querySelectorAll('.mermaid-render').forEach((diagram) => {
     diagram.classList.toggle('selected-block', state.editorContext.blockType === 'diagram' && Number(diagram.dataset.diagramFenceIndex) === state.editorContext.diagramFenceIndex)
   })
+  els.wysiwyg.querySelectorAll('img').forEach((image, index) => {
+    image.classList.toggle('selected-block', state.editorContext.blockType === 'image' && state.editorContext.imageIndex === index)
+  })
 }
 
 function refreshContextualControls(doc) {
@@ -612,7 +619,12 @@ function refreshContextualControls(doc) {
   const hasTable = containsTable(md)
   const codeLanguage = firstCodeFenceLanguage(md, { excludeMermaid: true })
   const hasDiagram = containsMermaidDiagram(md)
-  if (!hasTable && !codeLanguage && !hasDiagram) return
+  // Image controls are block-local: they only appear once an image is the
+  // selected block, so they can never act on an unselected sibling.
+  const selectedImage = state.editorContext.blockType === 'image'
+    ? selectedImageToken(md, state.editorContext.imageIndex)
+    : null
+  if (!hasTable && !codeLanguage && !hasDiagram && !selectedImage) return
 
   const toolbar = document.createElement('div')
   toolbar.className = 'contextual-controls'
@@ -631,6 +643,13 @@ function refreshContextualControls(doc) {
   if (codeLanguage) toolbar.append(contextualCodeGroup(codeLanguage))
   if (hasDiagram) toolbar.append(contextualGroup('diagram', 'Mermaid Diagram', [
     contextualButton('diagram-assistant', 'Diagram assistant'),
+  ]))
+  if (selectedImage) toolbar.append(contextualGroup('image', 'Image', [
+    contextualImageWidth(parseImageToken(selectedImage.text).width),
+    contextualImageAlt(parseImageToken(selectedImage.text).alt),
+    contextualButton('image-replace', 'Replace'),
+    contextualButton('image-reveal', 'Reveal'),
+    contextualButton('image-delete', 'Delete'),
   ]))
   els.contextualControlsRoot.replaceChildren(toolbar)
 }
@@ -655,6 +674,34 @@ function contextualButton(command, label) {
     else runCommand(command)
   })
   return button
+}
+
+function contextualImageWidth(width) {
+  const select = document.createElement('select')
+  select.dataset.contextImageWidth = 'true'
+  select.setAttribute('aria-label', 'Image width')
+  select.title = 'Image width'
+  for (const [value, label] of IMAGE_WIDTH_PRESETS) {
+    const option = document.createElement('option')
+    option.value = value
+    option.textContent = label
+    option.selected = value === width
+    select.append(option)
+  }
+  select.addEventListener('change', () => setImageWidth(select.value))
+  return select
+}
+
+function contextualImageAlt(alt) {
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.dataset.contextImageAlt = 'true'
+  input.value = alt
+  input.placeholder = 'Alt text'
+  input.setAttribute('aria-label', 'Image alt text')
+  input.title = 'Image alt text'
+  input.addEventListener('change', () => setImageAltText(input.value))
+  return input
 }
 
 function contextualCodeGroup(language) {
@@ -700,6 +747,9 @@ function suppressBrowserDefaults() {
   document.addEventListener('dragstart', (event) => {
     if (!event.target.closest('#wysiwyg, #raw')) event.preventDefault()
   })
+  // Wails delivers dropped files with real filesystem paths through a runtime
+  // event; the DOM drop event above carries no usable path.
+  globalThis.runtime?.EventsOn?.('files:dropped', (paths) => handleDroppedFiles(paths))
 }
 
 async function persistCurrentEditorText() {
@@ -731,9 +781,45 @@ async function mountMarkdown(md) {
   } else if (state.mode === 'raw') {
     raw.replaceAll(md)
   } else {
-    await wysiwyg.setMarkdown(els.wysiwyg, md)
-    await highlightFormattedCodeBlocks(md)
+    await renderWysiwyg(md)
     refreshRenderedBlockSelection()
+  }
+}
+
+// Every WYSIWYG render runs the same three passes; keeping them together stops
+// a new call site from silently skipping one (imported images did exactly that).
+async function renderWysiwyg(md) {
+  await wysiwyg.setMarkdown(els.wysiwyg, md)
+  await highlightFormattedCodeBlocks(md)
+  await resolveImageAssets(els.wysiwyg)
+}
+
+// Markdown resolves relative image paths against the document on disk, but the
+// webview resolves them against the asset-server origin. Every rendering
+// surface therefore routes local images through the bridge, which inlines the
+// bytes; that also makes print/export artifacts self-contained.
+async function resolveImageAssets(root) {
+  if (!root) return
+  const documentPath = activeDoc()?.path ?? ''
+  for (const img of Array.from(root.querySelectorAll('img[src]'))) {
+    const source = img.getAttribute('src') ?? ''
+    if (!source || /^(?:https?:|data:|file:|blob:)/i.test(source)) continue
+    img.dataset.assetPath = source
+    let loaded = null
+    try {
+      loaded = await bridge.loadImageAsset(documentPath, source)
+    } catch {
+      loaded = null
+    }
+    if (loaded?.exists && loaded.dataURI) {
+      img.src = loaded.dataURI
+      delete img.dataset.missingAsset
+    } else {
+      // Keep the markdown path visible so a lost asset reads as lost, not blank.
+      img.dataset.missingAsset = 'true'
+      img.removeAttribute('src')
+      if (!img.alt) img.alt = source
+    }
   }
 }
 
@@ -765,8 +851,7 @@ async function setMode(mode) {
     await refreshSplitPreview(md)
   } else {
     els.wysiwyg.hidden = false
-    await wysiwyg.setMarkdown(els.wysiwyg, md)
-    await highlightFormattedCodeBlocks(md)
+    await renderWysiwyg(md)
   }
   state.mode = mode
   syncActiveState()
@@ -895,6 +980,8 @@ async function runCommand(command) {
   if (command === 'theme') return toggleTheme()
   if (command === 'focus') return toggleFocus()
   if (command === 'image') return insertImage()
+  if (command === 'image-replace') return replaceSelectedImage()
+  if (command === 'image-reveal') return revealSelectedImage()
 
   const editorContext = currentEditorContext()
   await persistCurrentEditorText()
@@ -906,15 +993,107 @@ async function runCommand(command) {
   markEdited(doc.markdown)
 }
 
+// Extensions the asset importer accepts; the same set the native picker filters
+// on. Anything else dropped on the window is left alone.
+const IMPORTABLE_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
+
+// handleDroppedFiles is driven by the Wails file-drop runtime event, which
+// supplies real filesystem paths (a browser File object has none).
+async function handleDroppedFiles(paths) {
+  const images = (paths ?? []).filter((path) =>
+    IMPORTABLE_IMAGE_EXTENSIONS.some((extension) => path.toLowerCase().endsWith(extension)))
+  if (images.length === 0) return
+  await persistCurrentEditorText()
+  startEditing(true)
+  const doc = activeDoc()
+  if (!doc) return
+  for (const path of images) {
+    let result = null
+    try {
+      result = await bridge.importDroppedImage(doc.path, path)
+    } catch (error) {
+      // Rejections (unsaved document, unreadable source) are already reported
+      // natively; stop rather than half-importing the rest of the drop.
+      console.warn('bridge: dropped image import rejected', error)
+      return
+    }
+    if (!result?.markdown) continue
+    doc.markdown = appendBlock(doc.markdown, result.markdown)
+  }
+  await mountMarkdown(doc.markdown)
+  markEdited(doc.markdown)
+}
+
 async function insertImage() {
   await persistCurrentEditorText()
   startEditing(true)
   const doc = activeDoc()
-  const result = await bridge.importImage(doc.path)
+  let result
+  try {
+    result = await bridge.importImage(doc.path)
+  } catch (error) {
+    // The import already reported itself through the native error dialog
+    // (unsaved document, unreadable source, failed copy). Leave the document
+    // untouched rather than inserting a non-portable placeholder.
+    console.warn('bridge: image import rejected', error)
+    return
+  }
   if (!result?.markdown) return
   doc.markdown = appendBlock(doc.markdown, result.markdown)
   await mountMarkdown(doc.markdown)
   markEdited(doc.markdown)
+}
+
+// applyImageEdit rewrites the selected image and remounts, sharing the single
+// path used by every image-local operation.
+async function applyImageEdit(transform) {
+  await persistCurrentEditorText()
+  const doc = activeDoc()
+  if (!doc) return
+  const next = rewriteImage(doc.markdown, state.editorContext.imageIndex, transform)
+  if (next === doc.markdown) return
+  doc.markdown = next
+  await mountMarkdown(doc.markdown)
+  markEdited(doc.markdown)
+}
+
+async function setImageAltText(alt) {
+  await applyImageEdit((image) => ({ ...image, alt }))
+}
+
+async function setImageWidth(width) {
+  await applyImageEdit((image) => ({ ...image, width }))
+}
+
+async function deleteSelectedImage() {
+  await applyImageEdit(() => null)
+}
+
+async function replaceSelectedImage() {
+  await persistCurrentEditorText()
+  const doc = activeDoc()
+  if (!doc) return
+  let result = null
+  try {
+    result = await bridge.importImage(doc.path)
+  } catch (error) {
+    console.warn('bridge: image replace rejected', error)
+    return
+  }
+  if (!result?.markdownPath) return
+  await applyImageEdit((image) => ({ ...image, path: result.markdownPath }))
+}
+
+async function revealSelectedImage() {
+  const doc = activeDoc()
+  const target = selectedImageToken(doc?.markdown ?? '', state.editorContext.imageIndex)
+  if (!target) return
+  try {
+    await bridge.revealImageAsset(doc.path ?? '', parseImageToken(target.text).path)
+  } catch (error) {
+    // The native side already reported a missing or unreachable asset.
+    console.warn('bridge: image reveal rejected', error)
+  }
 }
 
 function applyCommand(command, md, editorContext = {}) {
@@ -956,6 +1135,7 @@ function applyCommand(command, md, editorContext = {}) {
     'table-align-center': (text) => alignTable(text, 'center', editorContext.tableIndex),
     'table-align-right': (text) => alignTable(text, 'right', editorContext.tableIndex),
     'table-delete': (text) => deleteTable(text, editorContext.tableIndex),
+    'image-delete': (text) => rewriteImage(text, editorContext.imageIndex, () => null),
   }
   return transforms[command]?.(md) ?? md
 }
@@ -1623,6 +1803,7 @@ function syncSplitScroll(source, target) {
 
 async function refreshSplitPreview(md) {
   els.splitPreview.replaceChildren(...await renderMarkdownPreview(md))
+  await resolveImageAssets(els.splitPreview)
 }
 
 async function highlightFormattedCodeBlocks(md) {
@@ -1771,7 +1952,9 @@ function codeLanguageTool(fenceIndex, language) {
 
 function inlineMarkdownNodes(text) {
   const nodes = []
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g
+  // Images must precede the link alternative: `![alt](src)` otherwise matches
+  // as a link and renders the leading `!` as stray text.
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|!\[[^\]]*\]\([^)]+\)|<img\b[^>]*>|\[[^\]]+\]\([^)]+\))/g
   let cursor = 0
   let match = pattern.exec(text)
   while (match) {
@@ -1784,7 +1967,95 @@ function inlineMarkdownNodes(text) {
   return nodes
 }
 
+// --- image block model ---
+//
+// Images exist in two on-disk forms. `![alt](path)` is the portable default;
+// a sized image becomes `<img src alt width>` because CommonMark has no size
+// syntax. Clearing the width returns the image to the portable form, so the
+// HTML form only ever appears where it carries information markdown cannot.
+
+const IMAGE_TOKEN_SOURCE = /!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\)|<img\b[^>]*>/.source
+
+// Preset widths in CSS pixels; "Original" clears the width entirely.
+const IMAGE_WIDTH_PRESETS = [
+  ['', 'Original'],
+  ['200', 'Small (200)'],
+  ['400', 'Medium (400)'],
+  ['600', 'Large (600)'],
+  ['800', 'Extra large (800)'],
+]
+
+function imageTokens(md) {
+  const tokens = []
+  const pattern = new RegExp(IMAGE_TOKEN_SOURCE, 'g')
+  let match = pattern.exec(md)
+  while (match) {
+    tokens.push({ text: match[0], start: match.index, end: match.index + match[0].length })
+    match = pattern.exec(md)
+  }
+  return tokens
+}
+
+function parseImageToken(text) {
+  if (text.startsWith('![')) {
+    const parsed = text.match(/^!\[([^\]]*)\]\(([^)\s]+)/)
+    return { alt: parsed?.[1] ?? '', path: parsed?.[2] ?? '', width: '' }
+  }
+  return {
+    alt: htmlImageAttribute(text, 'alt'),
+    path: htmlImageAttribute(text, 'src'),
+    width: htmlImageAttribute(text, 'width'),
+  }
+}
+
+function formatImageToken({ alt, path, width }) {
+  if (!width) return `![${alt}](${path})`
+  return `<img src="${path}" alt="${alt}" width="${width}">`
+}
+
+function selectedImageToken(md, imageIndex) {
+  return imageTokens(md)[Number.isInteger(imageIndex) ? imageIndex : 0] ?? null
+}
+
+// rewriteImage replaces exactly the selected image. transform returning null
+// deletes it, dropping the line when the image was the whole line.
+function rewriteImage(md, imageIndex, transform) {
+  const target = selectedImageToken(md, imageIndex)
+  if (!target) return md
+  const next = transform(parseImageToken(target.text))
+  const before = md.slice(0, target.start)
+  const after = md.slice(target.end)
+  if (next === null) {
+    const emptyLine = /(^|\n)$/.test(before) && /^(\n|$)/.test(after)
+    return emptyLine ? before + after.replace(/^\n/, '') : before + after
+  }
+  return before + formatImageToken(next) + after
+}
+
+function htmlImageAttribute(tag, name) {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i'))
+  return match?.[1] ?? ''
+}
+
 function inlineMarkdownNode(token) {
+  if (token.startsWith('![')) {
+    const image = document.createElement('img')
+    const parsed = token.match(/^!\[([^\]]*)\]\(([^)\s]+)/)
+    image.alt = parsed?.[1] ?? ''
+    image.setAttribute('src', parsed?.[2] ?? '')
+    return image
+  }
+  if (token.startsWith('<img')) {
+    // Only the attributes this editor emits are carried over. Parsing the raw
+    // tag would let a document supply event handlers (onerror=...) that run
+    // against a webview holding the native file bindings.
+    const image = document.createElement('img')
+    image.setAttribute('src', htmlImageAttribute(token, 'src'))
+    image.alt = htmlImageAttribute(token, 'alt')
+    const width = htmlImageAttribute(token, 'width')
+    if (width) image.setAttribute('width', width)
+    return image
+  }
   if (token.startsWith('`')) {
     const code = document.createElement('code')
     code.textContent = token.slice(1, -1)
@@ -1867,6 +2138,9 @@ async function printDocument(action = 'print') {
   await persistCurrentEditorText()
   const doc = activeDoc()
   els.printRoot.replaceChildren(...await renderMarkdownPreview(doc?.markdown ?? ''))
+  // Inline before printing: the print surface must be self-contained, and the
+  // OS print/PDF path cannot resolve document-relative asset paths.
+  await resolveImageAssets(els.printRoot)
   document.body.dataset.lastExportAction = action
   if (action === 'pdf') document.body.dataset.pdfExportVia = 'print-dialog'
   else delete document.body.dataset.pdfExportVia
@@ -2320,6 +2594,10 @@ async function boot() {
     activateDocument,
     closeActiveTab,
     runCommand,
+    printDocument,
+    setImageAltText,
+    setImageWidth,
+    handleDroppedFiles,
     activateRibbonTab,
     applyTemplate,
     pasteMarkdown,

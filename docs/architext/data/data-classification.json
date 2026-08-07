@@ -41,6 +41,12 @@
       "name": "Installed Font Family",
       "sensitivity": "low",
       "handling": "Read local installed font family names through the native app boundary and use them only to populate runtime settings controls."
+    },
+    {
+      "id": "image-asset",
+      "name": "Document Image Asset",
+      "sensitivity": "high",
+      "handling": "Copy imported images into the document's asset folder and reference them by relative path. Inline asset bytes only into the local render and export surfaces; never write absolute local paths into portable markdown."
     }
   ]
 }

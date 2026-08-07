@@ -118,7 +118,10 @@
         "Render formatted print output and invoke the macOS print-to-PDF path through the webview print dialog",
         "Load installed font family names through the bridge for font settings",
         "Keep app-level Settings in the ribbon tab row rather than document-view panels",
-        "Push dirty state and content updates through the bridge"
+        "Push dirty state and content updates through the bridge",
+        "Resolve rendered image sources through the asset bridge on every render surface",
+        "Target image-local controls at the selected image block",
+        "Filter dropped files to importable image extensions"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -255,7 +258,11 @@
         "Load and save application preferences",
         "Record recent documents after open and save",
         "List installed font families for settings controls",
-        "Override Wails message-dialog alert artwork with a transparent icon"
+        "Override Wails message-dialog alert artwork with a transparent icon",
+        "Import images through the native picker or a dropped file path",
+        "Inline document-relative image assets for rendering and export",
+        "Reveal an existing image asset in the OS file browser",
+        "Forward Wails file-drop paths to the frontend"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -268,7 +275,8 @@
       "dependencies": [
         "document-io",
         "font-discovery",
-        "preference-store"
+        "preference-store",
+        "image-asset-manager"
       ],
       "dataHandled": [
         "markdown-document",
@@ -276,7 +284,8 @@
         "dirty-state",
         "installed-font-family",
         "application-preferences",
-        "recent-document"
+        "recent-document",
+        "image-asset"
       ],
       "security": [
         "Uses native dialog APIs for file paths",
@@ -287,7 +296,8 @@
       ],
       "relatedFlows": [
         "open-save-document",
-        "configure-runtime-settings"
+        "configure-runtime-settings",
+        "import-image-asset"
       ],
       "relatedDecisions": [
         "native-file-boundary"
@@ -298,7 +308,9 @@
         "internal/fonts/fonts_test.go",
         "internal/preferences/store_test.go",
         "app_m5_test.go",
-        "TestIconFreeMessageDialogPNGIsValidTransparentImage"
+        "TestIconFreeMessageDialogPNGIsValidTransparentImage",
+        "app_m8_test.go",
+        "TestAppImportImageRejectsUnsavedDocumentBeforePrompting"
       ]
     },
     {
@@ -662,6 +674,59 @@
       ],
       "verification": [
         "frontend/dist/vendor/NOTICE.md"
+      ]
+    },
+    {
+      "id": "image-asset-manager",
+      "type": "module",
+      "name": "Image asset manager",
+      "summary": "Pure Go asset policy that copies imported images into a per-document asset folder, generates portable relative markdown paths, and inlines stored assets as data URIs for rendering and export.",
+      "responsibilities": [
+        "Copy a selected image into <document-name>.assets/ beside the document",
+        "Generate a document-relative markdown image path",
+        "Apply deterministic -1/-2 collision suffixes",
+        "Reject imports for documents that have no location on disk",
+        "Resolve a markdown image path against the document directory",
+        "Inline a stored asset as a base64 data URI with an extension-derived MIME type",
+        "Report a missing asset as a render state rather than an error",
+        "Reject remote and data-URI sources as non-local assets"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "internal/assets/manager.go"
+      ],
+      "runtime": "Go inside Wails application process",
+      "interfaces": [
+        "ImportForDocument",
+        "LoadForDocument"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "image-asset",
+        "local-file-path",
+        "markdown-document"
+      ],
+      "security": [
+        "Refuses to write assets for unsaved documents, preventing absolute local paths in portable markdown",
+        "Reads only paths the open document references"
+      ],
+      "observability": [],
+      "relatedFlows": [
+        "import-image-asset"
+      ],
+      "relatedDecisions": [
+        "portable-image-asset-policy",
+        "inline-image-assets"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "internal/assets/manager_test.go",
+        "TestImportForSavedDocumentCopiesImageAndReturnsPortableMarkdown",
+        "TestImportForDocumentAddsCollisionSuffix",
+        "TestLoadForDocumentInlinesRelativeAssetAsDataURI",
+        "TestLoadForDocumentReportsMissingAssetWithoutError",
+        "TestLoadForDocumentRejectsNonLocalSources",
+        "TestLoadForDocumentMapsExtensionToMimeType"
       ]
     }
   ]
