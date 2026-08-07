@@ -176,6 +176,28 @@
       "relatedFlows": [
         "import-image-asset"
       ]
+    },
+    {
+      "id": "recover-from-corrupt-preferences",
+      "status": "accepted",
+      "title": "Recover from unreadable preferences rather than failing startup",
+      "context": "Preferences Load treated a missing file as benign but a malformed one as fatal. That error reached a boot path with no catch, so a truncated preferences.json left the user a blank window with no in-app recovery. The store that wrote the file non-atomically was the same store that could not read it back.",
+      "decision": "A malformed preferences file is quarantined alongside the original and Load returns empty defaults. The frontend additionally catches at boot, so no boot-time bridge call can prevent the editor mounting. Preferences and documents now share one atomic write primitive in internal/atomicfile, removing the source of the truncation.",
+      "consequences": [
+        "The application always starts, even with an unreadable preference store",
+        "A corrupt file is preserved for diagnosis instead of being silently discarded",
+        "Preferences silently reset to defaults after corruption, which the quarantined file makes discoverable",
+        "Documents and preferences cannot drift apart on write durability"
+      ],
+      "relatedNodes": [
+        "preference-store",
+        "atomic-file-writer",
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "open-save-document"
+      ]
     }
   ]
 }
