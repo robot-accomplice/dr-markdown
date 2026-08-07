@@ -1,0 +1,23 @@
+{
+  "rules": [
+    {
+      "id": "replace-starter-data",
+      "title": "Replace starter data",
+      "summary": "Replace neutral starter data with source-backed architecture, release, and project rules before treating Architext as current.",
+      "category": "project",
+      "criticality": "critical",
+      "order": 10,
+      "source": "maintainer",
+      "rationale": "Fresh installs validate immediately, but starter data is not project-specific documentation.",
+      "appliesTo": [
+        "initial build-out",
+        "agent maintenance",
+        "validation"
+      ],
+      "protection": {
+        "edit": true,
+        "delete": true
+      }
+    }
+  ]
+}

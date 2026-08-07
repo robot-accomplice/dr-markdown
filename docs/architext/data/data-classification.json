@@ -1,0 +1,34 @@
+{
+  "classes": [
+    {
+      "id": "markdown-document",
+      "name": "Markdown Document Content",
+      "sensitivity": "high",
+      "handling": "Keep document content local in editor state and write it only through native save operations."
+    },
+    {
+      "id": "local-file-path",
+      "name": "Local File Path",
+      "sensitivity": "medium",
+      "handling": "Obtain paths through native dialogs and display only document filenames in the frontend rail/title where possible."
+    },
+    {
+      "id": "dirty-state",
+      "name": "Dirty State",
+      "sensitivity": "low",
+      "handling": "Track locally in frontend and Go state to prevent accidental data loss."
+    },
+    {
+      "id": "editor-mode",
+      "name": "Editor Mode and View Preferences",
+      "sensitivity": "low",
+      "handling": "Keep current mode and raw view options in frontend runtime state until persistent settings exist."
+    },
+    {
+      "id": "installed-font-family",
+      "name": "Installed Font Family",
+      "sensitivity": "low",
+      "handling": "Read local installed font family names through the native app boundary and use them only to populate runtime settings controls."
+    }
+  ]
+}

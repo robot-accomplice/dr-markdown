@@ -3,12 +3,27 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"dr-markdown/internal/document"
+	"dr-markdown/internal/fonts"
 )
+
+var iconFreeMessageDialogPNG = []byte{
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+	0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+	0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+	0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
+	0x54, 0x78, 0x9c, 0x63, 0x60, 0x60, 0x60, 0x60,
+	0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0xa5, 0xf6,
+	0x45, 0x40,
+	0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44,
+	0xae, 0x42, 0x60, 0x82,
+}
 
 // App is the Wails-bound API exposed to the frontend as window.go.main.App.
 type App struct {
@@ -52,6 +67,7 @@ func (a *App) OpenDocument() (OpenResult, error) {
 			Type:    runtime.ErrorDialog,
 			Title:   "Open Failed",
 			Message: err.Error(),
+			Icon:    iconFreeMessageDialogPNG,
 		})
 		return OpenResult{}, err
 	}
@@ -74,6 +90,7 @@ func (a *App) SaveDocument(path, content string) error {
 			Type:    runtime.ErrorDialog,
 			Title:   "Save Failed",
 			Message: err.Error(),
+			Icon:    iconFreeMessageDialogPNG,
 		})
 		return err
 	}
@@ -122,6 +139,11 @@ func (a *App) UpdateContent(content string) {
 	a.mu.Unlock()
 }
 
+// ListFontFamilies returns installed font family names for settings controls.
+func (a *App) ListFontFamilies() []string {
+	return fonts.ListFamilies(os.Getenv("HOME"))
+}
+
 // ResolveUnsavedChanges reports whether the frontend may discard the
 // current dirty buffer (e.g. to open another document). Not dirty: true
 // immediately. Otherwise it shows the same Save / Don't Save / Cancel
@@ -159,6 +181,7 @@ func (a *App) promptUnsaved() (prevent bool) {
 		Buttons:       []string{"Save", "Don't Save", "Cancel"},
 		DefaultButton: "Save",
 		CancelButton:  "Cancel",
+		Icon:          iconFreeMessageDialogPNG,
 	})
 	if err != nil {
 		return true // dialog failed — do not lose data

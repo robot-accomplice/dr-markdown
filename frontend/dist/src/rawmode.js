@@ -1,39 +1,81 @@
-// RawEditor wraps the vendored CodeMirror bundle (basic editing; markdown
-// syntax highlighting is deferred — see plan Global Constraints).
-// The bundle exports no EditorState, so the view builds its state from
-// doc + extensions directly.
-import { EditorView, basicSetup } from '../vendor/codemirror.bundle.mjs'
+import { highlightMarkdownSource } from './highlighter.js'
 
 export class RawEditor {
-  #view = null
+  #textarea = null
+  #highlight = null
+  #gutter = null
+  #onChange = null
 
-  // onChange(markdown), when given, fires on every document change so the
-  // caller can wire raw-mode edits into dirty tracking.
-  open(host, markdown, onChange) {
+  open(host, markdown, onChange, options = {}) {
     host.replaceChildren()
-    const extensions = [basicSetup, EditorView.lineWrapping]
-    if (onChange) {
-      extensions.push(
-        EditorView.updateListener.of((u) => {
-          if (u.docChanged) onChange(u.state.doc.toString())
-        })
-      )
-    }
-    this.#view = new EditorView({ parent: host, doc: markdown, extensions })
+    this.#onChange = onChange
+
+    const editor = document.createElement('div')
+    editor.className = 'source-editor cm-editor'
+
+    this.#gutter = document.createElement('div')
+    this.#gutter.className = 'cm-gutters'
+
+    const stack = document.createElement('div')
+    stack.className = 'source-stack'
+
+    this.#highlight = document.createElement('pre')
+    this.#highlight.className = 'source-highlight'
+    this.#highlight.setAttribute('aria-hidden', 'true')
+
+    this.#textarea = document.createElement('textarea')
+    this.#textarea.className = 'source-input cm-content'
+    this.#textarea.spellcheck = false
+    this.#textarea.value = markdown
+    this.#textarea.wrap = options.softWrap === false ? 'off' : 'soft'
+
+    stack.append(this.#highlight, this.#textarea)
+    editor.append(this.#gutter, stack)
+    host.append(editor)
+
+    this.#textarea.addEventListener('input', () => {
+      this.#render()
+      this.#onChange?.(this.getMarkdown())
+    })
+    this.#textarea.addEventListener('scroll', () => this.#syncScroll())
+    this.#render()
   }
 
   getMarkdown() {
-    return this.#view.state.doc.toString()
+    return this.#textarea?.value ?? ''
   }
 
   replaceAll(text) {
-    this.#view.dispatch({
-      changes: { from: 0, to: this.#view.state.doc.length, insert: text },
-    })
+    if (!this.#textarea) return
+    this.#textarea.value = text
+    this.#render()
+    this.#onChange?.(text)
   }
 
   close() {
-    this.#view?.destroy()
-    this.#view = null
+    this.#textarea = null
+    this.#highlight = null
+    this.#gutter = null
+    this.#onChange = null
+  }
+
+  #render() {
+    const markdown = this.getMarkdown()
+    this.#highlight.innerHTML = `${highlightMarkdownSource(markdown)}\n`
+    const lineCount = Math.max(1, markdown.split('\n').length)
+    this.#gutter.replaceChildren(...Array.from({ length: lineCount }, (_, index) => {
+      const line = document.createElement('div')
+      line.className = 'cm-lineNumber'
+      line.textContent = String(index + 1)
+      return line
+    }))
+    this.#syncScroll()
+  }
+
+  #syncScroll() {
+    if (!this.#textarea || !this.#highlight || !this.#gutter) return
+    this.#highlight.scrollTop = this.#textarea.scrollTop
+    this.#highlight.scrollLeft = this.#textarea.scrollLeft
+    this.#gutter.scrollTop = this.#textarea.scrollTop
   }
 }

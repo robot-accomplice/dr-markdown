@@ -17,6 +17,7 @@ export const bridge = {
     wails()?.SaveDocumentAs(content) ?? missing('SaveDocumentAs'),
   setDirty: (d) => wails()?.SetDirty(d),
   updateContent: (c) => wails()?.UpdateContent(c),
+  listFontFamilies: () => wails()?.ListFontFamilies() ?? missing('ListFontFamilies'),
   resolveUnsavedChanges: () =>
     wails()?.ResolveUnsavedChanges() ?? missing('ResolveUnsavedChanges'),
 }

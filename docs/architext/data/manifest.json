@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.6.0",
+  "project": {
+    "id": "dr-markdown-md",
+    "name": "dr-markdown-md",
+    "summary": "A local Wails macOS markdown editor with a backed editor shell, WYSIWYG/raw modes, native file operations, and vendored editor adapters."
+  },
+  "generatedAt": "2026-08-07T05:35:27.617Z",
+  "defaultViewId": "system-map",
+  "files": {
+    "nodes": "nodes.json",
+    "flows": "flows.json",
+    "views": "views.json",
+    "dataClassification": "data-classification.json",
+    "decisions": "decisions.json",
+    "risks": "risks.json",
+    "glossary": "glossary.json",
+    "rules": "rules.json",
+    "releases": "releases/index.json"
+  },
+  "notes": [
+    "Architecture facts were derived from source files, not aspirational planning documents.",
+    "Raw syntax marker hiding remains deferred until the vendored CodeMirror layer exposes markdown token support."
+  ]
+}

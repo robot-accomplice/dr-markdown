@@ -1,0 +1,24 @@
+{
+  "terms": [
+    {
+      "term": "Wails bridge",
+      "definition": "The JavaScript-to-Go binding path exposed as window.go.main.App and wrapped by frontend/dist/src/bridge.js."
+    },
+    {
+      "term": "Dirty state",
+      "definition": "The local flag indicating that the active markdown buffer differs from its saved text."
+    },
+    {
+      "term": "Raw mode",
+      "definition": "The source markdown editor mode backed by the vendored CodeMirror bundle."
+    },
+    {
+      "term": "Formatted mode",
+      "definition": "The editable WYSIWYG markdown mode backed by the vendored Milkdown Crepe bundle."
+    },
+    {
+      "term": "Honest control",
+      "definition": "A visible enabled UI control that has real behavior today; unsupported future features are removed or deferred instead of rendered decoratively."
+    }
+  ]
+}

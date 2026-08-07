@@ -8,3 +8,7 @@
 *.app
 .DS_Store
 /frontend/dist/wailsjs/
+
+# Architext generated static builds.
+docs/architext/dist/
+docs/architext/.architext-write.lock/
