@@ -5,10 +5,12 @@ export class RawEditor {
   #highlight = null
   #gutter = null
   #onChange = null
+  #options = {}
 
   open(host, markdown, onChange, options = {}) {
     host.replaceChildren()
     this.#onChange = onChange
+    this.#options = options
 
     const editor = document.createElement('div')
     editor.className = 'source-editor cm-editor'
@@ -61,7 +63,7 @@ export class RawEditor {
 
   #render() {
     const markdown = this.getMarkdown()
-    this.#highlight.innerHTML = `${highlightMarkdownSource(markdown)}\n`
+    this.#highlight.innerHTML = `${highlightMarkdownSource(markdown, this.#options)}\n`
     const lineCount = Math.max(1, markdown.split('\n').length)
     this.#gutter.replaceChildren(...Array.from({ length: lineCount }, (_, index) => {
       const line = document.createElement('div')

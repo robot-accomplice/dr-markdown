@@ -1,0 +1,85 @@
+{
+  "items": [
+    {
+      "id": "m5-native-state-preferences-recents",
+      "kind": "feature",
+      "section": "M5 Native State, Preferences, And Recents Foundation",
+      "title": "Native state, preferences, and recents foundation",
+      "status": "complete",
+      "priority": "critical",
+      "summary": "Extract Wails runtime seams, add durable preferences, implement recents/workspace index, and raise non-e2e Go coverage to at least 80%."
+    },
+    {
+      "id": "m6-editable-source-token-layer",
+      "kind": "feature",
+      "section": "M6 Editable Source Token Layer",
+      "title": "Editable source token layer",
+      "status": "complete",
+      "priority": "high",
+      "summary": "Replace the raw/split highlighting overlay limitation with an editable markdown token/decoration layer and implement marker hiding."
+    },
+    {
+      "id": "responsive-shell-adaptation",
+      "kind": "feature",
+      "section": "Cross-Cutting UI Hardening",
+      "title": "Responsive shell adaptation",
+      "status": "complete",
+      "priority": "high",
+      "summary": "Define and implement graceful reduced-window behavior for the ribbon, side panels, contextual controls, mode controls, and status bar, including icon-only collapsed controls with accessible tooltips."
+    },
+    {
+      "id": "m7-cursor-precise-block-model",
+      "kind": "feature",
+      "section": "M7 Cursor-Precise Document Block Model",
+      "title": "Cursor-precise document block model",
+      "status": "complete",
+      "priority": "high",
+      "summary": "Introduce stable block targeting so contextual controls operate on the selected table, code block, diagram, image, or text block."
+    },
+    {
+      "id": "m8-image-asset-management",
+      "kind": "feature",
+      "section": "M8 Image Asset Management",
+      "title": "Image asset management",
+      "status": "planned",
+      "priority": "high",
+      "summary": "Add native image import, asset copying/path policy, rendered image controls, and print/export image support."
+    },
+    {
+      "id": "m9-comments-review-workflow",
+      "kind": "feature",
+      "section": "M9 Comments And Review Workflow",
+      "title": "Comments and review workflow",
+      "status": "planned",
+      "priority": "medium",
+      "summary": "Add comment anchoring, persistence, review panel behavior, and resolved-state workflow."
+    },
+    {
+      "id": "m10-direct-export-pipeline",
+      "kind": "feature",
+      "section": "M10 Direct Export Pipeline",
+      "title": "Direct export pipeline",
+      "status": "planned",
+      "priority": "medium",
+      "summary": "Add direct PDF and HTML export artifacts from the formatted rendering pipeline while keeping Print as the OS print dialog path."
+    },
+    {
+      "id": "m11-share-sync-git-extensions",
+      "kind": "feature",
+      "section": "M11 Share, Sync/Git, And Extensions Architecture",
+      "title": "Share, Sync/Git, and Extensions architecture",
+      "status": "planned",
+      "priority": "medium",
+      "summary": "Design and then implement separately backed Share, Sync/Git, and Extensions subsystems with explicit trust boundaries."
+    },
+    {
+      "id": "m12-packaging-signing-updates",
+      "kind": "feature",
+      "section": "M12 Packaging, Signing, Updates, And Platform Hardening",
+      "title": "Packaging, signing, updates, and platform hardening",
+      "status": "planned",
+      "priority": "medium",
+      "summary": "Add Developer ID signing, notarization, checksums, update-channel policy, packaged smoke tests, and later Windows/Linux packaging evaluation."
+    }
+  ]
+}

@@ -18,6 +18,26 @@
         "edit": true,
         "delete": true
       }
+    },
+    {
+      "id": "refresh-readme-screenshots-on-ui-change",
+      "title": "Refresh README screenshots on UI change",
+      "summary": "Any UI-facing change that affects layout, chrome, controls, or visible editor behavior must run go run ./tools/screenshots and refresh the checked-in README screenshots.",
+      "category": "Design",
+      "criticality": "high",
+      "order": 20,
+      "source": "maintainer",
+      "rationale": "The README is the public visual contract for the current macOS app surface, so screenshots must not drift behind implemented UI.",
+      "appliesTo": [
+        "frontend UI changes",
+        "visual design fixes",
+        "README updates",
+        "release preparation"
+      ],
+      "protection": {
+        "edit": false,
+        "delete": false
+      }
     }
   ]
 }

@@ -16,10 +16,10 @@
     "risks": "risks.json",
     "glossary": "glossary.json",
     "rules": "rules.json",
-    "releases": "releases/index.json"
+    "releases": "releases/index.json",
+    "roadmap": "roadmap.json"
   },
   "notes": [
-    "Architecture facts were derived from source files, not aspirational planning documents.",
-    "Raw syntax marker hiding remains deferred until the vendored CodeMirror layer exposes markdown token support."
+    "Architecture facts were derived from source files, not aspirational planning documents."
   ]
 }

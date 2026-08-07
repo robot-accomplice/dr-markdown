@@ -22,7 +22,19 @@
       "id": "editor-mode",
       "name": "Editor Mode and View Preferences",
       "sensitivity": "low",
-      "handling": "Keep current mode and raw view options in frontend runtime state until persistent settings exist."
+      "handling": "Persist user-selected runtime settings through the native preference store and apply them on frontend boot."
+    },
+    {
+      "id": "application-preferences",
+      "name": "Application Preferences",
+      "sensitivity": "low",
+      "handling": "Store editor settings and raw view options as local JSON under the user's config directory."
+    },
+    {
+      "id": "recent-document",
+      "name": "Recent Document Entry",
+      "sensitivity": "medium",
+      "handling": "Store local document paths in the native preference store for start-screen recents; use paths only for local reopen actions."
     },
     {
       "id": "installed-font-family",

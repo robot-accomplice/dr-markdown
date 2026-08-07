@@ -105,16 +105,17 @@
     {
       "id": "session-runtime-settings",
       "status": "accepted",
-      "title": "Keep first settings slice session-scoped",
-      "context": "The Settings concept includes application preferences, Sync, Git, extensions, and markdown flavour choices, but the current source has no native preference store or backing subsystems for those areas.",
-      "decision": "Implement Settings as a frontend-shell runtime preference modal with backed Editor, Appearance, and Shortcuts sections only; defer persistence and unbacked sections.",
+      "title": "Persist backed runtime settings natively",
+      "context": "The Settings concept includes application preferences, Sync, Git, extensions, and markdown flavour choices. The implemented settings slice now has a native JSON preference store, but the broader Sync, Git, Extensions, and Markdown flavour subsystems remain unimplemented.",
+      "decision": "Persist backed Editor and Appearance settings through the Wails Go API while keeping unbacked settings categories disabled.",
       "consequences": [
-        "Settings can stage changes and apply them without inventing a storage boundary",
-        "Theme, document font, document font size, system-derived code font, code ligatures, raw soft wrap, and raw line numbers are real session preferences",
+        "Settings stage changes in the frontend and write the saved preference envelope through the native bridge",
+        "Theme, document font, document font size, system-derived code font, code ligatures, raw soft wrap, and raw line numbers survive app relaunch",
         "Markdown flavour, Sync, Git, Extensions, Preview, Share, Export, and Help settings remain absent until their backing subsystems exist"
       ],
       "relatedNodes": [
-        "frontend-shell"
+        "frontend-shell",
+        "preference-store"
       ],
       "relatedFlows": [
         "configure-runtime-settings"
