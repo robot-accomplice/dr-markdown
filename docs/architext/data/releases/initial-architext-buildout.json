@@ -1,0 +1,801 @@
+{
+  "id": "initial-architext-buildout",
+  "version": "0.4.0",
+  "name": "M8 image asset management",
+  "status": "complete",
+  "posture": "on-track",
+  "summary": "Bring the Dr. Markdown macOS editor shell to honest backed behavior through the formatted, raw, split, insert, and settings surfaces, and complete image asset management: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import, and image-local controls.",
+  "targetWindow": "Current milestone",
+  "lastUpdated": "2026-08-07T00:00:00.000Z",
+  "updateSource": "Source-backed maintenance pass",
+  "scope": {
+    "required": [
+      {
+        "id": "current-screen-functional-sweep",
+        "title": "Current editor screen functional sweep",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Visible enabled controls on the current formatted/empty shell are backed or removed; formatting commands operate on selected/current block content.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-06-current-screen-functionality-inventory.md",
+          "TestCurrentScreenHasNoDecorativeEnabledControls",
+          "TestRibbonFormattingUsesSelectionInsteadOfAppending",
+          "TestStructureControlsFormatCurrentBlockInsteadOfAppending",
+          "TestBlockCommandsFormatCurrentBlockInsteadOfAppending"
+        ]
+      },
+      {
+        "id": "raw-screen-backed-slice",
+        "title": "Raw screen backed slice",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Raw mode has source-editor layout, Syntax Legend side panel, backed soft-wrap and line-number toggles, and markdown round-trip preservation.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "current-screen-functional-sweep"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-raw-screen.md",
+          "TestRawScreenControlsAreBacked",
+          "TestModeToggleRoundTrip"
+        ]
+      },
+      {
+        "id": "split-insert-screen",
+        "title": "Split screen and Insert popover",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Split mode has a real source pane, derived formatted preview, mode round-trip preservation, and a backed Insert popover command path.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "raw-screen-backed-slice"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-split-insert-screen.md",
+          "TestSplitScreenEditsAndInsertPopoverAreBacked"
+        ]
+      },
+      {
+        "id": "settings-backed-slice",
+        "title": "Settings backed slice",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Settings opens from persistent title-bar chrome, stays out of document-view ribbon context, stages runtime preference drafts, loads installed font options from the native app, applies backed document/code typography and raw-editor preferences on Save, and discards drafts on Cancel.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "split-insert-screen"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-settings-screen.md",
+          "TestSettingsModalAppliesBackedRuntimePreferences",
+          "TestSettingsCancelDiscardsDraftAndHidesFutureSections",
+          "TestFamilyNameNormalizesFontFilenames"
+        ]
+      },
+      {
+        "id": "syntax-highlighting-slice",
+        "title": "Source and fenced-code syntax highlighting",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Raw and Split source modes render markdown syntax highlighting through a synchronized overlay, and fenced code blocks highlight using their declared backtick language.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "split-insert-screen"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-syntax-highlighting.md",
+          "TestSourceModesRenderMarkdownSyntaxHighlighting",
+          "TestFencedCodeBlocksUseDeclaredLanguageHighlighting"
+        ]
+      },
+      {
+        "id": "code-block-assistant-slice",
+        "title": "Code Block language assistant",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Formatted-mode Code Block controls open a language chooser and insert fenced code blocks with the selected language info string.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "syntax-highlighting-slice"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-code-block-assistant.md",
+          "TestCodeBlockAssistantInsertsSelectedLanguageFromFormattedMode",
+          "TestCodeBlockAssistantCancelDoesNotMutateMarkdown"
+        ]
+      },
+      {
+        "id": "diagram-assistant-slice",
+        "title": "Mermaid Diagram assistant",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Visible Mermaid Diagram insert controls open a type-specific assistant with editable fields and live Mermaid rendering; Mermaid fenced blocks render as diagrams in formatted and split preview modes.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "split-insert-screen",
+          "syntax-highlighting-slice"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-diagram-assistant.md",
+          "TestMermaidDiagramAssistantInsertsSelectedDiagramType",
+          "TestMermaidDiagramAssistantCancelDoesNotMutateMarkdown",
+          "TestMermaidBlocksRenderAsDiagrams"
+        ]
+      },
+      {
+        "id": "chrome-density-slice",
+        "title": "Chrome density pass",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Removed the duplicated in-canvas title bar and moved Settings into the ribbon tab row as an application-level control.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "settings-backed-slice"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-chrome-density.md",
+          "TestEditorBoots",
+          "TestSettingsCancelDiscardsDraftAndHidesFutureSections"
+        ]
+      },
+      {
+        "id": "icon-system-and-dialog-cleanup",
+        "title": "Ribbon icon system and save-dialog alert cleanup",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Insert ribbon actions use local SVG symbols instead of hand-drawn CSS glyphs, and Wails message dialogs use a transparent icon override to remove redundant alert artwork.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "chrome-density-slice"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-icon-system-and-save-dialog.md",
+          "TestRibbonIconSpacingAndBackedButtonsVisibility",
+          "TestIconFreeMessageDialogPNGIsValidTransparentImage"
+        ]
+      },
+      {
+        "id": "side-panel-visibility-slice",
+        "title": "Independent side-panel visibility",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "The file rail and document outline/raw-assistance panel can be hidden and restored independently without changing markdown or editor mode.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "chrome-density-slice"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-side-panel-visibility.md",
+          "TestSidePanelsCanBeHiddenIndependently"
+        ]
+      },
+      {
+        "id": "m4-1-rendered-markdown-fidelity",
+        "title": "Rendered markdown fidelity",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Align formatted and split-preview rendering with the design package: document typography, inline markdown semantics, code block chrome, and Mermaid theming.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "syntax-highlighting-slice",
+          "diagram-assistant-slice"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-m4-1-rendered-markdown-fidelity.md",
+          "TestSplitPreviewRendersInlineMarkdownSemantics",
+          "TestFormattedDocumentUsesConfiguredDocumentFont",
+          "TestFencedCodeBlocksRenderDesignChrome",
+          "TestFencedCodeBlocksUseDeclaredLanguageHighlighting",
+          "TestMermaidBlocksRenderAsDiagrams"
+        ]
+      },
+      {
+        "id": "m4-2-split-mode-parity",
+        "title": "Split mode parity",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Split mode has constrained equal panes, explicit scroll-lock labeling, and proportional two-way scroll synchronization.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-1-rendered-markdown-fidelity"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-m4-2-split-mode-parity.md",
+          "TestSplitModeShowsScrollLockedHeaderAndSyncsScroll",
+          "TestSplitScreenEditsAndInsertPopoverAreBacked"
+        ]
+      },
+      {
+        "id": "m4-3-ribbon-completion",
+        "title": "Ribbon completion and command taxonomy",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Home and Insert expose backed Image and Math insertion, Help opens backed help panels, Export opens a backed Print/PDF menu, and Share remains hidden until collaboration exists.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-2-split-mode-parity"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-m4-3-ribbon-completion.md",
+          "TestRibbonCompletionCommandsAreBacked",
+          "TestCurrentScreenHasNoDecorativeEnabledControls",
+          "TestVisibleRibbonButtonsFitLabels"
+        ]
+      },
+      {
+        "id": "m4-4-settings-completion",
+        "title": "Settings completion",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Settings exposes backed Editor and Appearance controls, moves into the primary tab row, applies runtime preferences, and marks future Markdown, Sync, and Extensions sections disabled until native behavior exists.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-3-ribbon-completion"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-m4-4-settings-completion.md",
+          "TestSettingsModalAppliesBackedRuntimePreferences",
+          "TestSettingsCancelDiscardsDraftAndMarksFutureSectionsDisabled",
+          "TestSettingsEditorDesignControlsAreBacked"
+        ]
+      },
+      {
+        "id": "m4-5-side-panels-empty-state",
+        "title": "Side panels and empty state polish",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "The empty state no longer repeats app chrome or document title copy, suppresses the document inspector until content exists, and collapsed side panels expose compact labelled restore rails.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-4-settings-completion"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-m4-5-side-panels-empty-state.md",
+          "TestEditorBoots",
+          "TestSidePanelsCanBeHiddenIndependently"
+        ]
+      },
+      {
+        "id": "m4-6-contextual-document-controls",
+        "title": "Contextual document controls",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Table, Code Block, and Mermaid Diagram controls now appear on the document surface when matching blocks exist, reusing backed markdown transforms for in-place management.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-5-side-panels-empty-state"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-m4-6-contextual-document-controls.md",
+          "TestContextualDocumentControlsManageBlocksInPlace"
+        ]
+      },
+      {
+        "id": "m4-7-accessibility-native-feel",
+        "title": "Accessibility and native feel pass",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Transient surfaces now support Escape dismissal, dialogs focus their first actionable control, and mode controls expose synchronized aria-pressed state.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-6-contextual-document-controls"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-m4-7-accessibility-native-feel.md",
+          "TestNativeInteractionAndAccessibilityState"
+        ]
+      },
+      {
+        "id": "m4-8-print-pdf-export",
+        "title": "Print and PDF export",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Print and Export to PDF now render the active markdown into a formatted print document and invoke the macOS print dialog path, keeping application chrome out of printed output.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-7-accessibility-native-feel"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-m4-8-print-pdf-export.md",
+          "TestPrintAndPDFExportUseFormattedPrintPipeline"
+        ]
+      },
+      {
+        "id": "m4-9-visual-regression-baseline",
+        "title": "Visual regression baseline",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "E2E screenshot coverage now exercises empty, formatted, raw, split, and settings surfaces at a constrained desktop width, guarding against blank renders and ribbon overflow.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-8-print-pdf-export"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-m4-9-visual-regression-baseline.md",
+          "TestVisualBaselineScreensRenderWithoutOverflow"
+        ]
+      },
+      {
+        "id": "code-block-language-context-access",
+        "title": "Code block language context access",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Existing non-Mermaid code blocks can open the Code Block Language dialog from either right-click or a hover language tool, targeting the acted-on fenced block.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-6-contextual-document-controls"
+        ],
+        "evidence": [
+          "docs/superpowers/plans/2026-08-07-code-block-language-context-access.md",
+          "TestExistingCodeBlockLanguageCanBeChangedFromBlockTools"
+        ]
+      },
+      {
+        "id": "m5-native-state-preferences-recents",
+        "title": "Native state, preferences, and recents foundation",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "The Wails app API now uses injected native/document/font/preference ports, backed settings persist through a local JSON preference store, recent documents are recorded after open/save, and the start screen can reopen recent files through a specific bridge method.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-4-settings-completion",
+          "code-block-language-context-access"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/8",
+          "docs/superpowers/plans/2026-08-07-m5-native-state-preferences-recents.md",
+          "app_m5_test.go",
+          "internal/preferences/store_test.go",
+          "TestBootLoadsPersistedPreferencesThroughBridge",
+          "TestSettingsSavePersistsNativePreferences",
+          "TestRecentFilesRenderAndOpenSpecificRecentBridge",
+          "tools/screenshots/main.go",
+          "docs/assets/screenshots/start.png",
+          "docs/assets/screenshots/formatted.png",
+          "docs/assets/screenshots/raw.png",
+          "docs/assets/screenshots/split.png",
+          "docs/assets/screenshots/settings.png",
+          "Non-tool Go coverage: 80.5% statements"
+        ]
+      },
+      {
+        "id": "responsive-shell-adaptation",
+        "title": "Responsive shell adaptation",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Reduced-width desktop windows now compact labelled ribbon controls to icon-sized controls with accessible labels/tooltips, wrap the ribbon instead of clipping, and collapse side panels at narrow widths to preserve the document canvas.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m5-native-state-preferences-recents"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/14",
+          "docs/superpowers/plans/2026-08-07-responsive-shell-adaptation.md",
+          "TestResponsiveShellAdaptsToReducedWindowWidths",
+          "go run ./tools/screenshots"
+        ]
+      },
+      {
+        "id": "m6-editable-source-token-layer",
+        "title": "Editable source token layer",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Raw and Split source modes now render tokenized markdown marker spans and expose a backed Hide markers option that hides marker glyphs without changing textarea source content.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m5-native-state-preferences-recents"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/7",
+          "docs/superpowers/plans/2026-08-07-m6-editable-source-token-layer.md",
+          "TestRawScreenControlsAreBacked",
+          "TestSplitSourceHonorsHideMarkdownMarkersWithoutMutatingSource",
+          "TestSourceModesRenderMarkdownSyntaxHighlighting",
+          "go run ./tools/screenshots"
+        ]
+      },
+      {
+        "id": "m7-cursor-precise-block-model",
+        "title": "Cursor-precise document block model",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Contextual table controls now target the selected rendered table, existing Mermaid Diagrams can be selected and replaced independently, and existing code-block language targeting remains intact.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m6-editable-source-token-layer"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/6",
+          "docs/superpowers/plans/2026-08-07-m7-cursor-precise-block-model.md",
+          "TestContextualTableControlsTargetSelectedRenderedTable",
+          "TestContextualDiagramAssistantTargetsSelectedRenderedDiagram",
+          "TestExistingCodeBlockLanguageCanBeChangedFromBlockTools",
+          "go run ./tools/screenshots"
+        ]
+      },
+      {
+        "id": "image-command-fail-loud",
+        "title": "Image command fails loud instead of silently doing nothing",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "The Image command inserted nothing and reported nothing when the import could not proceed, and a stale assertion still expected the removed placeholder, leaving the suite red at HEAD. Unsaved documents are now rejected before the picker opens, rejected imports leave the document unchanged, and the stale assertion was reconciled with the native import contract.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestAppImportImageRejectsUnsavedDocumentBeforePrompting",
+          "TestImageRibbonCommandLeavesDocumentUnchangedWhenImportFails",
+          "TestRibbonCompletionCommandsAreBacked"
+        ]
+      },
+      {
+        "id": "m8-image-asset-management",
+        "title": "Image asset management",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Images import through the native picker or a dropped file, copy into a per-document asset folder with deterministic collision suffixes, render from inlined bytes on every surface including print/export, show a visible broken state when an asset is missing, and expose width, alt text, replace, reveal, and delete controls on the selected image block.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m7-cursor-precise-block-model"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/9",
+          "docs/superpowers/plans/2026-08-07-m8-image-asset-management.md",
+          "internal/assets/manager_test.go",
+          "app_m8_test.go",
+          "TestRenderedImagesResolveThroughAssetBridge",
+          "TestMissingImageAssetRendersVisibleBrokenState",
+          "TestPrintExportInlinesImageAssets",
+          "TestImageControlsActOnSelectedImageOnly",
+          "TestDroppedImageFilesImportThroughAssetPolicy",
+          "TestPreviewDropsEventHandlersFromDocumentImageTags",
+          "go run ./tools/screenshots"
+        ]
+      }
+    ],
+    "planned": [],
+    "stretch": [],
+    "deferred": [],
+    "outOfScope": []
+  },
+  "workstreams": [
+    {
+      "id": "editor-shell",
+      "name": "Editor shell",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "at-risk",
+      "summary": "Turn the concept shell screens into backed macOS editor functionality without rendering fake controls.",
+      "progress": 100,
+      "itemIds": [
+        "current-screen-functional-sweep",
+        "raw-screen-backed-slice",
+        "split-insert-screen",
+        "settings-backed-slice",
+        "syntax-highlighting-slice",
+        "code-block-assistant-slice",
+        "diagram-assistant-slice",
+        "chrome-density-slice",
+        "icon-system-and-dialog-cleanup",
+        "side-panel-visibility-slice",
+        "m4-1-rendered-markdown-fidelity",
+        "m4-2-split-mode-parity",
+        "m4-3-ribbon-completion",
+        "m4-4-settings-completion",
+        "m4-5-side-panels-empty-state",
+        "m4-6-contextual-document-controls",
+        "m4-7-accessibility-native-feel",
+        "m4-8-print-pdf-export",
+        "m4-9-visual-regression-baseline",
+        "code-block-language-context-access",
+        "m5-native-state-preferences-recents",
+        "responsive-shell-adaptation",
+        "m6-editable-source-token-layer",
+        "m7-cursor-precise-block-model"
+      ],
+      "evidence": [
+        "go test ./... -count=1",
+        "go run ./tools/screenshots",
+        "Non-tool Go coverage: 80.5% statements after native App seam and preference-store tests."
+      ]
+    }
+  ],
+  "blockers": [],
+  "milestones": [
+    {
+      "id": "m3-1-current-screen",
+      "label": "Current screen backed",
+      "status": "complete",
+      "targetWindow": "M3.1",
+      "order": 1,
+      "itemIds": [
+        "current-screen-functional-sweep"
+      ]
+    },
+    {
+      "id": "m3-2-raw-screen",
+      "label": "Raw screen backed",
+      "status": "complete",
+      "targetWindow": "M3.2",
+      "order": 2,
+      "itemIds": [
+        "raw-screen-backed-slice"
+      ]
+    },
+    {
+      "id": "m3-3-split-insert",
+      "label": "Split and insert",
+      "status": "complete",
+      "targetWindow": "Next screen",
+      "order": 3,
+      "itemIds": [
+        "split-insert-screen"
+      ]
+    },
+    {
+      "id": "m3-4-settings",
+      "label": "Settings backed",
+      "status": "complete",
+      "targetWindow": "Next screen",
+      "order": 4,
+      "itemIds": [
+        "settings-backed-slice"
+      ]
+    },
+    {
+      "id": "m3-5-syntax-highlighting",
+      "label": "Syntax highlighting",
+      "status": "complete",
+      "targetWindow": "Next screen",
+      "order": 5,
+      "itemIds": [
+        "syntax-highlighting-slice"
+      ]
+    },
+    {
+      "id": "m3-6-diagram-assistant",
+      "label": "Diagram assistant",
+      "status": "complete",
+      "targetWindow": "Next screen",
+      "order": 6,
+      "itemIds": [
+        "code-block-assistant-slice",
+        "diagram-assistant-slice"
+      ]
+    },
+    {
+      "id": "m3-7-chrome-density",
+      "label": "Chrome density",
+      "status": "complete",
+      "targetWindow": "Current screen",
+      "order": 7,
+      "itemIds": [
+        "chrome-density-slice"
+      ]
+    },
+    {
+      "id": "m3-8-icon-dialog-cleanup",
+      "label": "Icons and dialogs",
+      "status": "complete",
+      "targetWindow": "Current screen",
+      "order": 8,
+      "itemIds": [
+        "icon-system-and-dialog-cleanup"
+      ]
+    },
+    {
+      "id": "m3-9-side-panel-visibility",
+      "label": "Side panel visibility",
+      "status": "complete",
+      "targetWindow": "Current screen",
+      "order": 9,
+      "itemIds": [
+        "side-panel-visibility-slice"
+      ]
+    },
+    {
+      "id": "m4-1-rendered-markdown-fidelity",
+      "label": "Rendered markdown fidelity",
+      "status": "complete",
+      "targetWindow": "M4.1",
+      "order": 10,
+      "itemIds": [
+        "m4-1-rendered-markdown-fidelity"
+      ]
+    },
+    {
+      "id": "m4-2-split-mode-parity",
+      "label": "Split mode parity",
+      "status": "complete",
+      "targetWindow": "M4.2",
+      "order": 11,
+      "itemIds": [
+        "m4-2-split-mode-parity"
+      ]
+    },
+    {
+      "id": "m4-3-ribbon-completion",
+      "label": "Ribbon completion",
+      "status": "complete",
+      "targetWindow": "M4.3",
+      "order": 12,
+      "itemIds": [
+        "m4-3-ribbon-completion"
+      ]
+    },
+    {
+      "id": "m4-4-settings-completion",
+      "label": "Settings completion",
+      "status": "complete",
+      "targetWindow": "M4.4",
+      "order": 13,
+      "itemIds": [
+        "m4-4-settings-completion"
+      ]
+    },
+    {
+      "id": "m4-5-side-panels-empty-state",
+      "label": "Panels and empty state",
+      "status": "complete",
+      "targetWindow": "M4.5",
+      "order": 14,
+      "itemIds": [
+        "m4-5-side-panels-empty-state"
+      ]
+    },
+    {
+      "id": "m4-6-contextual-document-controls",
+      "label": "Contextual controls",
+      "status": "complete",
+      "targetWindow": "M4.6",
+      "order": 15,
+      "itemIds": [
+        "m4-6-contextual-document-controls"
+      ]
+    },
+    {
+      "id": "m4-7-accessibility-native-feel",
+      "label": "Accessibility and native feel",
+      "status": "complete",
+      "targetWindow": "M4.7",
+      "order": 16,
+      "itemIds": [
+        "m4-7-accessibility-native-feel"
+      ]
+    },
+    {
+      "id": "m4-8-print-pdf-export",
+      "label": "Print and PDF export",
+      "status": "complete",
+      "targetWindow": "M4.8",
+      "order": 17,
+      "itemIds": [
+        "m4-8-print-pdf-export"
+      ]
+    },
+    {
+      "id": "m4-9-visual-regression-baseline",
+      "label": "Visual baseline",
+      "status": "complete",
+      "targetWindow": "M4.9",
+      "order": 18,
+      "itemIds": [
+        "m4-9-visual-regression-baseline"
+      ]
+    },
+    {
+      "id": "code-block-language-context-access",
+      "label": "Code language block tools",
+      "status": "complete",
+      "targetWindow": "Post-M4",
+      "order": 19,
+      "itemIds": [
+        "code-block-language-context-access"
+      ]
+    },
+    {
+      "id": "m5-native-state-preferences-recents",
+      "label": "Native state and recents",
+      "status": "complete",
+      "targetWindow": "M5",
+      "order": 20,
+      "itemIds": [
+        "m5-native-state-preferences-recents"
+      ]
+    },
+    {
+      "id": "responsive-shell-adaptation",
+      "label": "Responsive shell",
+      "status": "complete",
+      "targetWindow": "Cross-cutting",
+      "order": 21,
+      "itemIds": [
+        "responsive-shell-adaptation"
+      ]
+    },
+    {
+      "id": "m6-editable-source-token-layer",
+      "label": "Source marker hiding",
+      "status": "complete",
+      "targetWindow": "M6",
+      "order": 22,
+      "itemIds": [
+        "m6-editable-source-token-layer"
+      ]
+    },
+    {
+      "id": "m7-cursor-precise-block-model",
+      "label": "Selected block targeting",
+      "status": "complete",
+      "targetWindow": "M7",
+      "order": 23,
+      "itemIds": [
+        "m7-cursor-precise-block-model"
+      ]
+    },
+    {
+      "id": "image-command-fail-loud",
+      "label": "Image command fails loud",
+      "status": "complete"
+    },
+    {
+      "id": "m8-image-asset-management",
+      "label": "Image asset management",
+      "status": "complete"
+    }
+  ],
+  "dependencies": [],
+  "evidence": [
+    {
+      "id": "full-test-suite",
+      "label": "go test ./... -count=1",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "architext-validation",
+      "label": "architext validate .",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "frontend-syntax",
+      "label": "node --check frontend/dist/src/app.js",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "unit-coverage",
+      "label": "non-e2e Go statement coverage",
+      "kind": "metric",
+      "status": "passing"
+    }
+  ]
+}

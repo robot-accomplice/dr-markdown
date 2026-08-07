@@ -2,13 +2,34 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	imageassets "dr-markdown/internal/assets"
 	"dr-markdown/internal/document"
+	"dr-markdown/internal/fonts"
+	"dr-markdown/internal/preferences"
 )
+
+var iconFreeMessageDialogPNG = []byte{
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+	0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+	0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+	0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
+	0x54, 0x78, 0x9c, 0x63, 0x60, 0x60, 0x60, 0x60,
+	0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0xa5, 0xf6,
+	0x45, 0x40,
+	0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44,
+	0xae, 0x42, 0x60, 0x82,
+}
 
 // App is the Wails-bound API exposed to the frontend as window.go.main.App.
 type App struct {
@@ -18,11 +39,83 @@ type App struct {
 	dirty       bool
 	currentPath string
 	currentText string
+	native      nativePort
+	documents   documentPort
+	fonts       fontPort
+	preferences preferencePort
+	images      imageAssetPort
 }
 
-func NewApp() *App { return &App{} }
+type appDependencies struct {
+	native      nativePort
+	documents   documentPort
+	fonts       fontPort
+	preferences preferencePort
+	images      imageAssetPort
+}
 
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
+type nativePort interface {
+	OpenMarkdownFile(context.Context) (string, error)
+	SaveMarkdownFile(context.Context, string) (string, error)
+	SelectImageFile(context.Context) (string, error)
+	RevealPath(context.Context, string) error
+	SubscribeFileDrop(context.Context)
+	ShowError(context.Context, string, string)
+	ConfirmUnsaved(context.Context) (string, error)
+	SetTitle(context.Context, string)
+}
+
+type documentPort interface {
+	ReadMarkdown(path string) (string, error)
+	WriteMarkdown(path string, content string) error
+}
+
+type fontPort interface {
+	ListFamilies() []string
+}
+
+type preferencePort interface {
+	Load() (preferences.Preferences, error)
+	Save(preferences.Preferences) error
+	RecordRecent(path string) ([]preferences.RecentDocument, error)
+}
+
+type imageAssetPort interface {
+	ImportForDocument(documentPath string, sourcePath string) (imageassets.ImportedImage, error)
+	LoadForDocument(documentPath string, markdownPath string) (imageassets.LoadedImage, error)
+}
+
+func NewApp() *App {
+	store, err := preferences.DefaultStore()
+	if err != nil {
+		store = preferences.NewStore(filepath.Join(os.TempDir(), "Dr. Markdown"), time.Now)
+	}
+	return newAppWithDependencies(appDependencies{
+		native:      wailsNative{},
+		documents:   documentAdapter{},
+		fonts:       fontAdapter{},
+		preferences: store,
+		images:      imageAssetAdapter{},
+	})
+}
+
+func newAppWithDependencies(deps appDependencies) *App {
+	return &App{
+		native:      deps.native,
+		documents:   deps.documents,
+		fonts:       deps.fonts,
+		preferences: deps.preferences,
+		images:      deps.images,
+	}
+}
+
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	// Wails resolves dropped files to real filesystem paths; the frontend's DOM
+	// drop event cannot. Subscribing through the native port keeps startup
+	// callable from tests that have no Wails runtime context.
+	a.native.SubscribeFileDrop(ctx)
+}
 
 // OpenResult is returned to the frontend when a document is opened.
 type OpenResult struct {
@@ -33,35 +126,14 @@ type OpenResult struct {
 // OpenDocument shows a native open dialog and reads the chosen file.
 // A canceled dialog returns an empty OpenResult and nil error.
 func (a *App) OpenDocument() (OpenResult, error) {
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Open Markdown Document",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Markdown", Pattern: "*.md;*.markdown"},
-			{DisplayName: "All Files", Pattern: "*"},
-		},
-	})
+	path, err := a.native.OpenMarkdownFile(a.ctx)
 	if err != nil {
 		return OpenResult{}, err
 	}
 	if path == "" {
 		return OpenResult{}, nil
 	}
-	content, err := document.Read(path)
-	if err != nil {
-		runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-			Type:    runtime.ErrorDialog,
-			Title:   "Open Failed",
-			Message: err.Error(),
-		})
-		return OpenResult{}, err
-	}
-	a.mu.Lock()
-	a.currentPath = path
-	a.currentText = content
-	a.dirty = false
-	a.mu.Unlock()
-	a.updateTitle()
-	return OpenResult{Path: path, Content: content}, nil
+	return a.openPath(path)
 }
 
 // SaveDocument writes content to path atomically. path must be non-empty.
@@ -69,12 +141,8 @@ func (a *App) SaveDocument(path, content string) error {
 	if path == "" {
 		return fmt.Errorf("SaveDocument: empty path")
 	}
-	if err := document.WriteAtomic(path, content); err != nil {
-		runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-			Type:    runtime.ErrorDialog,
-			Title:   "Save Failed",
-			Message: err.Error(),
-		})
+	if err := a.documents.WriteMarkdown(path, content); err != nil {
+		a.native.ShowError(a.ctx, "Save Failed", err.Error())
 		return err
 	}
 	a.mu.Lock()
@@ -82,6 +150,7 @@ func (a *App) SaveDocument(path, content string) error {
 	a.currentText = content
 	a.dirty = false
 	a.mu.Unlock()
+	a.recordRecent(path)
 	a.updateTitle()
 	return nil
 }
@@ -89,11 +158,7 @@ func (a *App) SaveDocument(path, content string) error {
 // SaveDocumentAs shows a native save dialog and writes content atomically.
 // Returns the saved path, or "" if the user canceled.
 func (a *App) SaveDocumentAs(content string) (string, error) {
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Save Markdown Document",
-		DefaultFilename: "untitled.md",
-		Filters:         []runtime.FileFilter{{DisplayName: "Markdown", Pattern: "*.md"}},
-	})
+	path, err := a.native.SaveMarkdownFile(a.ctx, "untitled.md")
 	if err != nil {
 		return "", err
 	}
@@ -120,6 +185,99 @@ func (a *App) UpdateContent(content string) {
 	a.mu.Lock()
 	a.currentText = content
 	a.mu.Unlock()
+}
+
+// ListFontFamilies returns installed font family names for settings controls.
+func (a *App) ListFontFamilies() []string {
+	return a.fonts.ListFamilies()
+}
+
+// LoadPreferences returns persisted preferences and recents for frontend boot.
+func (a *App) LoadPreferences() (preferences.Preferences, error) {
+	return a.preferences.Load()
+}
+
+// SavePreferences persists runtime settings selected in the frontend.
+func (a *App) SavePreferences(prefs preferences.Preferences) error {
+	return a.preferences.Save(prefs)
+}
+
+// OpenRecentDocument opens a known recent path without showing a native picker.
+func (a *App) OpenRecentDocument(path string) (OpenResult, error) {
+	if path == "" {
+		return OpenResult{}, fmt.Errorf("OpenRecentDocument: empty path")
+	}
+	return a.openPath(path)
+}
+
+// errUnsavedImageImport rejects imports that cannot produce a portable
+// relative asset path because the document has no location on disk yet.
+var errUnsavedImageImport = errors.New("Save the document before inserting images.")
+
+// ImportImage selects an image, copies it into the document asset folder, and
+// returns markdown for insertion. A canceled picker returns an empty result.
+// An unsaved document is rejected before the picker opens, so the user is
+// never asked to choose a file the import could never have accepted.
+func (a *App) ImportImage(documentPath string) (imageassets.ImportedImage, error) {
+	if documentPath == "" {
+		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
+		return imageassets.ImportedImage{}, errUnsavedImageImport
+	}
+	sourcePath, err := a.native.SelectImageFile(a.ctx)
+	if err != nil {
+		return imageassets.ImportedImage{}, err
+	}
+	if sourcePath == "" {
+		return imageassets.ImportedImage{}, nil
+	}
+	result, err := a.images.ImportForDocument(documentPath, sourcePath)
+	if err != nil {
+		a.native.ShowError(a.ctx, "Image Import Failed", err.Error())
+		return imageassets.ImportedImage{}, err
+	}
+	return result, nil
+}
+
+// ImportDroppedImage imports a file the user dropped onto the window. The
+// path is already known, so no picker is shown, but the same asset policy and
+// unsaved-document rejection apply as for the ribbon command.
+func (a *App) ImportDroppedImage(documentPath string, sourcePath string) (imageassets.ImportedImage, error) {
+	if documentPath == "" {
+		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
+		return imageassets.ImportedImage{}, errUnsavedImageImport
+	}
+	result, err := a.images.ImportForDocument(documentPath, sourcePath)
+	if err != nil {
+		a.native.ShowError(a.ctx, "Image Import Failed", err.Error())
+		return imageassets.ImportedImage{}, err
+	}
+	return result, nil
+}
+
+// LoadImageAsset inlines a document-relative image so the webview can render
+// it and so print/export artifacts stay self-contained.
+func (a *App) LoadImageAsset(documentPath string, markdownPath string) (imageassets.LoadedImage, error) {
+	return a.images.LoadForDocument(documentPath, markdownPath)
+}
+
+// RevealImageAsset shows an image asset in the OS file browser. A missing
+// asset is reported instead of silently doing nothing.
+func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
+	loaded, err := a.images.LoadForDocument(documentPath, markdownPath)
+	if err != nil {
+		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
+		return err
+	}
+	if !loaded.Exists {
+		err := fmt.Errorf("image asset is missing: %s", markdownPath)
+		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
+		return err
+	}
+	if err := a.native.RevealPath(a.ctx, loaded.AbsolutePath); err != nil {
+		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
+		return err
+	}
+	return nil
 }
 
 // ResolveUnsavedChanges reports whether the frontend may discard the
@@ -152,14 +310,7 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 // promptUnsaved shows the Save / Don't Save / Cancel dialog and returns
 // whether the pending action (close, open, …) must be prevented.
 func (a *App) promptUnsaved() (prevent bool) {
-	choice, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-		Type:          runtime.QuestionDialog,
-		Title:         "Unsaved Changes",
-		Message:       "Save changes before closing?",
-		Buttons:       []string{"Save", "Don't Save", "Cancel"},
-		DefaultButton: "Save",
-		CancelButton:  "Cancel",
-	})
+	choice, err := a.native.ConfirmUnsaved(a.ctx)
 	if err != nil {
 		return true // dialog failed — do not lose data
 	}
@@ -186,6 +337,29 @@ func (a *App) saveCurrent() bool {
 	return a.SaveDocument(path, content) == nil
 }
 
+func (a *App) openPath(path string) (OpenResult, error) {
+	content, err := a.documents.ReadMarkdown(path)
+	if err != nil {
+		a.native.ShowError(a.ctx, "Open Failed", err.Error())
+		return OpenResult{}, err
+	}
+	a.mu.Lock()
+	a.currentPath = path
+	a.currentText = content
+	a.dirty = false
+	a.mu.Unlock()
+	a.recordRecent(path)
+	a.updateTitle()
+	return OpenResult{Path: path, Content: content}, nil
+}
+
+func (a *App) recordRecent(path string) {
+	if a.preferences == nil || path == "" {
+		return
+	}
+	_, _ = a.preferences.RecordRecent(path)
+}
+
 func (a *App) updateTitle() {
 	if a.ctx == nil {
 		return
@@ -201,5 +375,100 @@ func (a *App) updateTitle() {
 	if dirty {
 		title += " •"
 	}
-	runtime.WindowSetTitle(a.ctx, title)
+	a.native.SetTitle(a.ctx, title)
+}
+
+type wailsNative struct{}
+
+func (wailsNative) OpenMarkdownFile(ctx context.Context) (string, error) {
+	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
+		Title: "Open Markdown Document",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Markdown", Pattern: "*.md;*.markdown"},
+			{DisplayName: "All Files", Pattern: "*"},
+		},
+	})
+}
+
+func (wailsNative) SaveMarkdownFile(ctx context.Context, defaultFilename string) (string, error) {
+	return runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{
+		Title:           "Save Markdown Document",
+		DefaultFilename: defaultFilename,
+		Filters:         []runtime.FileFilter{{DisplayName: "Markdown", Pattern: "*.md"}},
+	})
+}
+
+func (wailsNative) SelectImageFile(ctx context.Context) (string, error) {
+	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
+		Title: "Import Image",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Images", Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.svg"},
+			{DisplayName: "All Files", Pattern: "*"},
+		},
+	})
+}
+
+// SubscribeFileDrop forwards Wails file-drop paths to the frontend, which
+// filters them to importable images.
+func (wailsNative) SubscribeFileDrop(ctx context.Context) {
+	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) {
+		runtime.EventsEmit(ctx, "files:dropped", paths)
+	})
+}
+
+// RevealPath selects the file in Finder rather than opening it, so the user
+// lands on the asset inside its document asset folder.
+func (wailsNative) RevealPath(_ context.Context, path string) error {
+	return exec.Command("open", "-R", path).Run()
+}
+
+func (wailsNative) ShowError(ctx context.Context, title string, message string) {
+	runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		Type:    runtime.ErrorDialog,
+		Title:   title,
+		Message: message,
+		Icon:    iconFreeMessageDialogPNG,
+	})
+}
+
+func (wailsNative) ConfirmUnsaved(ctx context.Context) (string, error) {
+	return runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         "Unsaved Changes",
+		Message:       "Save changes before closing?",
+		Buttons:       []string{"Save", "Don't Save", "Cancel"},
+		DefaultButton: "Save",
+		CancelButton:  "Cancel",
+		Icon:          iconFreeMessageDialogPNG,
+	})
+}
+
+func (wailsNative) SetTitle(ctx context.Context, title string) {
+	runtime.WindowSetTitle(ctx, title)
+}
+
+type documentAdapter struct{}
+
+func (documentAdapter) ReadMarkdown(path string) (string, error) {
+	return document.Read(path)
+}
+
+func (documentAdapter) WriteMarkdown(path string, content string) error {
+	return document.WriteAtomic(path, content)
+}
+
+type fontAdapter struct{}
+
+func (fontAdapter) ListFamilies() []string {
+	return fonts.ListFamilies(os.Getenv("HOME"))
+}
+
+type imageAssetAdapter struct{}
+
+func (imageAssetAdapter) ImportForDocument(documentPath string, sourcePath string) (imageassets.ImportedImage, error) {
+	return imageassets.ImportForDocument(documentPath, sourcePath)
+}
+
+func (imageAssetAdapter) LoadForDocument(documentPath string, markdownPath string) (imageassets.LoadedImage, error) {
+	return imageassets.LoadForDocument(documentPath, markdownPath)
 }
