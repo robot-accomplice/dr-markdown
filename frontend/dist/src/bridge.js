@@ -15,8 +15,21 @@ export const bridge = {
     wails()?.SaveDocument(path, content) ?? missing('SaveDocument'),
   saveDocumentAs: (content) =>
     wails()?.SaveDocumentAs(content) ?? missing('SaveDocumentAs'),
+  openRecentDocument: (path) =>
+    wails()?.OpenRecentDocument?.(path) ?? missing('OpenRecentDocument'),
+  importImage: (documentPath) =>
+    wails()?.ImportImage?.(documentPath) ?? missing('ImportImage'),
+  importDroppedImage: (documentPath, sourcePath) =>
+    wails()?.ImportDroppedImage?.(documentPath, sourcePath) ?? missing('ImportDroppedImage'),
+  loadImageAsset: (documentPath, markdownPath) =>
+    wails()?.LoadImageAsset?.(documentPath, markdownPath) ?? missing('LoadImageAsset'),
+  revealImageAsset: (documentPath, markdownPath) =>
+    wails()?.RevealImageAsset?.(documentPath, markdownPath) ?? missing('RevealImageAsset'),
   setDirty: (d) => wails()?.SetDirty(d),
   updateContent: (c) => wails()?.UpdateContent(c),
+  listFontFamilies: () => wails()?.ListFontFamilies() ?? missing('ListFontFamilies'),
+  loadPreferences: () => wails()?.LoadPreferences?.() ?? null,
+  savePreferences: (prefs) => wails()?.SavePreferences?.(prefs) ?? null,
   resolveUnsavedChanges: () =>
     wails()?.ResolveUnsavedChanges() ?? missing('ResolveUnsavedChanges'),
 }

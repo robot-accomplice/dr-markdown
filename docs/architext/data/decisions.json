@@ -1,0 +1,203 @@
+{
+  "decisions": [
+    {
+      "id": "local-wails-app",
+      "status": "accepted",
+      "title": "Ship Dr. Markdown as a local Wails desktop app",
+      "context": "The application is targeted at macOS and embeds frontend assets through Wails rather than serving a website.",
+      "decision": "Use Wails to host the editor UI locally and bind native Go document operations into the frontend.",
+      "consequences": [
+        "The frontend can remain static assets embedded in the binary",
+        "Native file dialogs and close guards live in Go",
+        "Browser-only behavior must be suppressed or replaced where it leaks into the desktop UX"
+      ],
+      "relatedNodes": [
+        "wails-desktop-app",
+        "frontend-shell",
+        "wails-go-api"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "open-save-document"
+      ]
+    },
+    {
+      "id": "native-file-boundary",
+      "status": "accepted",
+      "title": "Keep filesystem access behind the Wails Go API",
+      "context": "The frontend shell runs in a webview and should not directly read or write local files.",
+      "decision": "Route open, save, save-as, dirty-state, and unsaved-change guard behavior through Wails-bound Go methods.",
+      "consequences": [
+        "E2E tests can stub bridge methods without native dialogs",
+        "Document IO stays testable as a Go package",
+        "The frontend owns editor state but not filesystem writes"
+      ],
+      "relatedNodes": [
+        "frontend-shell",
+        "wails-bridge",
+        "wails-go-api",
+        "document-io"
+      ],
+      "relatedFlows": [
+        "open-save-document"
+      ]
+    },
+    {
+      "id": "atomic-local-save",
+      "status": "accepted",
+      "title": "Write saved documents atomically",
+      "context": "Markdown saves should not leave a truncated target file if the process fails mid-write.",
+      "decision": "Write content to a same-directory temp file, fsync, close, and rename over the target path.",
+      "consequences": [
+        "Save behavior is covered by focused Go unit tests",
+        "Write failures remove the temp file when possible"
+      ],
+      "relatedNodes": [
+        "document-io"
+      ],
+      "relatedFlows": [
+        "open-save-document"
+      ]
+    },
+    {
+      "id": "vendored-editor-bundles",
+      "status": "accepted",
+      "title": "Use vendored editor bundles",
+      "context": "The frontend is currently static assets under frontend/dist and does not depend on an npm build at runtime.",
+      "decision": "Use vendored Milkdown Crepe, Highlight.js, Mermaid, and editor bundles through small local adapters.",
+      "consequences": [
+        "The app can build through Wails without npm install/build commands",
+        "Editor capabilities are limited to what the vendored bundles expose",
+        "Raw and Split source highlighting plus fenced-code highlighting are backed by the shared Highlight.js adapter",
+        "Mermaid assistant previews and Mermaid fenced-block rendering are backed by the shared Mermaid adapter",
+        "Raw hide-markers still require a future editable token/decoration layer"
+      ],
+      "relatedNodes": [
+        "wysiwyg-editor",
+        "raw-editor",
+        "syntax-highlighter",
+        "diagram-renderer",
+        "vendored-editor-assets"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
+    },
+    {
+      "id": "honest-visible-controls",
+      "status": "accepted",
+      "title": "Do not render decorative enabled controls",
+      "context": "The current screen is being brought to functional parity before moving through concept screens.",
+      "decision": "Visible enabled controls must either mutate state, call a native bridge, or be removed until their subsystem exists.",
+      "consequences": [
+        "Preview, Share, Export, Split, fake docs rows, and unsupported marker hiding are deferred rather than faked",
+        "E2E tests enforce that shell buttons are backed"
+      ],
+      "relatedNodes": [
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
+    },
+    {
+      "id": "session-runtime-settings",
+      "status": "accepted",
+      "title": "Persist backed runtime settings natively",
+      "context": "The Settings concept includes application preferences, Sync, Git, extensions, and markdown flavour choices. The implemented settings slice now has a native JSON preference store, but the broader Sync, Git, Extensions, and Markdown flavour subsystems remain unimplemented.",
+      "decision": "Persist backed Editor and Appearance settings through the Wails Go API while keeping unbacked settings categories disabled.",
+      "consequences": [
+        "Settings stage changes in the frontend and write the saved preference envelope through the native bridge",
+        "Theme, document font, document font size, system-derived code font, code ligatures, raw soft wrap, and raw line numbers survive app relaunch",
+        "Markdown flavour, Sync, Git, Extensions, Preview, Share, Export, and Help settings remain absent until their backing subsystems exist"
+      ],
+      "relatedNodes": [
+        "frontend-shell",
+        "preference-store"
+      ],
+      "relatedFlows": [
+        "configure-runtime-settings"
+      ]
+    },
+    {
+      "id": "portable-image-asset-policy",
+      "title": "Copy imported images beside the document and reject unsaved documents",
+      "status": "accepted",
+      "context": "Markdown on disk is the source of truth and must stay portable. An image imported into a document that has no path on disk could only be referenced by an absolute local path, which breaks the moment the document moves.",
+      "decision": "Imported images are copied into <document-name>.assets/ beside the markdown file and referenced by relative path, with deterministic -1/-2 collision suffixes. Imports into an unsaved document are rejected before the picker opens, so the user is never asked to choose a file the import cannot accept.",
+      "consequences": [
+        "Images stay portable when the document and its asset folder move together",
+        "A document must be saved before images can be inserted",
+        "Moving the markdown file without its .assets folder produces missing assets"
+      ],
+      "relatedNodes": [
+        "image-asset-manager",
+        "wails-go-api"
+      ],
+      "relatedFlows": [
+        "import-image-asset"
+      ]
+    },
+    {
+      "id": "inline-image-assets",
+      "title": "Inline document-relative image assets as data URIs",
+      "status": "accepted",
+      "context": "Markdown resolves relative image paths against the document on disk, but the webview resolves them against the Wails asset-server origin. A copied asset therefore never renders from its relative path, and the OS print/PDF path cannot resolve document-relative paths at all.",
+      "decision": "Every rendering surface (formatted editor, split preview, print/export root) routes local image sources through the Go asset loader, which returns the bytes as a base64 data URI. A missing asset returns no data and is marked as a visible broken state instead of failing the render.",
+      "consequences": [
+        "Imported images render in the editor and survive print/PDF export",
+        "Lost assets are visibly broken rather than silently blank",
+        "Large images are held in memory as base64 for the lifetime of the render"
+      ],
+      "relatedNodes": [
+        "image-asset-manager",
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "import-image-asset"
+      ]
+    },
+    {
+      "id": "image-sizing-uses-html-tag",
+      "title": "Express image sizing as an <img> tag and keep the markdown form otherwise",
+      "status": "accepted",
+      "context": "CommonMark has no image sizing syntax. The editor already emits inline HTML for highlight (<mark>), so inline HTML is an established convention in this document model.",
+      "decision": "An image with no width stays as portable ![alt](path). Setting a width rewrites it to <img src alt width>; clearing the width restores the markdown form. Only src, alt, and width are ever emitted, and only those attributes are read back when rendering a document-supplied <img> tag.",
+      "consequences": [
+        "The HTML form only appears where it carries information markdown cannot express",
+        "Sized images depend on the renderer supporting inline HTML",
+        "Event-handler attributes in an opened document are dropped rather than rendered"
+      ],
+      "relatedNodes": [
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "import-image-asset"
+      ]
+    },
+    {
+      "id": "recover-from-corrupt-preferences",
+      "status": "accepted",
+      "title": "Recover from unreadable preferences rather than failing startup",
+      "context": "Preferences Load treated a missing file as benign but a malformed one as fatal. That error reached a boot path with no catch, so a truncated preferences.json left the user a blank window with no in-app recovery. The store that wrote the file non-atomically was the same store that could not read it back.",
+      "decision": "A malformed preferences file is quarantined alongside the original and Load returns empty defaults. The frontend additionally catches at boot, so no boot-time bridge call can prevent the editor mounting. Preferences and documents now share one atomic write primitive in internal/atomicfile, removing the source of the truncation.",
+      "consequences": [
+        "The application always starts, even with an unreadable preference store",
+        "A corrupt file is preserved for diagnosis instead of being silently discarded",
+        "Preferences silently reset to defaults after corruption, which the quarantined file makes discoverable",
+        "Documents and preferences cannot drift apart on write durability"
+      ],
+      "relatedNodes": [
+        "preference-store",
+        "atomic-file-writer",
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "open-save-document"
+      ]
+    }
+  ]
+}

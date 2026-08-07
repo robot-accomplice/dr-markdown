@@ -1,0 +1,782 @@
+{
+  "nodes": [
+    {
+      "id": "macos-user",
+      "type": "actor",
+      "name": "macOS user",
+      "summary": "A local user editing markdown documents in the Dr. Markdown desktop app.",
+      "responsibilities": [
+        "Create, open, edit, save, and review markdown documents"
+      ],
+      "owner": "User",
+      "sourcePaths": [
+        "frontend/dist/index.html",
+        "frontend/dist/src/app.js"
+      ],
+      "runtime": "macOS desktop session",
+      "interfaces": [
+        "Wails application window"
+      ],
+      "dependencies": [
+        "wails-desktop-app"
+      ],
+      "dataHandled": [
+        "markdown-document"
+      ],
+      "security": [
+        "Local files are selected through native macOS dialogs"
+      ],
+      "observability": [
+        "Visible title, dirty state, status bar, and editor state"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "open-save-document",
+        "switch-editor-mode"
+      ],
+      "relatedDecisions": [],
+      "knownRisks": [],
+      "verification": [
+        "go test ./... -count=1"
+      ]
+    },
+    {
+      "id": "wails-desktop-app",
+      "type": "software-system",
+      "name": "Dr. Markdown",
+      "summary": "A Wails-based macOS markdown editor with embedded frontend assets and Go-bound native file operations.",
+      "responsibilities": [
+        "Host the local editor UI",
+        "Expose native document dialogs and close guards",
+        "Embed frontend assets into the application binary"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "main.go",
+        "app.go",
+        "frontend/dist"
+      ],
+      "runtime": "Wails v2 desktop application",
+      "interfaces": [
+        "macOS application window",
+        "window.go.main.App bindings"
+      ],
+      "dependencies": [
+        "frontend-shell",
+        "wails-go-api"
+      ],
+      "dataHandled": [
+        "markdown-document",
+        "local-file-path",
+        "dirty-state"
+      ],
+      "security": [
+        "No network service is required for document editing",
+        "Native dialogs mediate open/save file paths"
+      ],
+      "observability": [
+        "Wails dev server output",
+        "Window title dirty marker"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "open-save-document",
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ],
+      "relatedDecisions": [
+        "local-wails-app"
+      ],
+      "knownRisks": [
+        "raw-syntax-layer-missing"
+      ],
+      "verification": [
+        "go test ./... -count=1",
+        "wails dev"
+      ]
+    },
+    {
+      "id": "frontend-shell",
+      "type": "service",
+      "name": "Frontend editor shell",
+      "summary": "The browser-view shell that manages document buffers, ribbon commands, modes, file rail, empty state, raw options, outline, settings, recents, and status without duplicating the native title bar.",
+      "responsibilities": [
+        "Maintain active in-memory document state",
+        "Route ribbon, template, rail, mode, and raw-option interactions",
+        "Load and apply persisted runtime preferences for appearance and source-editor options",
+        "Render native recent-file entries on the start screen and reopen them through the bridge",
+        "Render backed code-block and Mermaid Diagram assistants before inserting fenced blocks",
+        "Render Split preview inline markdown semantics for links, emphasis, strong text, and inline code",
+        "Wrap rendered fenced code blocks in a shared language/copy chrome",
+        "Render Mermaid fenced blocks as diagrams in formatted and split preview surfaces",
+        "Use local SVG symbols for ribbon insert icons",
+        "Compact ribbon controls and side panels at reduced window widths without clipping primary actions",
+        "Track independent left and right side-panel visibility",
+        "Render contextual document controls for detected table, code block, and Mermaid Diagram blocks",
+        "Target contextual table and Mermaid Diagram controls at the selected rendered block instead of the first matching block",
+        "Expose block-local language editing for rendered non-Mermaid code blocks",
+        "Render formatted print output and invoke the macOS print-to-PDF path through the webview print dialog",
+        "Load installed font family names through the bridge for font settings",
+        "Keep app-level Settings in the ribbon tab row rather than document-view panels",
+        "Push dirty state and content updates through the bridge",
+        "Resolve rendered image sources through the asset bridge on every render surface",
+        "Target image-local controls at the selected image block",
+        "Filter dropped files to importable image extensions"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "frontend/dist/index.html",
+        "frontend/dist/src/app.js",
+        "frontend/dist/src/app.css"
+      ],
+      "runtime": "Embedded webview JavaScript",
+      "interfaces": [
+        "DOM controls",
+        "Contextual document controls",
+        "Print document root",
+        "Settings modal",
+        "bridge.js",
+        "WysiwygEditor",
+        "RawEditor"
+      ],
+      "dependencies": [
+        "wails-bridge",
+        "wysiwyg-editor",
+        "raw-editor",
+        "syntax-highlighter",
+        "diagram-renderer"
+      ],
+      "dataHandled": [
+        "markdown-document",
+        "dirty-state",
+        "editor-mode",
+        "installed-font-family",
+        "application-preferences",
+        "recent-document"
+      ],
+      "security": [
+        "Suppresses browser context menu and drag/drop navigation in the shell"
+      ],
+      "observability": [
+        "End-to-end tests through window.__app hooks"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ],
+      "relatedDecisions": [
+        "honest-visible-controls"
+      ],
+      "knownRisks": [
+        "raw-syntax-layer-missing"
+      ],
+      "verification": [
+        "e2e/e2e_test.go",
+        "TestCodeBlockAssistantInsertsSelectedLanguageFromFormattedMode",
+        "TestSplitPreviewRendersInlineMarkdownSemantics",
+        "TestFormattedDocumentUsesConfiguredDocumentFont",
+        "TestFencedCodeBlocksRenderDesignChrome",
+        "TestMermaidBlocksRenderAsDiagrams",
+        "TestRibbonIconSpacingAndBackedButtonsVisibility",
+        "TestSidePanelsCanBeHiddenIndependently",
+        "TestContextualDocumentControlsManageBlocksInPlace",
+        "TestContextualTableControlsTargetSelectedRenderedTable",
+        "TestContextualDiagramAssistantTargetsSelectedRenderedDiagram",
+        "TestExistingCodeBlockLanguageCanBeChangedFromBlockTools",
+        "TestPrintAndPDFExportUseFormattedPrintPipeline",
+        "TestResponsiveShellAdaptsToReducedWindowWidths",
+        "TestVisualBaselineScreensRenderWithoutOverflow"
+      ]
+    },
+    {
+      "id": "wails-bridge",
+      "type": "module",
+      "name": "Frontend Wails bridge",
+      "summary": "A small JavaScript adapter over Wails bindings that lets tests stub native document operations.",
+      "responsibilities": [
+        "Call Wails-bound Go methods lazily",
+        "Gracefully warn when native bindings are unavailable in browser tests"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "frontend/dist/src/bridge.js",
+        "app.go"
+      ],
+      "runtime": "Embedded webview JavaScript and Wails binding layer",
+      "interfaces": [
+        "OpenDocument",
+        "OpenRecentDocument",
+        "SaveDocument",
+        "SaveDocumentAs",
+        "SetDirty",
+        "UpdateContent",
+        "ResolveUnsavedChanges",
+        "ListFontFamilies",
+        "LoadPreferences",
+        "SavePreferences"
+      ],
+      "dependencies": [
+        "wails-go-api"
+      ],
+      "dataHandled": [
+        "markdown-document",
+        "local-file-path",
+        "dirty-state",
+        "installed-font-family",
+        "application-preferences",
+        "recent-document"
+      ],
+      "security": [
+        "No direct filesystem access from frontend code"
+      ],
+      "observability": [
+        "E2E bridge stubs record calls"
+      ],
+      "relatedFlows": [
+        "open-save-document",
+        "edit-markdown-document"
+      ],
+      "relatedDecisions": [
+        "native-file-boundary"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "TestFileFlowWithStubBridge",
+        "TestDirtyWiringWithStubBridge"
+      ]
+    },
+    {
+      "id": "wails-go-api",
+      "type": "service",
+      "name": "Wails Go API",
+      "summary": "The Go object bound into Wails that adapts native dialogs, document IO, preference storage, dirty state, current content, close guard, font discovery, and title updates behind testable ports.",
+      "responsibilities": [
+        "Open and save markdown files through native dialogs",
+        "Open a specific recent document path without showing the picker",
+        "Track dirty/current content for close protection",
+        "Update the native window title",
+        "Load and save application preferences",
+        "Record recent documents after open and save",
+        "List installed font families for settings controls",
+        "Override Wails message-dialog alert artwork with a transparent icon",
+        "Import images through the native picker or a dropped file path",
+        "Inline document-relative image assets for rendering and export",
+        "Reveal an existing image asset in the OS file browser",
+        "Forward Wails file-drop paths to the frontend"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "app.go"
+      ],
+      "runtime": "Go inside Wails application process",
+      "interfaces": [
+        "window.go.main.App"
+      ],
+      "dependencies": [
+        "document-io",
+        "font-discovery",
+        "preference-store",
+        "image-asset-manager"
+      ],
+      "dataHandled": [
+        "markdown-document",
+        "local-file-path",
+        "dirty-state",
+        "installed-font-family",
+        "application-preferences",
+        "recent-document",
+        "image-asset"
+      ],
+      "security": [
+        "Uses native dialog APIs for file paths",
+        "Prompts before discarding dirty buffers"
+      ],
+      "observability": [
+        "Native title state"
+      ],
+      "relatedFlows": [
+        "open-save-document",
+        "configure-runtime-settings",
+        "import-image-asset"
+      ],
+      "relatedDecisions": [
+        "native-file-boundary"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "e2e/e2e_test.go",
+        "internal/fonts/fonts_test.go",
+        "internal/preferences/store_test.go",
+        "app_m5_test.go",
+        "TestIconFreeMessageDialogPNGIsValidTransparentImage",
+        "app_m8_test.go",
+        "TestAppImportImageRejectsUnsavedDocumentBeforePrompting"
+      ]
+    },
+    {
+      "id": "preference-store",
+      "type": "module",
+      "name": "Preference store",
+      "summary": "A Go package that persists editor settings, raw view options, and recent document entries as local JSON under the user's config directory.",
+      "responsibilities": [
+        "Load an empty preference envelope when no preference file exists",
+        "Save backed settings and raw editor options as JSON",
+        "Record recent documents with de-duplication and newest-first ordering",
+        "Reject corrupt preference JSON rather than silently discarding it",
+        "Recover from a malformed preferences file instead of failing",
+        "Quarantine an unparseable file alongside the original for diagnosis",
+        "Persist preferences atomically"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "internal/preferences/store.go",
+        "internal/preferences/store_test.go"
+      ],
+      "runtime": "Go inside Wails application process",
+      "interfaces": [
+        "preferences.Store.Load",
+        "preferences.Store.Save",
+        "preferences.Store.RecordRecent"
+      ],
+      "dependencies": [
+        "atomic-file-writer"
+      ],
+      "dataHandled": [
+        "application-preferences",
+        "recent-document",
+        "local-file-path"
+      ],
+      "security": [
+        "Stores only local preferences and recent document paths on the user's machine"
+      ],
+      "observability": [
+        "Go unit tests"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "open-save-document",
+        "configure-runtime-settings"
+      ],
+      "relatedDecisions": [
+        "session-runtime-settings"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "internal/preferences/store_test.go",
+        "TestLoadBacksUpCorruptPreferencesAndReturnsDefaults",
+        "TestStoreLoadRecoversFromCorruptJSON"
+      ]
+    },
+    {
+      "id": "font-discovery",
+      "type": "module",
+      "name": "Font discovery",
+      "summary": "A Go package that discovers installed macOS font files and normalizes family names for settings controls.",
+      "responsibilities": [
+        "Walk system and user font directories",
+        "Normalize font filenames into family-level option labels",
+        "Return sorted unique family names"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "internal/fonts/fonts.go"
+      ],
+      "runtime": "Go inside Wails application process",
+      "interfaces": [
+        "fonts.ListFamilies"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "installed-font-family"
+      ],
+      "security": [
+        "Reads font filenames only; does not inspect document content"
+      ],
+      "observability": [
+        "Unit tests for family-name normalization"
+      ],
+      "relatedFlows": [
+        "configure-runtime-settings"
+      ],
+      "relatedDecisions": [
+        "session-runtime-settings"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "internal/fonts/fonts_test.go"
+      ]
+    },
+    {
+      "id": "document-io",
+      "type": "module",
+      "name": "Document IO",
+      "summary": "A Go package for reading markdown files and atomically writing saved content.",
+      "responsibilities": [
+        "Read local document content",
+        "Write document content via same-directory temp file, fsync, close, and rename"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "internal/document/document.go",
+        "internal/document/document_test.go"
+      ],
+      "runtime": "Go package",
+      "interfaces": [
+        "Read(path)",
+        "WriteAtomic(path, content)"
+      ],
+      "dependencies": [
+        "atomic-file-writer"
+      ],
+      "dataHandled": [
+        "markdown-document",
+        "local-file-path"
+      ],
+      "security": [
+        "Receives paths only from native app layer"
+      ],
+      "observability": [
+        "Go unit tests"
+      ],
+      "relatedFlows": [
+        "open-save-document"
+      ],
+      "relatedDecisions": [
+        "atomic-local-save"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "internal/document/document_test.go"
+      ]
+    },
+    {
+      "id": "wysiwyg-editor",
+      "type": "module",
+      "name": "WYSIWYG editor adapter",
+      "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown and suppresses initial normalization as a dirty edit.",
+      "responsibilities": [
+        "Create and rebuild the formatted editor",
+        "Serialize markdown from Crepe",
+        "Emit user edits to the frontend shell"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "frontend/dist/src/editor.js",
+        "frontend/dist/vendor/crepe.bundle.mjs"
+      ],
+      "runtime": "Embedded webview JavaScript",
+      "interfaces": [
+        "create",
+        "setMarkdown",
+        "getMarkdown",
+        "destroy"
+      ],
+      "dependencies": [
+        "vendored-editor-assets"
+      ],
+      "dataHandled": [
+        "markdown-document"
+      ],
+      "security": [
+        "Latex feature is disabled in the configured editor"
+      ],
+      "observability": [
+        "Round-trip e2e tests"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ],
+      "relatedDecisions": [
+        "vendored-editor-bundles"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "TestRoundTripCorpus"
+      ]
+    },
+    {
+      "id": "raw-editor",
+      "type": "module",
+      "name": "Raw editor adapter",
+      "summary": "A highlighted textarea source editor that mounts raw markdown editing with line numbers, soft-wrap configuration, marker hiding, and a synchronized tokenized syntax layer.",
+      "responsibilities": [
+        "Create and destroy the raw source editor",
+        "Serialize raw markdown",
+        "Emit raw-mode edits to the frontend shell",
+        "Render markdown highlighting without mutating source text",
+        "Tokenize markdown marker glyphs so Raw and Split source modes can hide them without changing textarea content"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "frontend/dist/src/rawmode.js",
+        "frontend/dist/src/highlighter.js",
+        "frontend/dist/vendor/highlight.min.js"
+      ],
+      "runtime": "Embedded webview JavaScript",
+      "interfaces": [
+        "open",
+        "getMarkdown",
+        "replaceAll",
+        "close"
+      ],
+      "dependencies": [
+        "vendored-editor-assets",
+        "syntax-highlighter"
+      ],
+      "dataHandled": [
+        "markdown-document",
+        "editor-mode"
+      ],
+      "security": [
+        "Raw edits stay in local app state until saved through the Go bridge"
+      ],
+      "observability": [
+        "Raw-mode e2e tests"
+      ],
+      "relatedFlows": [
+        "switch-editor-mode"
+      ],
+      "relatedDecisions": [
+        "vendored-editor-bundles"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "TestRawScreenControlsAreBacked",
+        "TestSourceModesRenderMarkdownSyntaxHighlighting",
+        "TestSplitSourceHonorsHideMarkdownMarkersWithoutMutatingSource"
+      ]
+    },
+    {
+      "id": "syntax-highlighter",
+      "type": "module",
+      "name": "Syntax highlighter adapter",
+      "summary": "A frontend adapter over vendored Highlight.js that normalizes language aliases and highlights markdown source plus fenced code blocks.",
+      "responsibilities": [
+        "Highlight markdown source for Raw and Split source overlays",
+        "Highlight fenced code blocks by declared backtick language",
+        "Escape unsupported languages without mutating markdown"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "frontend/dist/src/highlighter.js",
+        "frontend/dist/vendor/highlight.min.js"
+      ],
+      "runtime": "Embedded webview JavaScript",
+      "interfaces": [
+        "highlightMarkdownSource",
+        "highlightCode",
+        "normalizeLanguage"
+      ],
+      "dependencies": [
+        "vendored-editor-assets"
+      ],
+      "dataHandled": [
+        "markdown-document"
+      ],
+      "security": [
+        "Highlighting output is generated from local document text and rendered inside the embedded app"
+      ],
+      "observability": [
+        "Syntax highlighting e2e tests"
+      ],
+      "relatedFlows": [
+        "switch-editor-mode",
+        "edit-markdown-document"
+      ],
+      "relatedDecisions": [
+        "vendored-editor-bundles"
+      ],
+      "knownRisks": [
+        "raw-syntax-layer-missing"
+      ],
+      "verification": [
+        "TestSourceModesRenderMarkdownSyntaxHighlighting",
+        "TestFencedCodeBlocksUseDeclaredLanguageHighlighting"
+      ]
+    },
+    {
+      "id": "diagram-renderer",
+      "type": "module",
+      "name": "Mermaid diagram renderer",
+      "summary": "A frontend adapter over vendored Mermaid that renders Mermaid source into SVG for assistant previews and markdown preview surfaces.",
+      "responsibilities": [
+        "Initialize the vendored Mermaid runtime once",
+        "Render Mermaid fenced-block source into SVG",
+        "Apply Dr. Markdown theme variables to Mermaid output",
+        "Return a visible fallback panel when Mermaid rendering fails"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "frontend/dist/src/mermaid-renderer.js",
+        "frontend/dist/vendor/mermaid.min.js",
+        "frontend/dist/src/app.js"
+      ],
+      "runtime": "Embedded webview JavaScript",
+      "interfaces": [
+        "renderMermaidDiagram"
+      ],
+      "dependencies": [
+        "vendored-editor-assets"
+      ],
+      "dataHandled": [
+        "markdown-document"
+      ],
+      "security": [
+        "Mermaid rendering runs with strict security level inside the embedded app"
+      ],
+      "observability": [
+        "Mermaid e2e tests"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ],
+      "relatedDecisions": [
+        "vendored-editor-bundles"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "TestMermaidDiagramAssistantInsertsSelectedDiagramType",
+        "TestMermaidBlocksRenderAsDiagrams"
+      ]
+    },
+    {
+      "id": "vendored-editor-assets",
+      "type": "module",
+      "name": "Vendored editor assets",
+      "summary": "Bundled Crepe, Highlight.js, Mermaid, CodeMirror legacy bundle, and editor theme assets served from embedded frontend files.",
+      "responsibilities": [
+        "Provide editor, syntax-highlighting, and Mermaid runtime bundles without npm install at runtime",
+        "Provide theme CSS loaded by the WYSIWYG adapter"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "frontend/dist/vendor",
+        "tools/vendor.sh"
+      ],
+      "runtime": "Static frontend assets embedded by Go",
+      "interfaces": [
+        "ES modules",
+        "CSS files"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "markdown-document"
+      ],
+      "security": [
+        "Third-party editor code is vendored into the repository"
+      ],
+      "observability": [
+        "Vendor NOTICE file"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ],
+      "relatedDecisions": [
+        "vendored-editor-bundles"
+      ],
+      "knownRisks": [
+        "raw-syntax-layer-missing"
+      ],
+      "verification": [
+        "frontend/dist/vendor/NOTICE.md"
+      ]
+    },
+    {
+      "id": "image-asset-manager",
+      "type": "module",
+      "name": "Image asset manager",
+      "summary": "Pure Go asset policy that copies imported images into a per-document asset folder, generates portable relative markdown paths, and inlines stored assets as data URIs for rendering and export.",
+      "responsibilities": [
+        "Copy a selected image into <document-name>.assets/ beside the document",
+        "Generate a document-relative markdown image path",
+        "Apply deterministic -1/-2 collision suffixes",
+        "Reject imports for documents that have no location on disk",
+        "Resolve a markdown image path against the document directory",
+        "Inline a stored asset as a base64 data URI with an extension-derived MIME type",
+        "Report a missing asset as a render state rather than an error",
+        "Reject remote and data-URI sources as non-local assets"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "internal/assets/manager.go"
+      ],
+      "runtime": "Go inside Wails application process",
+      "interfaces": [
+        "ImportForDocument",
+        "LoadForDocument"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "image-asset",
+        "local-file-path",
+        "markdown-document"
+      ],
+      "security": [
+        "Refuses to write assets for unsaved documents, preventing absolute local paths in portable markdown",
+        "Reads only paths the open document references"
+      ],
+      "observability": [],
+      "relatedFlows": [
+        "import-image-asset"
+      ],
+      "relatedDecisions": [
+        "portable-image-asset-policy",
+        "inline-image-assets"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "internal/assets/manager_test.go",
+        "TestImportForSavedDocumentCopiesImageAndReturnsPortableMarkdown",
+        "TestImportForDocumentAddsCollisionSuffix",
+        "TestLoadForDocumentInlinesRelativeAssetAsDataURI",
+        "TestLoadForDocumentReportsMissingAssetWithoutError",
+        "TestLoadForDocumentRejectsNonLocalSources",
+        "TestLoadForDocumentMapsExtensionToMimeType"
+      ]
+    },
+    {
+      "id": "atomic-file-writer",
+      "type": "module",
+      "name": "Atomic file writer",
+      "summary": "Shared temp-file/fsync/rename primitive used by every path that persists state on disk, so a crash or failed write can never leave a truncated file.",
+      "responsibilities": [
+        "Write a file via a temp file in the same directory, fsync, close, chmod, rename",
+        "Remove the temp file on any failure so no partial artefact survives",
+        "Leave the previous file intact when a write cannot complete"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "internal/atomicfile/atomicfile.go"
+      ],
+      "runtime": "Go inside Wails application process",
+      "interfaces": [
+        "Write"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "markdown-document",
+        "application-preferences"
+      ],
+      "security": [
+        "Applies an explicit file mode rather than inheriting the temp file's"
+      ],
+      "observability": [],
+      "relatedFlows": [
+        "open-save-document"
+      ],
+      "relatedDecisions": [
+        "recover-from-corrupt-preferences"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "internal/atomicfile/atomicfile_test.go",
+        "TestFailedWriteLeavesExistingFileIntact",
+        "TestWriteReplacesContentAndAppliesPerm"
+      ]
+    }
+  ]
+}

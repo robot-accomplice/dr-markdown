@@ -2,9 +2,9 @@
 package document
 
 import (
+	"dr-markdown/internal/atomicfile"
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 // Read loads the file at path and returns its content as a string.
@@ -19,33 +19,9 @@ func Read(path string) (string, error) {
 // WriteAtomic writes content to path atomically: it writes to a temp file in
 // the same directory, fsyncs, closes, then renames over the target. A crash
 // mid-save can never leave a truncated document behind.
+//
+// The mechanism lives in internal/atomicfile so documents and preferences
+// share one implementation rather than two copies that can drift apart.
 func WriteAtomic(path string, content string) error {
-	dir := filepath.Dir(path)
-	base := filepath.Base(path)
-
-	tmp, err := os.CreateTemp(dir, base+".tmp-*")
-	if err != nil {
-		return fmt.Errorf("create temp file in %s: %w", dir, err)
-	}
-	tmpName := tmp.Name()
-
-	if _, err := tmp.WriteString(content); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
-		return fmt.Errorf("write temp file: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
-		return fmt.Errorf("sync temp file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("close temp file: %w", err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("rename temp file over %s: %w", path, err)
-	}
-	return nil
+	return atomicfile.Write(path, []byte(content), 0o600)
 }

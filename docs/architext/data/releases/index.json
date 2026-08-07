@@ -1,0 +1,26 @@
+{
+  "currentReleaseId": "initial-architext-buildout",
+  "releases": [
+    {
+      "id": "initial-architext-buildout",
+      "version": "0.4.0-beta.1",
+      "name": "M8 image asset management (beta)",
+      "status": "complete",
+      "posture": "on-track",
+      "targetWindow": "Current milestone",
+      "lastUpdated": "2026-08-07T00:00:00.000Z",
+      "summary": "Ship M8 image asset management as a beta pre-release: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import and image-local controls, plus the two blocking defects a pre-release slop-ferret sweep verified — startup no longer fails on an unreadable preference store, and image resolution is pinned on every render surface.",
+      "counts": {
+        "features": 25,
+        "bugFixes": 3,
+        "workstreams": 1,
+        "blockers": 0,
+        "complete": 28,
+        "inProgress": 0,
+        "planned": 0,
+        "stretch": 0
+      },
+      "file": "initial-architext-buildout.json"
+    }
+  ]
+}

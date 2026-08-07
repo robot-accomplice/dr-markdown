@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "installedAt": "2026-08-07T05:35:27.627Z",
+  "updatedAt": "2026-08-07T05:35:27.627Z",
+  "source": "architext-cli",
+  "cliVersion": "1.8.0",
+  "operation": "sync",
+  "dataPolicy": "preserved",
+  "copiedInstallMigrated": false,
+  "instructionFiles": {
+    "AGENTS.md": false,
+    "CLAUDE.md": false
+  },
+  "managedInstructions": [],
+  "gitignoreManaged": false,
+  "syncChoices": {
+    "branch": "current",
+    "instructionFiles": [],
+    "manageGitignore": false,
+    "applyDoctorRepairs": true,
+    "proceedWithChanges": true
+  }
+}

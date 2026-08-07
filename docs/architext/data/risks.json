@@ -1,0 +1,43 @@
+{
+  "risks": [
+    {
+      "id": "raw-syntax-layer-missing",
+      "title": "Raw marker hiding needs an editable token layer",
+      "category": "technical",
+      "severity": "medium",
+      "status": "open",
+      "summary": "Raw and split source highlighting are implemented with a synchronized Highlight.js overlay, but hiding markdown markers still requires a true editable token/decoration layer.",
+      "mitigations": [
+        "Keep Hide markers off the screen",
+        "Use the shared highlighter overlay for visible source syntax tinting",
+        "Add a future task to vendor a markdown-capable editable decoration layer before implementing marker hiding"
+      ],
+      "relatedNodes": [
+        "raw-editor",
+        "vendored-editor-assets"
+      ],
+      "relatedFlows": [
+        "switch-editor-mode"
+      ]
+    },
+    {
+      "id": "future-controls-not-backed",
+      "title": "Future concept controls can be mistaken for finished features",
+      "category": "technical",
+      "severity": "medium",
+      "status": "accepted",
+      "summary": "The concept includes Preview, Share, Export, image, math, help, marker controls, and scroll locking that are not all backed by current subsystems.",
+      "mitigations": [
+        "Remove unsupported enabled controls from the current screen",
+        "Enforce no-decorative-control behavior in e2e tests",
+        "Track deferred subsystems in planning docs and release truth"
+      ],
+      "relatedNodes": [
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document"
+      ]
+    }
+  ]
+}

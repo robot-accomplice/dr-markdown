@@ -1,0 +1,52 @@
+{
+  "classes": [
+    {
+      "id": "markdown-document",
+      "name": "Markdown Document Content",
+      "sensitivity": "high",
+      "handling": "Keep document content local in editor state and write it only through native save operations."
+    },
+    {
+      "id": "local-file-path",
+      "name": "Local File Path",
+      "sensitivity": "medium",
+      "handling": "Obtain paths through native dialogs and display only document filenames in the frontend rail/title where possible."
+    },
+    {
+      "id": "dirty-state",
+      "name": "Dirty State",
+      "sensitivity": "low",
+      "handling": "Track locally in frontend and Go state to prevent accidental data loss."
+    },
+    {
+      "id": "editor-mode",
+      "name": "Editor Mode and View Preferences",
+      "sensitivity": "low",
+      "handling": "Persist user-selected runtime settings through the native preference store and apply them on frontend boot."
+    },
+    {
+      "id": "application-preferences",
+      "name": "Application Preferences",
+      "sensitivity": "low",
+      "handling": "Store editor settings and raw view options as local JSON under the user's config directory."
+    },
+    {
+      "id": "recent-document",
+      "name": "Recent Document Entry",
+      "sensitivity": "medium",
+      "handling": "Store local document paths in the native preference store for start-screen recents; use paths only for local reopen actions."
+    },
+    {
+      "id": "installed-font-family",
+      "name": "Installed Font Family",
+      "sensitivity": "low",
+      "handling": "Read local installed font family names through the native app boundary and use them only to populate runtime settings controls."
+    },
+    {
+      "id": "image-asset",
+      "name": "Document Image Asset",
+      "sensitivity": "high",
+      "handling": "Copy imported images into the document's asset folder and reference them by relative path. Inline asset bytes only into the local render and export surfaces; never write absolute local paths into portable markdown."
+    }
+  ]
+}
