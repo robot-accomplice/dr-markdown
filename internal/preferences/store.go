@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"dr-markdown/internal/atomicfile"
 )
 
 const maxRecents = 20
@@ -49,6 +51,11 @@ func DefaultStore() (*Store, error) {
 }
 
 // Load returns persisted preferences, or empty preferences when none exist.
+//
+// A malformed file is recovered from rather than reported: preferences are an
+// enhancement, and failing here prevented the application from starting at all
+// (issue #17). The bad file is kept alongside so the failure stays diagnosable
+// instead of being silently discarded.
 func (s *Store) Load() (Preferences, error) {
 	if _, err := os.Stat(s.path); err != nil {
 		if os.IsNotExist(err) {
@@ -62,10 +69,18 @@ func (s *Store) Load() (Preferences, error) {
 	}
 	var prefs Preferences
 	if err := json.Unmarshal(data, &prefs); err != nil {
-		return Preferences{}, fmt.Errorf("decode preferences: %w", err)
+		s.quarantineCorruptFile(data)
+		return emptyPreferences(), nil
 	}
 	normalize(&prefs)
 	return prefs, nil
+}
+
+// quarantineCorruptFile preserves an unparseable preferences file next to the
+// original. Best-effort: recovery must not depend on the backup succeeding.
+func (s *Store) quarantineCorruptFile(data []byte) {
+	backup := fmt.Sprintf("%s.corrupt-%s", s.path, s.now().UTC().Format("20060102T150405Z"))
+	_ = os.WriteFile(backup, data, 0o600)
 }
 
 // Save writes preferences to disk.
@@ -79,7 +94,9 @@ func (s *Store) Save(prefs Preferences) error {
 		return fmt.Errorf("encode preferences: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(s.path, data, 0o600); err != nil {
+	// Atomic: a crash mid-write must not produce the truncated file that Load
+	// now has to recover from.
+	if err := atomicfile.Write(s.path, data, 0o600); err != nil {
 		return fmt.Errorf("write preferences: %w", err)
 	}
 	return nil

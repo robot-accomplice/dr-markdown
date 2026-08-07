@@ -1,10 +1,10 @@
 {
   "id": "initial-architext-buildout",
-  "version": "0.4.0",
-  "name": "M8 image asset management",
+  "version": "0.4.0-beta.1",
+  "name": "M8 image asset management (beta)",
   "status": "complete",
   "posture": "on-track",
-  "summary": "Bring the Dr. Markdown macOS editor shell to honest backed behavior through the formatted, raw, split, insert, and settings surfaces, and complete image asset management: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import, and image-local controls.",
+  "summary": "Ship M8 image asset management as a beta pre-release: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import and image-local controls, plus the two blocking defects a pre-release slop-ferret sweep verified \u2014 startup no longer fails on an unreadable preference store, and image resolution is pinned on every render surface.",
   "targetWindow": "Current milestone",
   "lastUpdated": "2026-08-07T00:00:00.000Z",
   "updateSource": "Source-backed maintenance pass",
@@ -478,6 +478,42 @@
           "TestPreviewDropsEventHandlersFromDocumentImageTags",
           "go run ./tools/screenshots"
         ]
+      },
+      {
+        "id": "corrupt-preferences-boot-brick",
+        "title": "Corrupt preferences no longer prevent startup",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "A malformed preferences.json failed Load, rejected through to a boot path with no catch, and left a blank window with no in-app recovery. Load now quarantines the bad file and returns defaults, boot catches so no bridge call can stop the editor mounting, and preferences share the document atomic write primitive so the truncation cannot be produced.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/17",
+          "TestLoadBacksUpCorruptPreferencesAndReturnsDefaults",
+          "TestStoreLoadRecoversFromCorruptJSON",
+          "TestStoreRecordRecentRecoversFromCorruptPreferences",
+          "TestFailedWriteLeavesExistingFileIntact",
+          "TestBootSurvivesRejectedPreferences",
+          "slop-ferret sweep @802c061 (VERIFIED, reproduced RED)"
+        ]
+      },
+      {
+        "id": "image-surface-coverage-gap",
+        "title": "Image resolution pinned on every render surface",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "resolveImageAssets had three call sites and tests pinned two; the split-preview call could be deleted with the full suite green. One fixture now asserts resolution on the formatted editor, split preview and print surfaces, so an unresolved fourth surface fails an existing test.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m8-image-asset-management"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/18",
+          "TestImageAssetsResolveOnEveryRenderSurface",
+          "slop-ferret sweep @802c061 (VERIFIED by mutation on a scratch copy)"
+        ]
       }
     ],
     "planned": [],
@@ -769,6 +805,16 @@
       "id": "m8-image-asset-management",
       "label": "Image asset management",
       "status": "complete"
+    },
+    {
+      "id": "corrupt-preferences-boot-brick",
+      "label": "Startup survives bad preferences",
+      "status": "complete"
+    },
+    {
+      "id": "image-surface-coverage-gap",
+      "label": "Image surfaces pinned",
+      "status": "complete"
     }
   ],
   "dependencies": [],
@@ -795,6 +841,12 @@
       "id": "unit-coverage",
       "label": "non-e2e Go statement coverage",
       "kind": "metric",
+      "status": "passing"
+    },
+    {
+      "id": "slop-ferret-sweep",
+      "label": "slop-ferret sweep @802c061 (tier 1-2, 2 VERIFIED blocking, both fixed)",
+      "kind": "review",
       "status": "passing"
     }
   ]

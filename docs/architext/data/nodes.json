@@ -322,7 +322,10 @@
         "Load an empty preference envelope when no preference file exists",
         "Save backed settings and raw editor options as JSON",
         "Record recent documents with de-duplication and newest-first ordering",
-        "Reject corrupt preference JSON rather than silently discarding it"
+        "Reject corrupt preference JSON rather than silently discarding it",
+        "Recover from a malformed preferences file instead of failing",
+        "Quarantine an unparseable file alongside the original for diagnosis",
+        "Persist preferences atomically"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -335,7 +338,9 @@
         "preferences.Store.Save",
         "preferences.Store.RecordRecent"
       ],
-      "dependencies": [],
+      "dependencies": [
+        "atomic-file-writer"
+      ],
       "dataHandled": [
         "application-preferences",
         "recent-document",
@@ -357,7 +362,9 @@
       ],
       "knownRisks": [],
       "verification": [
-        "internal/preferences/store_test.go"
+        "internal/preferences/store_test.go",
+        "TestLoadBacksUpCorruptPreferencesAndReturnsDefaults",
+        "TestStoreLoadRecoversFromCorruptJSON"
       ]
     },
     {
@@ -418,7 +425,9 @@
         "Read(path)",
         "WriteAtomic(path, content)"
       ],
-      "dependencies": [],
+      "dependencies": [
+        "atomic-file-writer"
+      ],
       "dataHandled": [
         "markdown-document",
         "local-file-path"
@@ -727,6 +736,46 @@
         "TestLoadForDocumentReportsMissingAssetWithoutError",
         "TestLoadForDocumentRejectsNonLocalSources",
         "TestLoadForDocumentMapsExtensionToMimeType"
+      ]
+    },
+    {
+      "id": "atomic-file-writer",
+      "type": "module",
+      "name": "Atomic file writer",
+      "summary": "Shared temp-file/fsync/rename primitive used by every path that persists state on disk, so a crash or failed write can never leave a truncated file.",
+      "responsibilities": [
+        "Write a file via a temp file in the same directory, fsync, close, chmod, rename",
+        "Remove the temp file on any failure so no partial artefact survives",
+        "Leave the previous file intact when a write cannot complete"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "internal/atomicfile/atomicfile.go"
+      ],
+      "runtime": "Go inside Wails application process",
+      "interfaces": [
+        "Write"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "markdown-document",
+        "application-preferences"
+      ],
+      "security": [
+        "Applies an explicit file mode rather than inheriting the temp file's"
+      ],
+      "observability": [],
+      "relatedFlows": [
+        "open-save-document"
+      ],
+      "relatedDecisions": [
+        "recover-from-corrupt-preferences"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "internal/atomicfile/atomicfile_test.go",
+        "TestFailedWriteLeavesExistingFileIntact",
+        "TestWriteReplacesContentAndAppliesPerm"
       ]
     }
   ]

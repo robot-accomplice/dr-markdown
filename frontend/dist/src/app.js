@@ -1454,7 +1454,15 @@ function applyRuntimeSettings() {
 }
 
 async function loadNativePreferences() {
-  const prefs = await bridge.loadPreferences()
+  let prefs = null
+  try {
+    prefs = await bridge.loadPreferences()
+  } catch (error) {
+    // Preferences are an enhancement; the editor is the product. A store the
+    // app cannot read must never stop it starting (issue #17).
+    console.warn('preferences load failed; starting with defaults', error)
+    return
+  }
   mergeNativePreferences(prefs)
 }
 
@@ -2611,4 +2619,9 @@ async function boot() {
   }
 }
 
-boot()
+// The recurrence gate for issue #17: catching only the preferences call would
+// fix one site. Any boot-time bridge call that rejects must still leave a
+// diagnosable failure rather than an unhandled rejection and a blank window.
+boot().catch((error) => {
+  console.error('boot failed', error)
+})

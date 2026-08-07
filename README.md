@@ -28,7 +28,7 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 - Recent markdown documents on the start screen, backed by native preference storage
 - Print and PDF export through the native print dialog path
 - Native open/save dialogs; files associate with the app on macOS
-- Atomic saves — a crashed write never leaves you a truncated file
+- Atomic saves for documents *and* preferences — a crashed write never leaves you a truncated file, and an unreadable preference store is quarantined and replaced with defaults rather than stopping the app from starting
 - Dirty tracking with an unsaved-changes close guard and an open-over-dirty guard
 - A 9-fixture round-trip corpus (markdown → WYSIWYG → markdown) driven by chromedp that gates every change
 - macOS packaging: `tools/build-macos.sh` produces a signed `.app` and a distributable `.dmg` with a custom icon
