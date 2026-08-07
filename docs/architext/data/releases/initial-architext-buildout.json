@@ -1,13 +1,13 @@
 {
   "id": "initial-architext-buildout",
-  "version": "0.3.0",
-  "name": "M3 editor surface",
-  "status": "in-progress",
-  "posture": "at-risk",
-  "summary": "Bring the Dr. Markdown macOS editor shell, current formatted screen, raw, split, insert, and settings surfaces to honest backed behavior.",
+  "version": "0.4.0",
+  "name": "M8 image asset management",
+  "status": "complete",
+  "posture": "on-track",
+  "summary": "Bring the Dr. Markdown macOS editor shell to honest backed behavior through the formatted, raw, split, insert, and settings surfaces, and complete image asset management: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import, and image-local controls.",
   "targetWindow": "Current milestone",
   "lastUpdated": "2026-08-07T00:00:00.000Z",
-  "updateSource": "Source-backed Codex architecture pass",
+  "updateSource": "Source-backed maintenance pass",
   "scope": {
     "required": [
       {
@@ -438,6 +438,46 @@
           "TestExistingCodeBlockLanguageCanBeChangedFromBlockTools",
           "go run ./tools/screenshots"
         ]
+      },
+      {
+        "id": "image-command-fail-loud",
+        "title": "Image command fails loud instead of silently doing nothing",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "The Image command inserted nothing and reported nothing when the import could not proceed, and a stale assertion still expected the removed placeholder, leaving the suite red at HEAD. Unsaved documents are now rejected before the picker opens, rejected imports leave the document unchanged, and the stale assertion was reconciled with the native import contract.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestAppImportImageRejectsUnsavedDocumentBeforePrompting",
+          "TestImageRibbonCommandLeavesDocumentUnchangedWhenImportFails",
+          "TestRibbonCompletionCommandsAreBacked"
+        ]
+      },
+      {
+        "id": "m8-image-asset-management",
+        "title": "Image asset management",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Images import through the native picker or a dropped file, copy into a per-document asset folder with deterministic collision suffixes, render from inlined bytes on every surface including print/export, show a visible broken state when an asset is missing, and expose width, alt text, replace, reveal, and delete controls on the selected image block.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m7-cursor-precise-block-model"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/9",
+          "docs/superpowers/plans/2026-08-07-m8-image-asset-management.md",
+          "internal/assets/manager_test.go",
+          "app_m8_test.go",
+          "TestRenderedImagesResolveThroughAssetBridge",
+          "TestMissingImageAssetRendersVisibleBrokenState",
+          "TestPrintExportInlinesImageAssets",
+          "TestImageControlsActOnSelectedImageOnly",
+          "TestDroppedImageFilesImportThroughAssetPolicy",
+          "TestPreviewDropsEventHandlersFromDocumentImageTags",
+          "go run ./tools/screenshots"
+        ]
       }
     ],
     "planned": [],
@@ -450,7 +490,7 @@
       "id": "editor-shell",
       "name": "Editor shell",
       "owner": "Project maintainers",
-      "status": "in-progress",
+      "status": "complete",
       "posture": "at-risk",
       "summary": "Turn the concept shell screens into backed macOS editor functionality without rendering fake controls.",
       "progress": 100,
@@ -719,6 +759,16 @@
       "itemIds": [
         "m7-cursor-precise-block-model"
       ]
+    },
+    {
+      "id": "image-command-fail-loud",
+      "label": "Image command fails loud",
+      "status": "complete"
+    },
+    {
+      "id": "m8-image-asset-management",
+      "label": "Image asset management",
+      "status": "complete"
     }
   ],
   "dependencies": [],
@@ -731,8 +781,20 @@
     },
     {
       "id": "architext-validation",
-      "label": "architext validate",
+      "label": "architext validate .",
       "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "frontend-syntax",
+      "label": "node --check frontend/dist/src/app.js",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "unit-coverage",
+      "label": "non-e2e Go statement coverage",
+      "kind": "metric",
       "status": "passing"
     }
   ]

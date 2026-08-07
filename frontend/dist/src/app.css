@@ -992,13 +992,19 @@ body.right-panel-hidden #outline-panel .panel-restore {
 }
 
 .contextual-group button,
-.contextual-group select {
+.contextual-group select,
+.contextual-group input[type='text'] {
   height: 28px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--panel);
   color: var(--ink);
   font: 650 12px/1 var(--ui-font);
+}
+
+.contextual-group input[type='text'] {
+  min-width: 148px;
+  padding: 0 9px;
 }
 
 .contextual-group button {
@@ -1011,9 +1017,27 @@ body.right-panel-hidden #outline-panel .panel-restore {
 }
 
 #wysiwyg table.selected-block,
-#wysiwyg .mermaid-render.selected-block {
+#wysiwyg .mermaid-render.selected-block,
+#wysiwyg img.selected-block {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
+}
+
+/* A lost asset must read as lost. Without a src the element collapses to its
+   alt text, so the placeholder box is what makes the failure visible. */
+img[data-missing-asset] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 220px;
+  min-height: 96px;
+  padding: 12px 16px;
+  border: 1px dashed var(--danger, #b4341f);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger, #b4341f) 6%, transparent);
+  color: var(--danger, #b4341f);
+  font: 600 12px/1.4 var(--mono);
+  text-align: center;
 }
 
 body.raw-mode #document-region,

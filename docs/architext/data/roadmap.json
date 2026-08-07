@@ -41,9 +41,9 @@
       "kind": "feature",
       "section": "M8 Image Asset Management",
       "title": "Image asset management",
-      "status": "planned",
+      "status": "complete",
       "priority": "high",
-      "summary": "Add native image import, asset copying/path policy, rendered image controls, and print/export image support."
+      "summary": "Native and drag/drop image import, portable asset-copy policy, data-URI rendering with a visible missing-asset state, image-local width/alt/replace/reveal/delete controls, and print/export image support."
     },
     {
       "id": "m9-comments-review-workflow",

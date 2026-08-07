@@ -525,6 +525,167 @@
       "knownGaps": [
         "No Markdown flavour, Sync, Git, or Extensions settings yet"
       ]
+    },
+    {
+      "id": "import-image-asset",
+      "name": "Import and manage a document image",
+      "status": "implemented",
+      "summary": "The user imports an image through the ribbon command or by dropping a file. The Go asset manager copies it beside the document and returns portable relative markdown. Rendering inlines the stored asset as a data URI, and image-local controls act on the selected image block.",
+      "trigger": "User runs the Image command, or drops an image file onto the window",
+      "actors": [
+        "macos-user"
+      ],
+      "steps": [
+        {
+          "id": "request-image-import",
+          "from": "macos-user",
+          "to": "frontend-shell",
+          "action": "runImageCommand",
+          "summary": "The user runs the Image command or drops an image file.",
+          "kind": "start",
+          "data": []
+        },
+        {
+          "id": "call-import-bridge",
+          "from": "frontend-shell",
+          "to": "wails-bridge",
+          "action": "importImage",
+          "summary": "The shell calls the import binding with the document path.",
+          "data": [
+            "local-file-path"
+          ]
+        },
+        {
+          "id": "check-document-saved",
+          "from": "wails-go-api",
+          "to": "wails-go-api",
+          "action": "requireSavedDocument",
+          "summary": "The Go API rejects unsaved documents before opening a picker.",
+          "kind": "decision",
+          "data": [
+            "local-file-path"
+          ]
+        },
+        {
+          "id": "reject-unsaved-document",
+          "from": "wails-go-api",
+          "to": "macos-user",
+          "action": "showNativeError",
+          "summary": "An unsaved document is refused with a native error dialog.",
+          "kind": "stop",
+          "outcome": "Document has no path",
+          "data": []
+        },
+        {
+          "id": "select-image-file",
+          "from": "wails-go-api",
+          "to": "macos-user",
+          "action": "selectImageFile",
+          "summary": "A saved document opens the native image picker; a dropped file skips it.",
+          "kind": "decision",
+          "outcome": "Document is saved",
+          "data": [
+            "local-file-path"
+          ]
+        },
+        {
+          "id": "copy-asset",
+          "from": "wails-go-api",
+          "to": "image-asset-manager",
+          "action": "importForDocument",
+          "summary": "The asset manager copies the image into the document asset folder.",
+          "kind": "persistence",
+          "data": [
+            "image-asset",
+            "local-file-path"
+          ]
+        },
+        {
+          "id": "return-portable-markdown",
+          "from": "image-asset-manager",
+          "to": "frontend-shell",
+          "action": "returnImageMarkdown",
+          "summary": "The relative markdown image reference is returned for insertion.",
+          "kind": "return",
+          "returnOf": "call-import-bridge",
+          "data": [
+            "markdown-document",
+            "image-asset"
+          ]
+        },
+        {
+          "id": "resolve-render-source",
+          "from": "frontend-shell",
+          "to": "wails-bridge",
+          "action": "loadImageAsset",
+          "summary": "Each rendered image resolves its relative path through the asset loader.",
+          "data": [
+            "image-asset"
+          ]
+        },
+        {
+          "id": "inline-asset-bytes",
+          "from": "image-asset-manager",
+          "to": "frontend-shell",
+          "action": "returnDataUri",
+          "summary": "Stored bytes return as a data URI; a missing asset returns none.",
+          "kind": "return",
+          "returnOf": "resolve-render-source",
+          "data": [
+            "image-asset"
+          ]
+        },
+        {
+          "id": "render-image-block",
+          "from": "frontend-shell",
+          "to": "macos-user",
+          "action": "renderImage",
+          "summary": "The image renders inline, or shows a visible broken state when missing.",
+          "kind": "stop",
+          "data": [
+            "image-asset"
+          ]
+        }
+      ],
+      "guarantees": [
+        "Imported images are copied beside the document and referenced by relative path",
+        "An unsaved document is refused before the native picker opens",
+        "Filename collisions receive deterministic -1/-2 suffixes",
+        "Rendered and exported images resolve from stored bytes, not from the asset-server origin",
+        "A missing asset renders as a visible broken state instead of blank space",
+        "Image-local controls act on the selected image and never on a sibling"
+      ],
+      "failureBehavior": [
+        "Unsaved document, unreadable source, and failed copy each surface a native error dialog",
+        "A rejected import leaves the document markdown unchanged",
+        "Revealing a missing asset reports the failure instead of doing nothing",
+        "Non-image dropped files are ignored rather than copied into the asset folder"
+      ],
+      "observability": [
+        "Native error dialogs for import and reveal failures",
+        "console.warn on rejected bridge calls",
+        "data-missing-asset attribute on unresolved image elements"
+      ],
+      "verification": [
+        "internal/assets/manager_test.go",
+        "app_m8_test.go",
+        "TestImageRibbonCommandImportsNativeAssetMarkdown",
+        "TestImageRibbonCommandLeavesDocumentUnchangedWhenImportFails",
+        "TestRenderedImagesResolveThroughAssetBridge",
+        "TestMissingImageAssetRendersVisibleBrokenState",
+        "TestPrintExportInlinesImageAssets",
+        "TestImageControlsActOnSelectedImageOnly",
+        "TestImageWidthRoundTripsBetweenMarkdownAndHTMLForms",
+        "TestImageDeleteRemovesOnlySelectedImage",
+        "TestImageReplaceSwapsSelectedImageSource",
+        "TestImageRevealRoutesSelectedAssetToNativeReveal",
+        "TestDroppedImageFilesImportThroughAssetPolicy",
+        "TestPreviewDropsEventHandlersFromDocumentImageTags"
+      ],
+      "knownGaps": [
+        "Moving a markdown file without its .assets folder is detected but not repaired",
+        "Asset folders are not garbage collected when an image is deleted from the document"
+      ]
     }
   ]
 }

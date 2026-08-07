@@ -3,19 +3,19 @@
   "releases": [
     {
       "id": "initial-architext-buildout",
-      "version": "0.3.0",
-      "name": "M3 editor surface",
-      "status": "in-progress",
-      "posture": "at-risk",
+      "version": "0.4.0",
+      "name": "M8 image asset management",
+      "status": "complete",
+      "posture": "on-track",
       "targetWindow": "Current milestone",
       "lastUpdated": "2026-08-07T00:00:00.000Z",
-      "summary": "Bring the Dr. Markdown macOS editor shell, current formatted screen, raw, split, insert, and settings surfaces to honest backed behavior.",
+      "summary": "Bring the Dr. Markdown macOS editor shell to honest backed behavior through the formatted, raw, split, insert, and settings surfaces, and complete image asset management: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import, and image-local controls.",
       "counts": {
-        "features": 24,
-        "bugFixes": 0,
+        "features": 25,
+        "bugFixes": 1,
         "workstreams": 1,
         "blockers": 0,
-        "complete": 24,
+        "complete": 26,
         "inProgress": 0,
         "planned": 0,
         "stretch": 0

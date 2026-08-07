@@ -294,8 +294,12 @@ type fakeNative struct {
 	unsavedChoice string
 	title         string
 	openCalled    bool
-	errorTitle    string
-	errorMessage  string
+	imageCalled   bool
+	revealedPath  string
+
+	fileDropSubscribed bool
+	errorTitle         string
+	errorMessage       string
 }
 
 func (f *fakeNative) OpenMarkdownFile(context.Context) (string, error) {
@@ -308,7 +312,15 @@ func (f *fakeNative) SaveMarkdownFile(context.Context, string) (string, error) {
 }
 
 func (f *fakeNative) SelectImageFile(context.Context) (string, error) {
+	f.imageCalled = true
 	return f.imagePath, nil
+}
+
+func (f *fakeNative) SubscribeFileDrop(context.Context) { f.fileDropSubscribed = true }
+
+func (f *fakeNative) RevealPath(_ context.Context, path string) error {
+	f.revealedPath = path
+	return nil
 }
 
 func (f *fakeNative) ShowError(_ context.Context, title string, message string) {

@@ -2,6 +2,7 @@
 package assets
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +16,83 @@ type ImportedImage struct {
 	AssetPath    string `json:"assetPath"`
 	MarkdownPath string `json:"markdownPath"`
 	Markdown     string `json:"markdown"`
+}
+
+// LoadedImage describes a local image asset resolved against a document.
+type LoadedImage struct {
+	AbsolutePath string `json:"absolutePath"`
+	DataURI      string `json:"dataURI"`
+	Exists       bool   `json:"exists"`
+}
+
+// imageMimeTypes maps the asset extensions the importer accepts to the MIME
+// type used when inlining them.
+var imageMimeTypes = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".svg":  "image/svg+xml",
+}
+
+// LoadForDocument resolves a markdown image path against the document
+// directory and inlines the bytes as a data URI.
+//
+// Markdown resolves relative image paths against the document on disk, but the
+// webview resolves them against the asset-server origin, so a copied asset
+// never renders from its relative path alone. Inlining serves both the editor
+// surface and print/export, which must be self-contained.
+//
+// A missing file is a render state the editor shows, not an error; an
+// unreadable file is a real failure and is reported.
+func LoadForDocument(documentPath string, markdownPath string) (LoadedImage, error) {
+	if documentPath == "" {
+		return LoadedImage{}, fmt.Errorf("load image: document has no location on disk")
+	}
+	if markdownPath == "" {
+		return LoadedImage{}, fmt.Errorf("load image: empty asset path")
+	}
+	if isNonLocalSource(markdownPath) {
+		return LoadedImage{}, fmt.Errorf("load image: %q is not a local asset", markdownPath)
+	}
+
+	absolute := filepath.FromSlash(markdownPath)
+	if !filepath.IsAbs(absolute) {
+		absolute = filepath.Join(filepath.Dir(documentPath), absolute)
+	}
+	info, err := os.Stat(absolute)
+	if os.IsNotExist(err) || (err == nil && info.IsDir()) {
+		return LoadedImage{AbsolutePath: absolute}, nil
+	}
+	if err != nil {
+		return LoadedImage{AbsolutePath: absolute}, fmt.Errorf("stat image asset: %w", err)
+	}
+	data, err := os.ReadFile(absolute)
+	if err != nil {
+		return LoadedImage{AbsolutePath: absolute}, fmt.Errorf("read image asset: %w", err)
+	}
+
+	mime, ok := imageMimeTypes[strings.ToLower(filepath.Ext(absolute))]
+	if !ok {
+		mime = "application/octet-stream"
+	}
+	return LoadedImage{
+		AbsolutePath: absolute,
+		DataURI:      "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data),
+		Exists:       true,
+	}, nil
+}
+
+// isNonLocalSource reports paths the webview can already render itself.
+func isNonLocalSource(markdownPath string) bool {
+	lower := strings.ToLower(markdownPath)
+	for _, prefix := range []string{"http://", "https://", "data:", "file://"} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // ImportForDocument copies sourcePath beside documentPath and returns markdown.

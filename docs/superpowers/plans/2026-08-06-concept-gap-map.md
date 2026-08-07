@@ -5,7 +5,7 @@
 
 ## Context
 
-`/Users/jmachen/Downloads/Dr. Markdown Editor Concepts.zip` is the product
+`~/Downloads/Dr. Markdown Editor Concepts.zip` is the product
 direction for M3.1 and beyond. It is explicit about the desired macOS editor
 surface, but it also implies functionality the current app does not yet have.
 

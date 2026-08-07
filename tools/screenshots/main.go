@@ -121,8 +121,8 @@ func nativeStub() string {
 			settings: {},
 			rawOptions: {},
 			recents: [
-				{ path: '/Users/jmachen/Documents/architecture-notes.md', title: 'architecture-notes.md', lastOpenedAt: '2026-08-07T13:00:00Z' },
-				{ path: '/Users/jmachen/Documents/release-plan.md', title: 'release-plan.md', lastOpenedAt: '2026-08-07T12:00:00Z' }
+				{ path: '/Users/robot/Documents/architecture-notes.md', title: 'architecture-notes.md', lastOpenedAt: '2026-08-07T13:00:00Z' },
+				{ path: '/Users/robot/Documents/release-plan.md', title: 'release-plan.md', lastOpenedAt: '2026-08-07T12:00:00Z' }
 			]
 		}),
 		SavePreferences: async () => {},

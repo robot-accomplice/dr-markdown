@@ -22,6 +22,9 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop: true,
+		},
 		LogLevelProduction: logger.ERROR,
 		OnStartup:          app.startup,
 		OnBeforeClose:      app.beforeClose,

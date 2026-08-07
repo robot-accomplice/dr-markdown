@@ -10,7 +10,7 @@ This plan is a draft planning artifact. It is not Release Truth until approved.
 
 ## Source Inputs
 
-- `/Users/jmachen/Downloads/Dr. Markdown Editor Concepts.zip`
+- `~/Downloads/Dr. Markdown Editor Concepts.zip`
 - `/tmp/dr-markdown-design-audit.jRFuPH/Dr Markdown Handoff/IMPLEMENTATION.md`
 - Captured current app screenshots under `/tmp/dr-markdown-current-screens.oxxkAk`
 - Current e2e coverage in `e2e/e2e_test.go`
