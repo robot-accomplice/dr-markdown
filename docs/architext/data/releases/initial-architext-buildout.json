@@ -351,42 +351,98 @@
           "docs/superpowers/plans/2026-08-07-code-block-language-context-access.md",
           "TestExistingCodeBlockLanguageCanBeChangedFromBlockTools"
         ]
+      },
+      {
+        "id": "m5-native-state-preferences-recents",
+        "title": "Native state, preferences, and recents foundation",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "The Wails app API now uses injected native/document/font/preference ports, backed settings persist through a local JSON preference store, recent documents are recorded after open/save, and the start screen can reopen recent files through a specific bridge method.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m4-4-settings-completion",
+          "code-block-language-context-access"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/8",
+          "docs/superpowers/plans/2026-08-07-m5-native-state-preferences-recents.md",
+          "app_m5_test.go",
+          "internal/preferences/store_test.go",
+          "TestBootLoadsPersistedPreferencesThroughBridge",
+          "TestSettingsSavePersistsNativePreferences",
+          "TestRecentFilesRenderAndOpenSpecificRecentBridge",
+          "tools/screenshots/main.go",
+          "docs/assets/screenshots/start.png",
+          "docs/assets/screenshots/formatted.png",
+          "docs/assets/screenshots/raw.png",
+          "docs/assets/screenshots/split.png",
+          "docs/assets/screenshots/settings.png",
+          "Non-tool Go coverage: 80.5% statements"
+        ]
+      },
+      {
+        "id": "responsive-shell-adaptation",
+        "title": "Responsive shell adaptation",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Reduced-width desktop windows now compact labelled ribbon controls to icon-sized controls with accessible labels/tooltips, wrap the ribbon instead of clipping, and collapse side panels at narrow widths to preserve the document canvas.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m5-native-state-preferences-recents"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/14",
+          "docs/superpowers/plans/2026-08-07-responsive-shell-adaptation.md",
+          "TestResponsiveShellAdaptsToReducedWindowWidths",
+          "go run ./tools/screenshots"
+        ]
+      },
+      {
+        "id": "m6-editable-source-token-layer",
+        "title": "Editable source token layer",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Raw and Split source modes now render tokenized markdown marker spans and expose a backed Hide markers option that hides marker glyphs without changing textarea source content.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m5-native-state-preferences-recents"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/7",
+          "docs/superpowers/plans/2026-08-07-m6-editable-source-token-layer.md",
+          "TestRawScreenControlsAreBacked",
+          "TestSplitSourceHonorsHideMarkdownMarkersWithoutMutatingSource",
+          "TestSourceModesRenderMarkdownSyntaxHighlighting",
+          "go run ./tools/screenshots"
+        ]
+      },
+      {
+        "id": "m7-cursor-precise-block-model",
+        "title": "Cursor-precise document block model",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "Contextual table controls now target the selected rendered table, existing Mermaid Diagrams can be selected and replaced independently, and existing code-block language targeting remains intact.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [
+          "m6-editable-source-token-layer"
+        ],
+        "evidence": [
+          "https://github.com/robot-accomplice/dr-markdown/issues/6",
+          "docs/superpowers/plans/2026-08-07-m7-cursor-precise-block-model.md",
+          "TestContextualTableControlsTargetSelectedRenderedTable",
+          "TestContextualDiagramAssistantTargetsSelectedRenderedDiagram",
+          "TestExistingCodeBlockLanguageCanBeChangedFromBlockTools",
+          "go run ./tools/screenshots"
+        ]
       }
     ],
     "planned": [],
     "stretch": [],
-    "deferred": [
-      {
-        "id": "persistent-preferences",
-        "title": "Persistent application preferences",
-        "kind": "feature",
-        "status": "deferred",
-        "summary": "Settings are session-scoped until a native preference store is designed and implemented.",
-        "owner": "Project maintainers",
-        "workstreamId": "editor-shell",
-        "dependsOn": [
-          "settings-backed-slice"
-        ],
-        "evidence": [
-          "docs/superpowers/plans/2026-08-07-settings-screen.md",
-          "session-runtime-settings"
-        ]
-      },
-      {
-        "id": "raw-hide-markers",
-        "title": "Raw marker hiding",
-        "kind": "feature",
-        "status": "deferred",
-        "summary": "Requires a true editable markdown token/decoration layer; current source highlighting is a synchronized visual overlay.",
-        "owner": "Project maintainers",
-        "workstreamId": "editor-shell",
-        "dependsOn": [],
-        "evidence": [
-          "frontend/dist/src/rawmode.js",
-          "docs/superpowers/plans/2026-08-07-syntax-highlighting.md"
-        ]
-      }
-    ],
+    "deferred": [],
     "outOfScope": []
   },
   "workstreams": [
@@ -419,59 +475,19 @@
         "m4-8-print-pdf-export",
         "m4-9-visual-regression-baseline",
         "code-block-language-context-access",
-        "persistent-preferences",
-        "raw-hide-markers"
+        "m5-native-state-preferences-recents",
+        "responsive-shell-adaptation",
+        "m6-editable-source-token-layer",
+        "m7-cursor-precise-block-model"
       ],
       "evidence": [
         "go test ./... -count=1",
-        "Unit Go coverage baseline: 30.5% statements; app.go requires a native-dialog/state boundary before 80% is realistic."
+        "go run ./tools/screenshots",
+        "Non-tool Go coverage: 80.5% statements after native App seam and preference-store tests."
       ]
     }
   ],
-  "blockers": [
-    {
-      "id": "codemirror-markdown-layer-needed",
-      "title": "Editable markdown token layer needed",
-      "severity": "medium",
-      "status": "blocked",
-      "owner": "Project maintainers",
-      "summary": "Source syntax highlighting is implemented with a visual overlay, but marker hiding still needs editable markdown token decorations.",
-      "nextAction": "Vendor or expose a markdown-capable editable decoration layer before implementing marker hiding.",
-      "itemIds": [],
-      "evidenceNeeded": [
-        "Editable markdown token layer",
-        "Raw marker hiding e2e coverage"
-      ]
-    },
-    {
-      "id": "native-preference-store-needed",
-      "title": "Native preference store needed",
-      "severity": "medium",
-      "status": "blocked",
-      "owner": "Project maintainers",
-      "summary": "Runtime settings are not persisted across launches because the current Wails API has no preference-storage boundary.",
-      "nextAction": "Design and implement a native preference store before promising durable settings.",
-      "itemIds": [],
-      "evidenceNeeded": [
-        "Preference-store architecture decision",
-        "Persistence tests across app boot"
-      ]
-    },
-    {
-      "id": "wails-app-test-seam-needed",
-      "title": "Wails app test seam needed for 80% Go coverage",
-      "severity": "medium",
-      "status": "blocked",
-      "owner": "Project maintainers",
-      "summary": "Go unit coverage is 30.5% because app.go directly owns Wails runtime dialogs, title updates, and close guards without injectable ports. Reaching 80% cleanly needs a native-dialog/state boundary rather than tests that invoke Wails runtime globals.",
-      "nextAction": "Extract testable application state and native dialog/file/title ports before ratcheting Go unit coverage toward 80%.",
-      "itemIds": [],
-      "evidenceNeeded": [
-        "Unit tests for extracted app state and dialog decision paths",
-        "Coverage report at or above 80% for non-e2e Go packages"
-      ]
-    }
-  ],
+  "blockers": [],
   "milestones": [
     {
       "id": "m3-1-current-screen",
@@ -662,6 +678,46 @@
       "order": 19,
       "itemIds": [
         "code-block-language-context-access"
+      ]
+    },
+    {
+      "id": "m5-native-state-preferences-recents",
+      "label": "Native state and recents",
+      "status": "complete",
+      "targetWindow": "M5",
+      "order": 20,
+      "itemIds": [
+        "m5-native-state-preferences-recents"
+      ]
+    },
+    {
+      "id": "responsive-shell-adaptation",
+      "label": "Responsive shell",
+      "status": "complete",
+      "targetWindow": "Cross-cutting",
+      "order": 21,
+      "itemIds": [
+        "responsive-shell-adaptation"
+      ]
+    },
+    {
+      "id": "m6-editable-source-token-layer",
+      "label": "Source marker hiding",
+      "status": "complete",
+      "targetWindow": "M6",
+      "order": 22,
+      "itemIds": [
+        "m6-editable-source-token-layer"
+      ]
+    },
+    {
+      "id": "m7-cursor-precise-block-model",
+      "label": "Selected block targeting",
+      "status": "complete",
+      "targetWindow": "M7",
+      "order": 23,
+      "itemIds": [
+        "m7-cursor-precise-block-model"
       ]
     }
   ],

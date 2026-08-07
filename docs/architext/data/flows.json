@@ -4,7 +4,7 @@
       "id": "app-boot",
       "name": "Application boot",
       "status": "implemented",
-      "summary": "Wails embeds frontend assets, creates the Go app binding, and mounts the editor shell with a blank in-memory document.",
+      "summary": "Wails embeds frontend assets, creates the Go app binding, loads persisted preferences through the bridge, and mounts the editor shell with a blank in-memory document.",
       "trigger": "User launches Dr. Markdown",
       "actors": [
         "macos-user"
@@ -26,6 +26,28 @@
           "summary": "Wails binds the Go App object and startup hook.",
           "data": [
             "dirty-state"
+          ]
+        },
+        {
+          "id": "load-preferences",
+          "from": "frontend-shell",
+          "to": "wails-bridge",
+          "action": "loadPreferences",
+          "summary": "The frontend asks for persisted settings and recent documents before applying runtime settings.",
+          "data": [
+            "application-preferences",
+            "recent-document"
+          ]
+        },
+        {
+          "id": "read-preferences",
+          "from": "wails-go-api",
+          "to": "preference-store",
+          "action": "load",
+          "summary": "The Go API loads the JSON preference envelope from the user's config directory.",
+          "data": [
+            "application-preferences",
+            "recent-document"
           ]
         },
         {
@@ -51,7 +73,9 @@
       ],
       "guarantees": [
         "Application opens to a blank document instead of sample content",
-        "Embedded app content does not duplicate the native window title bar"
+        "Embedded app content does not duplicate the native window title bar",
+        "Persisted backed preferences apply before first user interaction",
+        "Recent documents render on the start screen when native storage has entries"
       ],
       "failureBehavior": [
         "Wails logs startup/build errors in dev mode"
@@ -69,7 +93,7 @@
       "id": "open-save-document",
       "name": "Open and save document",
       "status": "implemented",
-      "summary": "The frontend calls the Wails bridge, the Go API uses native dialogs, and Document IO reads or atomically writes markdown files.",
+      "summary": "The frontend calls the Wails bridge, the Go API uses native dialogs or a recent path, Document IO reads or atomically writes markdown files, and the preference store records recents.",
       "trigger": "User opens or saves a markdown document",
       "actors": [
         "macos-user"
@@ -111,6 +135,17 @@
           ]
         },
         {
+          "id": "record-recent-document",
+          "from": "wails-go-api",
+          "to": "preference-store",
+          "action": "recordRecent",
+          "summary": "Successful open and save operations move the path to the top of the recent document list.",
+          "data": [
+            "recent-document",
+            "local-file-path"
+          ]
+        },
+        {
           "id": "return-document-state",
           "from": "wails-go-api",
           "to": "frontend-shell",
@@ -127,7 +162,9 @@
       ],
       "guarantees": [
         "Save writes atomically through the document package",
-        "Dirty buffers are guarded before open/close replacement"
+        "Dirty buffers are guarded before open/close replacement",
+        "Recent documents are persisted after successful open and save flows",
+        "Recent documents can be reopened through a specific bridge method without showing the native picker"
       ],
       "failureBehavior": [
         "Open/save failures show native error dialogs and do not discard dirty content"
@@ -141,9 +178,7 @@
         "TestOpenOverDirtyGuard",
         "internal/document/document_test.go"
       ],
-      "knownGaps": [
-        "No persistent workspace/recent-file index yet"
-      ]
+      "knownGaps": []
     },
     {
       "id": "edit-markdown-document",
@@ -236,6 +271,7 @@
         "Rendered code blocks include language and Copy chrome",
         "Left and right side panels can be hidden or restored independently without mutating markdown",
         "Contextual document controls manage table, code-block language, and Mermaid Diagram assistance from the document surface",
+        "Contextual table and Mermaid Diagram controls target the selected rendered block when multiple matching blocks exist",
         "Right-click and hover tools on existing code blocks open a language dialog for the acted-on fenced block",
         "Print and PDF export render formatted markdown and invoke the OS print dialog without mutating markdown"
       ],
@@ -260,6 +296,8 @@
         "TestFencedCodeBlocksRenderDesignChrome",
         "TestSidePanelsCanBeHiddenIndependently",
         "TestContextualDocumentControlsManageBlocksInPlace",
+        "TestContextualTableControlsTargetSelectedRenderedTable",
+        "TestContextualDiagramAssistantTargetsSelectedRenderedDiagram",
         "TestExistingCodeBlockLanguageCanBeChangedFromBlockTools",
         "TestPrintAndPDFExportUseFormattedPrintPipeline",
         "TestVisualBaselineScreensRenderWithoutOverflow"
@@ -295,7 +333,7 @@
           "from": "frontend-shell",
           "to": "raw-editor",
           "action": "openRawEditor",
-          "summary": "Raw mode mounts the highlighted source editor with raw options for soft wrap and line-number visibility.",
+          "summary": "Raw mode mounts the highlighted source editor with raw options for soft wrap, line-number visibility, and markdown marker hiding.",
           "data": [
             "markdown-document",
             "editor-mode"
@@ -306,7 +344,7 @@
           "from": "raw-editor",
           "to": "syntax-highlighter",
           "action": "highlightMarkdownSource",
-          "summary": "The raw editor renders a synchronized markdown highlighting overlay without changing the textarea source.",
+          "summary": "The raw editor renders a synchronized tokenized markdown highlighting layer without changing the textarea source.",
           "data": [
             "markdown-document"
           ]
@@ -325,10 +363,11 @@
       ],
       "guarantees": [
         "Markdown round-trips across mode switches",
-        "Raw mode exposes only backed source-view controls"
+        "Raw mode exposes only backed source-view controls",
+        "Raw and Split source modes can hide markdown marker glyphs without mutating source text"
       ],
       "failureBehavior": [
-        "Hide-markers is deferred because the highlighted overlay is not an editable token/decoration layer"
+        "Marker hiding keeps hidden marker width so textarea caret positions continue to align with raw source"
       ],
       "observability": [
         "Mode segmented control",
@@ -337,17 +376,16 @@
       ],
       "verification": [
         "TestModeToggleRoundTrip",
-        "TestRawScreenControlsAreBacked"
+        "TestRawScreenControlsAreBacked",
+        "TestSplitSourceHonorsHideMarkdownMarkersWithoutMutatingSource"
       ],
-      "knownGaps": [
-        "Hide markers is not implemented"
-      ]
+      "knownGaps": []
     },
     {
       "id": "configure-runtime-settings",
       "name": "Configure runtime settings",
       "status": "implemented",
-      "summary": "The frontend shell opens a settings modal, loads installed font families through the native bridge, stages user preference changes in a draft, and applies only backed runtime preferences on Save.",
+      "summary": "The frontend shell opens a settings modal, loads installed font families through the native bridge, stages user preference changes in a draft, applies backed runtime preferences on Save, and persists them through the native preference store.",
       "trigger": "User opens Settings from the primary ribbon tab row",
       "actors": [
         "macos-user"
@@ -427,6 +465,28 @@
           ]
         },
         {
+          "id": "persist-settings-draft",
+          "from": "frontend-shell",
+          "to": "wails-bridge",
+          "action": "savePreferences",
+          "summary": "The shell sends the saved preference envelope to the native app.",
+          "data": [
+            "application-preferences",
+            "recent-document"
+          ]
+        },
+        {
+          "id": "write-preferences",
+          "from": "wails-go-api",
+          "to": "preference-store",
+          "action": "save",
+          "summary": "The Go API writes settings, raw options, and existing recents to the JSON preference file.",
+          "data": [
+            "application-preferences",
+            "recent-document"
+          ]
+        },
+        {
           "id": "discard-settings-draft",
           "from": "frontend-shell",
           "to": "frontend-shell",
@@ -441,11 +501,12 @@
         "Settings controls are backed by runtime behavior",
         "Code font options come from native installed-font discovery when Wails bindings are available",
         "Document and code font preferences apply to rendered editor surfaces",
+        "Backed preferences survive app relaunch",
         "Cancel does not apply draft preferences",
         "Future-only settings categories are visible but disabled"
       ],
       "failureBehavior": [
-        "Preferences are not persisted across application launches until a native preference store is added"
+        "Corrupt or unreadable preferences return native errors rather than being silently discarded"
       ],
       "observability": [
         "Settings modal",
@@ -457,10 +518,11 @@
         "TestSettingsModalAppliesBackedRuntimePreferences",
         "TestSettingsCancelDiscardsDraftAndMarksFutureSectionsDisabled",
         "TestSettingsEditorDesignControlsAreBacked",
+        "TestBootLoadsPersistedPreferencesThroughBridge",
+        "TestSettingsSavePersistsNativePreferences",
         "TestFamilyNameNormalizesFontFilenames"
       ],
       "knownGaps": [
-        "No persistent preference store",
         "No Markdown flavour, Sync, Git, or Extensions settings yet"
       ]
     }

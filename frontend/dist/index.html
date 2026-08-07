@@ -90,19 +90,19 @@
           <div class="ribbon-separator"></div>
           <div class="ribbon-group grow">
             <div class="ribbon-controls labelled">
-              <button data-command="link" type="button"><svg class="ribbon-icon"><use href="#icon-link"></use></svg>Link</button>
-              <button data-command="image" type="button"><span class="mono">▧</span>Image</button>
-              <button data-command="table" type="button"><svg class="ribbon-icon"><use href="#icon-table"></use></svg>Table</button>
-              <button data-command="code-block" type="button"><svg class="ribbon-icon"><use href="#icon-code-block"></use></svg>Code</button>
-              <button data-command="math" type="button"><span class="serif">Σx</span>Math</button>
-              <button data-command="mermaid" type="button"><svg class="ribbon-icon"><use href="#icon-diagram"></use></svg>Diagram</button>
+              <button data-command="link" aria-label="Link" title="Link" type="button"><svg class="ribbon-icon"><use href="#icon-link"></use></svg><span class="button-label">Link</span></button>
+              <button data-command="image" aria-label="Image" title="Image" type="button"><span class="mono">▧</span><span class="button-label">Image</span></button>
+              <button data-command="table" aria-label="Table" title="Table" type="button"><svg class="ribbon-icon"><use href="#icon-table"></use></svg><span class="button-label">Table</span></button>
+              <button data-command="code-block" aria-label="Code" title="Code" type="button"><svg class="ribbon-icon"><use href="#icon-code-block"></use></svg><span class="button-label">Code</span></button>
+              <button data-command="math" aria-label="Math" title="Math" type="button"><span class="serif">Σx</span><span class="button-label">Math</span></button>
+              <button data-command="mermaid" aria-label="Diagram" title="Diagram" type="button"><svg class="ribbon-icon"><use href="#icon-diagram"></use></svg><span class="button-label">Diagram</span></button>
             </div>
             <h2>Insert</h2>
           </div>
           <div class="ribbon-separator"></div>
           <div class="ribbon-group">
             <div class="ribbon-controls labelled">
-              <button data-export-toggle="true" type="button">Export ▾</button>
+              <button data-export-toggle="true" aria-label="Export" title="Export" data-collapse-glyph="↗" type="button"><span class="button-label">Export ▾</span></button>
             </div>
             <h2>Share</h2>
           </div>
@@ -111,13 +111,13 @@
         <section class="ribbon-panel" data-ribbon-panel="insert" aria-label="Insert" hidden>
           <div class="ribbon-group">
             <div class="ribbon-controls labelled">
-              <button id="btn-insert-menu" type="button"><span class="mono">+</span>Insert block</button>
-              <button data-command="code-block" type="button"><svg class="ribbon-icon"><use href="#icon-code-block"></use></svg>Code block</button>
-              <button data-command="image" type="button"><span class="mono">▧</span>Image</button>
-              <button data-command="table" type="button"><svg class="ribbon-icon"><use href="#icon-table"></use></svg>Table</button>
-              <button data-command="math" type="button"><span class="serif">Σx</span>Math block</button>
-              <button data-command="mermaid" type="button"><svg class="ribbon-icon"><use href="#icon-diagram"></use></svg>Mermaid diagram</button>
-              <button data-command="hr" type="button"><span class="mono">——</span>Horizontal rule</button>
+              <button id="btn-insert-menu" aria-label="Insert block" title="Insert block" type="button"><span class="mono">+</span><span class="button-label">Insert block</span></button>
+              <button data-command="code-block" aria-label="Code block" title="Code block" type="button"><svg class="ribbon-icon"><use href="#icon-code-block"></use></svg><span class="button-label">Code block</span></button>
+              <button data-command="image" aria-label="Image" title="Image" type="button"><span class="mono">▧</span><span class="button-label">Image</span></button>
+              <button data-command="table" aria-label="Table" title="Table" type="button"><svg class="ribbon-icon"><use href="#icon-table"></use></svg><span class="button-label">Table</span></button>
+              <button data-command="math" aria-label="Math block" title="Math block" type="button"><span class="serif">Σx</span><span class="button-label">Math block</span></button>
+              <button data-command="mermaid" aria-label="Mermaid diagram" title="Mermaid diagram" type="button"><svg class="ribbon-icon"><use href="#icon-diagram"></use></svg><span class="button-label">Mermaid diagram</span></button>
+              <button data-command="hr" aria-label="Horizontal rule" title="Horizontal rule" type="button"><span class="mono">——</span><span class="button-label">Horizontal rule</span></button>
             </div>
             <h2>Insert Block</h2>
           </div>
@@ -126,10 +126,10 @@
         <section class="ribbon-panel" data-ribbon-panel="format" aria-label="Format" hidden>
           <div class="ribbon-group">
             <div class="ribbon-controls labelled">
-              <button data-command="bold" type="button">Bold</button>
-              <button data-command="italic" type="button">Italic</button>
-              <button data-command="strike" type="button">Strikethrough</button>
-              <button data-command="quote" type="button">Block quote</button>
+              <button data-command="bold" aria-label="Bold" title="Bold" type="button">Bold</button>
+              <button data-command="italic" aria-label="Italic" title="Italic" type="button">Italic</button>
+              <button data-command="strike" aria-label="Strikethrough" title="Strikethrough" type="button">Strikethrough</button>
+              <button data-command="quote" aria-label="Block quote" title="Block quote" type="button">Block quote</button>
             </div>
             <h2>Markdown Format</h2>
           </div>
@@ -138,9 +138,9 @@
         <section class="ribbon-panel" data-ribbon-panel="view" aria-label="View" hidden>
           <div class="ribbon-group">
             <div class="ribbon-controls labelled">
-              <button id="btn-toggle-mode" type="button">Raw Markdown</button>
-              <button data-command="focus" type="button">Focus Mode</button>
-              <button data-command="theme" type="button">Theme</button>
+              <button id="btn-toggle-mode" aria-label="Raw Markdown" title="Raw Markdown" type="button">Raw Markdown</button>
+              <button data-command="focus" aria-label="Focus Mode" title="Focus Mode" type="button">Focus Mode</button>
+              <button data-command="theme" aria-label="Theme" title="Theme" type="button">Theme</button>
             </div>
             <h2>Workspace</h2>
           </div>
@@ -149,8 +149,8 @@
         <section class="ribbon-panel" data-ribbon-panel="help" aria-label="Help" hidden>
           <div class="ribbon-group">
             <div class="ribbon-controls labelled">
-              <button data-help-toggle="true" type="button">Markdown help</button>
-              <button data-shortcuts-toggle="true" type="button">Keyboard shortcuts</button>
+              <button data-help-toggle="true" aria-label="Markdown help" title="Markdown help" type="button">Markdown help</button>
+              <button data-shortcuts-toggle="true" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" type="button">Keyboard shortcuts</button>
             </div>
             <h2>Help</h2>
           </div>
@@ -186,6 +186,8 @@
             <button id="btn-open" type="button">Open a file</button>
             <button id="empty-paste" type="button">Paste markdown</button>
           </div>
+          <div class="empty-rule"></div>
+          <div id="recent-files" class="recent-files" aria-label="Recent files"></div>
           <div class="empty-rule"></div>
           <div class="empty-caption">Start from a template</div>
           <div class="template-grid">

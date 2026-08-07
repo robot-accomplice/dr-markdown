@@ -22,7 +22,8 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 - Native syntax highlighting for raw markdown and language-tagged fenced code blocks
 - Mermaid Diagram rendering plus a guided Mermaid starter assistant
 - Contextual table, code-block language, and diagram controls on the document surface
-- Runtime settings for document font, code font, ligatures, editor width, default mode, and format-on-save
+- Persistent settings for document font, code font, ligatures, editor width, default mode, and format-on-save
+- Recent markdown documents on the start screen, backed by native preference storage
 - Print and PDF export through the native print dialog path
 - Native open/save dialogs; files associate with the app on macOS
 - Atomic saves — a crashed write never leaves you a truncated file
@@ -32,7 +33,6 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 
 ### On the roadmap
 
-- Persistent preferences and recent-workspace indexing
 - Precise per-block editor selection models beyond the current contextual controls
 - Image asset copying and richer export formats
 - Comments, sharing, sync/Git, extensions, and collaboration surfaces
@@ -40,7 +40,35 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 
 ## Screenshots
 
-Coming after the alpha UI stabilizes.
+Screenshots are generated from the checked-in frontend with:
+
+```sh
+go run ./tools/screenshots
+```
+
+Run that command whenever a UI-facing fix changes layout, chrome, controls, or
+visible editor behavior, and commit the refreshed files under
+`docs/assets/screenshots/`.
+
+### Start screen
+
+![Dr. Markdown start screen](docs/assets/screenshots/start.png)
+
+### Formatted editor
+
+![Dr. Markdown formatted editor](docs/assets/screenshots/formatted.png)
+
+### Raw editor
+
+![Dr. Markdown raw editor](docs/assets/screenshots/raw.png)
+
+### Split editor
+
+![Dr. Markdown split editor](docs/assets/screenshots/split.png)
+
+### Settings
+
+![Dr. Markdown settings](docs/assets/screenshots/settings.png)
 
 ## Getting started
 
@@ -95,10 +123,9 @@ Markdown on disk is the source of truth. The WYSIWYG surface round-trips through
 
 ## Known limitations
 
-- Runtime preferences are session-scoped until a native preference store lands.
 - Code-block hover/right-click language editing targets rendered fenced blocks; deeper cursor-aware block editing is still future work.
 - Direct PDF file generation is not implemented; PDF export uses the OS print dialog's Save as PDF path.
-- Raw-mode syntax highlighting is deferred — CodeMirror currently runs without a markdown language pack.
+- Raw/Split marker hiding preserves source caret alignment by hiding marker glyph visibility rather than reflowing source text.
 - Native-dialog flows (open/save/dirty guards) have manual checks pending beyond the automated corpus.
 
 ## Contributing

@@ -22,6 +22,7 @@ const state = {
   rawOptions: {
     softWrap: true,
     lineNumbers: true,
+    hideMarkdownMarkers: false,
   },
   settings: {
     theme: 'light',
@@ -35,6 +36,7 @@ const state = {
     formatOnSave: false,
   },
   systemFonts: [],
+  recents: [],
 }
 
 const fallbackFonts = ['Public Sans', 'Georgia', 'Menlo', 'Monaco', 'SF Mono', 'JetBrains Mono']
@@ -139,6 +141,7 @@ const els = {
   btnCloseTab: document.getElementById('btn-close-tab'),
   emptyStart: document.getElementById('empty-start'),
   emptyPaste: document.getElementById('empty-paste'),
+  recentFiles: document.getElementById('recent-files'),
   statusMode: document.getElementById('status-mode'),
   statusSync: document.getElementById('status-sync'),
   statWords: document.getElementById('stat-words'),
@@ -161,6 +164,7 @@ let settingsTab = 'editor'
 let selectedCodeLanguage = 'javascript'
 let editingCodeFenceIndex = null
 let selectedDiagramType = 'flowchart'
+let editingDiagramFenceIndex = null
 let syncingSplitScroll = false
 
 const codeLanguages = [
@@ -336,6 +340,7 @@ function refreshRibbonState() {
   document.body.classList.toggle('right-panel-hidden', state.rightPanelHidden)
   document.body.classList.toggle('raw-soft-wrap', state.mode === 'raw' && state.rawOptions.softWrap)
   document.body.classList.toggle('raw-line-numbers', state.mode === 'raw' && state.rawOptions.lineNumbers)
+  document.body.classList.toggle('source-hide-markers', state.rawOptions.hideMarkdownMarkers)
   document.querySelectorAll('[data-command="theme"]').forEach((el) => {
     el.classList.toggle('active', document.body.classList.contains('dark'))
   })
@@ -349,6 +354,33 @@ function refreshDocumentStats(doc) {
   els.statWords.textContent = String(words)
   els.statReadTime.textContent = `${Math.max(0, Math.ceil(words / 220))} min`
   els.statusSync.textContent = doc?.path ? 'Synced · local' : 'Not synced'
+}
+
+function refreshRecentFiles() {
+  if (!els.recentFiles) return
+  if (state.recents.length === 0) {
+    els.recentFiles.replaceChildren()
+    els.recentFiles.hidden = true
+    return
+  }
+  els.recentFiles.hidden = false
+  const caption = document.createElement('div')
+  caption.className = 'empty-caption'
+  caption.textContent = 'Recent files'
+  const list = document.createElement('div')
+  list.className = 'recent-file-list'
+  for (const recent of state.recents) {
+    const row = document.createElement('button')
+    row.type = 'button'
+    row.dataset.recentFile = recent.path
+    row.title = recent.path
+    row.innerHTML = `<strong></strong><span></span>`
+    row.querySelector('strong').textContent = recent.title || titleForPath(recent.path, '')
+    row.querySelector('span').textContent = recent.path
+    row.addEventListener('click', () => openRecentDocument(recent.path))
+    list.append(row)
+  }
+  els.recentFiles.replaceChildren(caption, list)
 }
 
 function toggleSidePanel(side) {
@@ -488,6 +520,7 @@ function rawEditorTogglesElement() {
     <div class="rail-caption">Editor</div>
     ${rawToggleRow('softWrap', 'Soft wrap', state.rawOptions.softWrap)}
     ${rawToggleRow('lineNumbers', 'Line numbers', state.rawOptions.lineNumbers)}
+    ${rawToggleRow('hideMarkdownMarkers', 'Hide markers', state.rawOptions.hideMarkdownMarkers)}
   `
   panel.querySelectorAll('[data-raw-toggle]').forEach((toggle) => {
     toggle.addEventListener('change', () => setRawOption(toggle.dataset.rawToggle, toggle.checked))
@@ -534,11 +567,41 @@ function syncActiveState() {
   refreshRibbonState()
   refreshOutlinePanel(doc)
   refreshDocumentStats(doc)
+  refreshRecentFiles()
   document.body.classList.toggle(
     'app-empty',
     Boolean(doc && !doc.started && doc.markdown.trim() === '' && state.mode === 'wysiwyg')
   )
   refreshContextualControls(doc)
+}
+
+function handleRenderedBlockSelection(event) {
+  if (state.mode !== 'wysiwyg') return
+  const table = event.target.closest?.('#wysiwyg table')
+  const diagram = event.target.closest?.('#wysiwyg .mermaid-render')
+  if (table) {
+    const tables = Array.from(els.wysiwyg.querySelectorAll('table'))
+    const tableIndex = tables.indexOf(table)
+    if (tableIndex < 0) return
+    state.editorContext = { blockType: 'table', tableIndex }
+  } else if (diagram) {
+    const diagramFenceIndex = Number(diagram.dataset.diagramFenceIndex)
+    if (!Number.isInteger(diagramFenceIndex)) return
+    state.editorContext = { blockType: 'diagram', diagramFenceIndex }
+  } else {
+    return
+  }
+  refreshRenderedBlockSelection()
+  refreshContextualControls(activeDoc())
+}
+
+function refreshRenderedBlockSelection() {
+  els.wysiwyg.querySelectorAll('table').forEach((table, index) => {
+    table.classList.toggle('selected-block', state.editorContext.blockType === 'table' && state.editorContext.tableIndex === index)
+  })
+  els.wysiwyg.querySelectorAll('.mermaid-render').forEach((diagram) => {
+    diagram.classList.toggle('selected-block', state.editorContext.blockType === 'diagram' && Number(diagram.dataset.diagramFenceIndex) === state.editorContext.diagramFenceIndex)
+  })
 }
 
 function refreshContextualControls(doc) {
@@ -588,7 +651,7 @@ function contextualButton(command, label) {
   button.dataset.contextCommand = command
   button.textContent = label
   button.addEventListener('click', () => {
-    if (command === 'diagram-assistant') openDiagramAssistant()
+    if (command === 'diagram-assistant') openDiagramAssistant({ editFenceIndex: state.editorContext.diagramFenceIndex })
     else runCommand(command)
   })
   return button
@@ -670,6 +733,7 @@ async function mountMarkdown(md) {
   } else {
     await wysiwyg.setMarkdown(els.wysiwyg, md)
     await highlightFormattedCodeBlocks(md)
+    refreshRenderedBlockSelection()
   }
 }
 
@@ -741,6 +805,29 @@ async function openDocument() {
   syncActiveState()
   bridge.setDirty(false)
   lastPushedDirty = false
+  await refreshNativePreferences()
+}
+
+async function openRecentDocument(path) {
+  if (state.dirty) {
+    const proceed = await bridge.resolveUnsavedChanges()
+    if (!proceed) return
+  }
+  await persistCurrentEditorText()
+  cancelPendingPush()
+  const res = await bridge.openRecentDocument(path)
+  if (!res || (!res.path && !res.content)) return
+  const doc = activeDoc()
+  doc.path = res.path
+  doc.title = titleForPath(res.path, doc.id)
+  doc.markdown = res.content
+  doc.savedText = res.content
+  doc.started = true
+  await mountMarkdown(res.content)
+  syncActiveState()
+  bridge.setDirty(false)
+  lastPushedDirty = false
+  await refreshNativePreferences()
 }
 
 async function save() {
@@ -754,6 +841,7 @@ async function save() {
   syncActiveState()
   bridge.setDirty(false)
   lastPushedDirty = false
+  await refreshNativePreferences()
 }
 
 async function saveAs() {
@@ -769,6 +857,7 @@ async function saveAs() {
   syncActiveState()
   bridge.setDirty(false)
   lastPushedDirty = false
+  await refreshNativePreferences()
 }
 
 async function formatDocumentIfRequested(doc) {
@@ -805,6 +894,7 @@ async function runCommand(command) {
   if (command === 'close-tab') return closeActiveTab()
   if (command === 'theme') return toggleTheme()
   if (command === 'focus') return toggleFocus()
+  if (command === 'image') return insertImage()
 
   const editorContext = currentEditorContext()
   await persistCurrentEditorText()
@@ -812,6 +902,17 @@ async function runCommand(command) {
   const doc = activeDoc()
   doc.markdown = applyCommand(command, doc.markdown, editorContext)
   state.editorContext = {}
+  await mountMarkdown(doc.markdown)
+  markEdited(doc.markdown)
+}
+
+async function insertImage() {
+  await persistCurrentEditorText()
+  startEditing(true)
+  const doc = activeDoc()
+  const result = await bridge.importImage(doc.path)
+  if (!result?.markdown) return
+  doc.markdown = appendBlock(doc.markdown, result.markdown)
   await mountMarkdown(doc.markdown)
   markEdited(doc.markdown)
 }
@@ -829,7 +930,6 @@ function applyCommand(command, md, editorContext = {}) {
     'inline-code': (text) => appendBlock(text, '`code`'),
     highlight: (text) => appendBlock(text, '<mark>highlighted text</mark>'),
     link: (text) => appendBlock(text, '[link text](https://example.com)'),
-    image: (text) => appendBlock(text, '![image](image-placeholder.png)'),
     math: (text) => appendBlock(text, '$$\nE = mc^2\n$$'),
     'bullet-list': (text) => appendBlock(text, '- List item'),
     'numbered-list': (text) => appendBlock(text, '1. List item'),
@@ -848,14 +948,14 @@ function applyCommand(command, md, editorContext = {}) {
     'code-block': (text) => appendBlock(text, '```text\ncode\n```'),
     mermaid: (text) => appendBlock(text, '```mermaid\ngraph TD\n  A[Start] --> B[Finish]\n```'),
     hr: (text) => appendBlock(text, '---'),
-    'table-add-row': addTableRow,
-    'table-remove-row': removeTableRow,
-    'table-add-column': addTableColumn,
-    'table-remove-column': removeTableColumn,
-    'table-align-left': (text) => alignTable(text, 'left'),
-    'table-align-center': (text) => alignTable(text, 'center'),
-    'table-align-right': (text) => alignTable(text, 'right'),
-    'table-delete': deleteFirstTable,
+    'table-add-row': (text) => addTableRow(text, editorContext.tableIndex),
+    'table-remove-row': (text) => removeTableRow(text, editorContext.tableIndex),
+    'table-add-column': (text) => addTableColumn(text, editorContext.tableIndex),
+    'table-remove-column': (text) => removeTableColumn(text, editorContext.tableIndex),
+    'table-align-left': (text) => alignTable(text, 'left', editorContext.tableIndex),
+    'table-align-center': (text) => alignTable(text, 'center', editorContext.tableIndex),
+    'table-align-right': (text) => alignTable(text, 'right', editorContext.tableIndex),
+    'table-delete': (text) => deleteTable(text, editorContext.tableIndex),
   }
   return transforms[command]?.(md) ?? md
 }
@@ -1043,13 +1143,16 @@ function rewriteCodeFenceLanguage(md, fenceIndex, language) {
   return lines.join('\n')
 }
 
-function tableBounds(md) {
+function tableBounds(md, tableIndex = 0) {
   const lines = md.split('\n')
+  let currentTable = -1
   for (let i = 0; i < lines.length - 1; i++) {
     if (isTableRow(lines[i]) && isDividerRow(lines[i + 1])) {
+      currentTable++
       let end = i + 2
       while (end < lines.length && isTableRow(lines[end])) end++
-      return { lines, start: i, end }
+      if (currentTable === (Number.isInteger(tableIndex) ? tableIndex : 0)) return { lines, start: i, end }
+      i = end - 1
     }
   }
   return null
@@ -1063,55 +1166,55 @@ function isDividerRow(line) {
   return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line)
 }
 
-function addTableRow(md) {
-  return rewriteFirstTable(md, (rows) => {
+function addTableRow(md, tableIndex = 0) {
+  return rewriteTable(md, tableIndex, (rows) => {
     const cols = splitTableRow(rows[0]).length
     rows.push(tableRow(Array.from({ length: cols }, () => '')))
     return rows
   })
 }
 
-function removeTableRow(md) {
-  return rewriteFirstTable(md, (rows) => {
+function removeTableRow(md, tableIndex = 0) {
+  return rewriteTable(md, tableIndex, (rows) => {
     if (rows.length > 3) rows.pop()
     return rows
   })
 }
 
-function addTableColumn(md) {
-  return rewriteFirstTable(md, (rows) => rows.map((row, index) => {
+function addTableColumn(md, tableIndex = 0) {
+  return rewriteTable(md, tableIndex, (rows) => rows.map((row, index) => {
     const cells = splitTableRow(row)
     cells.push(index === 0 ? `Header ${cells.length + 1}` : index === 1 ? '---' : '')
     return tableRow(cells)
   }))
 }
 
-function removeTableColumn(md) {
-  return rewriteFirstTable(md, (rows) => rows.map((row) => {
+function removeTableColumn(md, tableIndex = 0) {
+  return rewriteTable(md, tableIndex, (rows) => rows.map((row) => {
     const cells = splitTableRow(row)
     if (cells.length > 1) cells.pop()
     return tableRow(cells)
   }))
 }
 
-function alignTable(md, alignment) {
+function alignTable(md, alignment, tableIndex = 0) {
   const marker = { left: ':---', center: ':---:', right: '---:' }[alignment]
-  return rewriteFirstTable(md, (rows) => {
+  return rewriteTable(md, tableIndex, (rows) => {
     const cols = splitTableRow(rows[0]).length
     rows[1] = tableRow(Array.from({ length: cols }, () => marker))
     return rows
   })
 }
 
-function deleteFirstTable(md) {
-  const bounds = tableBounds(md)
+function deleteTable(md, tableIndex = 0) {
+  const bounds = tableBounds(md, tableIndex)
   if (!bounds) return md
   bounds.lines.splice(bounds.start, bounds.end - bounds.start)
   return bounds.lines.join('\n').replace(/\n{3,}/g, '\n\n')
 }
 
-function rewriteFirstTable(md, transform) {
-  const bounds = tableBounds(md)
+function rewriteTable(md, tableIndex, transform) {
+  const bounds = tableBounds(md, tableIndex)
   if (!bounds) return md
   const rows = bounds.lines.slice(bounds.start, bounds.end)
   bounds.lines.splice(bounds.start, rows.length, ...transform(rows))
@@ -1170,6 +1273,49 @@ function applyRuntimeSettings() {
   document.body.classList.toggle('show-formatted-markers', state.settings.showFormattedMarkers)
 }
 
+async function loadNativePreferences() {
+  const prefs = await bridge.loadPreferences()
+  mergeNativePreferences(prefs)
+}
+
+async function refreshNativePreferences() {
+  const prefs = await bridge.loadPreferences()
+  if (prefs?.recents) {
+    state.recents = normalizeRecents(prefs.recents)
+    refreshRecentFiles()
+  }
+}
+
+function mergeNativePreferences(prefs) {
+  if (!prefs || typeof prefs !== 'object') return
+  if (prefs.settings && typeof prefs.settings === 'object') {
+    state.settings = { ...state.settings, ...prefs.settings }
+  }
+  if (prefs.rawOptions && typeof prefs.rawOptions === 'object') {
+    state.rawOptions = { ...state.rawOptions, ...prefs.rawOptions }
+  }
+  state.recents = normalizeRecents(prefs.recents)
+}
+
+function normalizeRecents(recents) {
+  if (!Array.isArray(recents)) return []
+  return recents
+    .filter((recent) => recent && typeof recent.path === 'string' && recent.path.trim() !== '')
+    .map((recent) => ({
+      path: recent.path,
+      title: recent.title || titleForPath(recent.path, ''),
+      lastOpenedAt: recent.lastOpenedAt || '',
+    }))
+}
+
+function preferencesEnvelope() {
+  return {
+    settings: { ...state.settings },
+    rawOptions: { ...state.rawOptions },
+    recents: state.recents.map((recent) => ({ ...recent })),
+  }
+}
+
 function refreshRawOptionState() {
   refreshRibbonState()
   if (state.mode === 'raw') {
@@ -1177,6 +1323,9 @@ function refreshRawOptionState() {
     raw.close()
     raw.open(els.raw, md, onEdited, state.rawOptions)
     refreshRawPanel()
+  }
+  if (state.mode === 'split') {
+    refreshSplitSourceHighlight()
   }
 }
 
@@ -1221,6 +1370,8 @@ function saveSettings() {
   state.rawOptions = { ...settingsDraft.rawOptions }
   applyRuntimeSettings()
   refreshRawOptionState()
+  const pending = bridge.savePreferences(preferencesEnvelope())
+  if (pending?.catch) pending.catch((err) => console.warn('preferences save failed', err))
   closeSettings()
 }
 
@@ -1298,6 +1449,7 @@ function renderEditorSettings(content) {
       </label>
       ${settingsToggleRow('softWrap', 'Soft wrap', 'Wrap long raw markdown lines to the editor width.', settingsDraft.rawOptions.softWrap)}
       ${settingsToggleRow('lineNumbers', 'Line numbers', 'Show a source gutter in Raw mode.', settingsDraft.rawOptions.lineNumbers)}
+      ${settingsToggleRow('hideMarkdownMarkers', 'Hide markers', 'Hide markdown marker glyphs in Raw and Split source without changing source text.', settingsDraft.rawOptions.hideMarkdownMarkers)}
       ${settingsToggleRow('formatOnSave', 'Format on save', 'Normalize markdown spacing and block boundaries when saving.', settingsDraft.settings.formatOnSave)}
     </div>
   `
@@ -1309,7 +1461,7 @@ function renderEditorSettings(content) {
     settingsDraft.settings.editorWidth = Number(width.value)
     content.querySelector('output').textContent = `${width.value} ch`
   })
-  for (const field of ['softWrap', 'lineNumbers']) {
+  for (const field of ['softWrap', 'lineNumbers', 'hideMarkdownMarkers']) {
     content.querySelector(`[data-settings-field="${field}"]`).addEventListener('change', (event) => {
       settingsDraft.rawOptions[field] = event.target.checked
     })
@@ -1443,7 +1595,7 @@ function onSplitEdited() {
 }
 
 function refreshSplitSourceHighlight() {
-  els.splitSourceHighlight.innerHTML = `${highlightMarkdownSource(els.splitSource.value)}\n`
+  els.splitSourceHighlight.innerHTML = `${highlightMarkdownSource(els.splitSource.value, state.rawOptions)}\n`
 }
 
 function syncSplitSourceScroll() {
@@ -1485,6 +1637,7 @@ async function highlightFormattedCodeBlocks(md) {
       const rendered = document.createElement('div')
       rendered.className = 'mermaid-render'
       rendered.dataset.language = 'mermaid'
+      rendered.dataset.diagramFenceIndex = String(fenceIndex)
       rendered.innerHTML = await renderMermaidDiagram(source)
       code.closest('pre')?.replaceWith(rendered)
       continue
@@ -1826,12 +1979,14 @@ function renderCodeAssistant() {
   focusFirstControl(modal)
 }
 
-function openDiagramAssistant() {
+function openDiagramAssistant({ editFenceIndex = null } = {}) {
+  editingDiagramFenceIndex = editFenceIndex
   selectedDiagramType = 'flowchart'
   renderDiagramAssistant()
 }
 
 function closeDiagramAssistant() {
+  editingDiagramFenceIndex = null
   els.diagramAssistantRoot.replaceChildren()
 }
 
@@ -1839,21 +1994,51 @@ async function insertSelectedDiagram() {
   await persistCurrentEditorText()
   startEditing(true)
   const doc = activeDoc()
-  doc.markdown = appendBlock(doc.markdown, `\`\`\`mermaid\n${currentDiagramSource()}\n\`\`\``)
+  const source = currentDiagramSource()
+  doc.markdown = Number.isInteger(editingDiagramFenceIndex)
+    ? rewriteMermaidFenceSource(doc.markdown, editingDiagramFenceIndex, source)
+    : appendBlock(doc.markdown, `\`\`\`mermaid\n${source}\n\`\`\``)
   await mountMarkdown(doc.markdown)
   markEdited(doc.markdown)
   closeDiagramAssistant()
 }
 
+function rewriteMermaidFenceSource(md, fenceIndex, source) {
+  if (!Number.isInteger(fenceIndex)) return md
+  const lines = md.split('\n')
+  let currentFenceIndex = -1
+  let inFence = false
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^```\s*([A-Za-z0-9_+#.-]*)/)
+    if (!match) continue
+    if (inFence) {
+      inFence = false
+      continue
+    }
+    currentFenceIndex++
+    const language = normalizeLanguage(match[1] || 'text')
+    inFence = true
+    if (currentFenceIndex !== fenceIndex || language !== 'mermaid') continue
+    let end = i + 1
+    while (end < lines.length && !/^```/.test(lines[end])) end++
+    if (end >= lines.length) return md
+    lines.splice(i + 1, end - i - 1, ...source.split('\n'))
+    return lines.join('\n')
+  }
+  return md
+}
+
 function renderDiagramAssistant() {
+  const editing = Number.isInteger(editingDiagramFenceIndex)
   const modal = document.createElement('div')
   modal.className = 'settings-scrim diagram-scrim'
   modal.dataset.diagramAssistant = 'true'
+  if (editing) modal.dataset.diagramEditIndex = String(editingDiagramFenceIndex)
   modal.innerHTML = `
     <section class="diagram-dialog" role="dialog" aria-modal="true" aria-labelledby="diagram-title">
       <div class="diagram-content">
-        <h1 id="diagram-title">Mermaid Diagram</h1>
-        <p>Choose the starter diagram that best matches what you want to draw.</p>
+        <h1 id="diagram-title">${editing ? 'Edit Mermaid Diagram' : 'Mermaid Diagram'}</h1>
+        <p>${editing ? 'Apply a guided replacement to the selected diagram.' : 'Choose the starter diagram that best matches what you want to draw.'}</p>
         <div class="diagram-type-grid">
           ${Object.entries(diagramTemplates).map(([type, template]) => diagramTypeButton(type, template)).join('')}
         </div>
@@ -1866,7 +2051,7 @@ function renderDiagramAssistant() {
       </div>
       <footer class="settings-footer">
         <button type="button" data-diagram-action="cancel">Cancel</button>
-        <button class="primary" type="button" data-diagram-action="insert">Insert diagram</button>
+        <button class="primary" type="button" data-diagram-action="insert">${editing ? 'Apply diagram' : 'Insert diagram'}</button>
       </footer>
     </section>
   `
@@ -2014,6 +2199,7 @@ function wire() {
     const button = event.target.closest('[data-panel-toggle]')
     if (button) toggleSidePanel(button.dataset.panelToggle)
   })
+  els.wysiwyg.addEventListener('click', handleRenderedBlockSelection)
   document.querySelectorAll('[data-export-toggle]').forEach((button) => {
     button.addEventListener('click', toggleExportMenu)
   })
@@ -2105,6 +2291,7 @@ function wire() {
 
 async function boot() {
   await loadTheme()
+  await loadNativePreferences()
   applyRuntimeSettings()
   suppressBrowserDefaults()
   const first = createDoc()
@@ -2126,6 +2313,7 @@ async function boot() {
     setMode,
     toggleSplit,
     openDocument,
+    openRecentDocument,
     save,
     saveAs,
     newDocument,

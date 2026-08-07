@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
@@ -65,6 +66,23 @@ func bootApp(t *testing.T, ctx context.Context, url string) {
 	t.Helper()
 	var ready bool
 	err := chromedp.Run(ctx,
+		chromedp.EmulateViewport(1440, 900),
+		chromedp.Navigate(url),
+		chromedp.Poll("window.__app && window.__app.ready === true", &ready),
+	)
+	if err != nil {
+		t.Fatalf("app boot: %v", err)
+	}
+}
+
+func bootAppWithNativeStub(t *testing.T, ctx context.Context, url string, script string) {
+	t.Helper()
+	var ready bool
+	err := chromedp.Run(ctx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			_, err := page.AddScriptToEvaluateOnNewDocument(script).Do(ctx)
+			return err
+		}),
 		chromedp.EmulateViewport(1440, 900),
 		chromedp.Navigate(url),
 		chromedp.Poll("window.__app && window.__app.ready === true", &ready),
@@ -212,15 +230,30 @@ func TestRawScreenControlsAreBacked(t *testing.T) {
 	var syntaxPanel bool
 	evalJS(t, ctx, `document.querySelector('[data-raw-panel="syntax"]') !== null &&
 		document.querySelector('[data-raw-toggle="softWrap"]') !== null &&
-		document.querySelector('[data-raw-toggle="lineNumbers"]') !== null`, &syntaxPanel)
+		document.querySelector('[data-raw-toggle="lineNumbers"]') !== null &&
+		document.querySelector('[data-raw-toggle="hideMarkdownMarkers"]') !== null`, &syntaxPanel)
 	if !syntaxPanel {
 		t.Fatal("raw mode should replace the outline panel with backed syntax/editor controls")
 	}
 
-	var hideMarkersRendered bool
-	evalJS(t, ctx, `document.body.textContent.includes('Hide markers')`, &hideMarkersRendered)
-	if hideMarkersRendered {
-		t.Fatal("Hide markers should not render until marker hiding is backed by a syntax layer")
+	var markerVisible bool
+	evalJS(t, ctx, `document.querySelector('#raw .markdown-marker') !== null &&
+		getComputedStyle(document.querySelector('#raw .markdown-marker')).visibility !== 'hidden'`, &markerVisible)
+	if !markerVisible {
+		t.Fatal("markdown markers should be visible by default in raw mode")
+	}
+	evalJS(t, ctx, `(() => {
+		const toggle = document.querySelector('[data-raw-toggle="hideMarkdownMarkers"]')
+		toggle.checked = true
+		toggle.dispatchEvent(new Event('change', { bubbles: true }))
+		return 'ok'
+	})()`, &res)
+	var markerHidden bool
+	evalJS(t, ctx, `document.body.classList.contains('source-hide-markers') &&
+		getComputedStyle(document.querySelector('#raw .markdown-marker')).visibility === 'hidden' &&
+		window.__app.getMarkdown() === `+strconv.Quote(fixture), &markerHidden)
+	if !markerHidden {
+		t.Fatal("Hide markers should hide source marker glyphs without mutating markdown")
 	}
 
 	var guttersVisible bool
@@ -259,6 +292,28 @@ func TestRawScreenControlsAreBacked(t *testing.T) {
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if md != fixture {
 		t.Fatalf("raw toggles must not mutate markdown: %q", md)
+	}
+}
+
+func TestSplitSourceHonorsHideMarkdownMarkersWithoutMutatingSource(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	fixture := "# Split Markers\n\n[Docs](https://example.com)\n\n```go\nfmt.Println(\"ok\")\n```\n"
+	var res string
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.setRawOption('hideMarkdownMarkers', true).then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
+
+	var hidden bool
+	evalJS(t, ctx, `document.body.classList.contains('source-hide-markers') &&
+		document.querySelector('#split-source-highlight .markdown-marker') !== null &&
+		getComputedStyle(document.querySelector('#split-source-highlight .markdown-marker')).visibility === 'hidden' &&
+		document.getElementById('split-source').value === `+strconv.Quote(fixture), &hidden)
+	if !hidden {
+		t.Fatal("split source should hide markdown marker glyphs without changing textarea source")
 	}
 }
 
@@ -1179,6 +1234,40 @@ func TestCurrentScreenHasNoDecorativeEnabledControls(t *testing.T) {
 	}
 }
 
+func TestImageRibbonCommandImportsNativeAssetMarkdown(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.__imageImportPath = '';
+	globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		ImportImage: async (documentPath) => {
+			globalThis.__imageImportPath = documentPath
+			return { markdown: '![photo](doc.assets/photo.png)', markdownPath: 'doc.assets/photo.png' }
+		},
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; 'ok'`, &res)
+	evalJS(t, ctx, `(() => {
+		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
+		doc.path = '/tmp/doc.md'
+		doc.title = 'doc.md'
+		return 'ok'
+	})()`, &res)
+	evalJS(t, ctx, "window.__app.runCommand('image').then(() => 'ok')", &res)
+
+	var imported bool
+	evalJS(t, ctx, `globalThis.__imageImportPath === '/tmp/doc.md' &&
+		window.__app.getMarkdown().includes('![photo](doc.assets/photo.png)') &&
+		!window.__app.getMarkdown().includes('image-placeholder.png')`, &imported)
+	if !imported {
+		t.Fatal("Image command should insert native imported asset markdown, not a placeholder")
+	}
+}
+
 func TestSettingsModalAppliesBackedRuntimePreferences(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()
@@ -1350,6 +1439,124 @@ func TestSettingsEditorDesignControlsAreBacked(t *testing.T) {
 	evalJS(t, ctx, "window.__app.state.mode", &mode)
 	if mode != "raw" {
 		t.Fatalf("default mode setting should apply to new documents, got %q", mode)
+	}
+}
+
+func TestBootLoadsPersistedPreferencesThroughBridge(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootAppWithNativeStub(t, ctx, url, `globalThis.__nativeCalls = [];
+	globalThis.go = { main: { App: {
+		LoadPreferences: async () => {
+			globalThis.__nativeCalls.push(['loadPreferences'])
+			return {
+				settings: {
+					theme: 'dark',
+					defaultMode: 'split',
+					documentFont: 'Georgia',
+					documentFontSize: 18,
+					codeFont: 'Menlo',
+					codeLigatures: false,
+					editorWidth: 88,
+					showFormattedMarkers: true,
+					formatOnSave: true
+				},
+				rawOptions: { softWrap: false, lineNumbers: false },
+				recents: []
+			}
+		},
+		SetDirty: async () => {},
+		UpdateContent: async () => {},
+		ListFontFamilies: async () => ['Georgia', 'Menlo']
+	} } };`)
+
+	var applied bool
+	evalJS(t, ctx, `globalThis.__nativeCalls.some((call) => call[0] === 'loadPreferences') &&
+		window.__app.state.settings.theme === 'dark' &&
+		window.__app.state.settings.defaultMode === 'split' &&
+		window.__app.state.rawOptions.lineNumbers === false &&
+		document.body.classList.contains('dark') &&
+		document.body.classList.contains('show-formatted-markers') &&
+		getComputedStyle(document.documentElement).getPropertyValue('--document-font').includes('Georgia') &&
+		getComputedStyle(document.documentElement).getPropertyValue('--code-font').includes('Menlo') &&
+		getComputedStyle(document.documentElement).getPropertyValue('--document-font-size').trim() === '18px' &&
+		getComputedStyle(document.documentElement).getPropertyValue('--editor-width').trim() === '88ch'`, &applied)
+	if !applied {
+		t.Fatal("boot should load persisted settings and apply runtime preferences before first interaction")
+	}
+}
+
+func TestSettingsSavePersistsNativePreferences(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootAppWithNativeStub(t, ctx, url, `globalThis.__savedPreferences = null;
+	globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		SavePreferences: async (prefs) => { globalThis.__savedPreferences = prefs },
+		ListFontFamilies: async () => ['Georgia', 'Menlo'],
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } };`)
+
+	var res string
+	evalJS(t, ctx, "window.__app.openSettings().then(() => 'ok')", &res)
+	evalJS(t, ctx, `(() => {
+		const width = document.querySelector('[data-settings-field="editorWidth"]')
+		width.value = '86'
+		width.dispatchEvent(new Event('input', { bubbles: true }))
+		const lineNumbers = document.querySelector('[data-settings-field="lineNumbers"]')
+		lineNumbers.checked = false
+		lineNumbers.dispatchEvent(new Event('change', { bubbles: true }))
+		document.querySelector('[data-settings-action="save"]').click()
+		return 'ok'
+	})()`, &res)
+
+	var saved bool
+	evalJS(t, ctx, `globalThis.__savedPreferences &&
+		globalThis.__savedPreferences.settings.editorWidth === 86 &&
+		globalThis.__savedPreferences.rawOptions.lineNumbers === false &&
+		Array.isArray(globalThis.__savedPreferences.recents)`, &saved)
+	if !saved {
+		t.Fatal("settings save should persist the full native preferences envelope")
+	}
+}
+
+func TestRecentFilesRenderAndOpenSpecificRecentBridge(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootAppWithNativeStub(t, ctx, url, `globalThis.__recentOpened = '';
+	globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({
+			settings: {},
+			rawOptions: {},
+			recents: [{ path: '/tmp/recent.md', title: 'recent.md', lastOpenedAt: '2026-08-07T13:00:00Z' }]
+		}),
+		OpenRecentDocument: async (path) => {
+			globalThis.__recentOpened = path
+			return { path, content: '# Recent\n\nLoaded from native recents.\n' }
+		},
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } };`)
+
+	var recentRows []string
+	evalJS(t, ctx, `Array.from(document.querySelectorAll('[data-recent-file]')).map((row) => row.textContent.trim())`, &recentRows)
+	if len(recentRows) != 1 || !strings.Contains(recentRows[0], "recent.md") {
+		t.Fatalf("recent files should render on the empty state: %v", recentRows)
+	}
+
+	var res string
+	evalJS(t, ctx, `document.querySelector('[data-recent-file]').click(); 'ok'`, &res)
+	var opened bool
+	evalJS(t, ctx, `globalThis.__recentOpened === '/tmp/recent.md' &&
+		window.__app.state.path === '/tmp/recent.md' &&
+		window.__app.getMarkdown().includes('Loaded from native recents') &&
+		!document.body.classList.contains('app-empty')`, &opened)
+	if !opened {
+		t.Fatal("clicking a recent file should call OpenRecentDocument and load that markdown")
 	}
 }
 
@@ -1678,6 +1885,107 @@ func TestContextualDocumentControlsManageBlocksInPlace(t *testing.T) {
 	}
 }
 
+func TestContextualTableControlsTargetSelectedRenderedTable(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	fixture := strings.Join([]string{
+		"# Multiple Tables",
+		"",
+		"| First | Status |",
+		"| --- | --- |",
+		"| A | Keep |",
+		"",
+		"| Second | Status |",
+		"| --- | --- |",
+		"| B | Change |",
+		"",
+	}, "\n")
+	var res string
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
+	evalJS(t, ctx, `document.querySelectorAll('#wysiwyg table')[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); 'ok'`, &res)
+	evalJS(t, ctx, `document.querySelector('[data-context-command="table-add-row"]').click(); 'ok'`, &res)
+
+	var md string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	firstRows := strings.Count(tableSection(md, "First"), "\n|")
+	secondRows := strings.Count(tableSection(md, "Second"), "\n|")
+	if firstRows != 2 {
+		t.Fatalf("selected-table operation should not mutate first table, rows=%d markdown:\n%s", firstRows, md)
+	}
+	if secondRows != 3 {
+		t.Fatalf("selected-table operation should add a row to the second table, rows=%d markdown:\n%s", secondRows, md)
+	}
+}
+
+func tableSection(md string, header string) string {
+	lines := strings.Split(md, "\n")
+	for i, line := range lines {
+		if strings.Contains(line, header) {
+			end := i
+			for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
+				end++
+			}
+			return strings.Join(lines[i:end], "\n")
+		}
+	}
+	return ""
+}
+
+func TestContextualDiagramAssistantTargetsSelectedRenderedDiagram(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	fixture := strings.Join([]string{
+		"# Diagrams",
+		"",
+		"```mermaid",
+		"graph TD",
+		"  A[First] --> B[Keep]",
+		"```",
+		"",
+		"```mermaid",
+		"graph TD",
+		"  C[Second] --> D[Replace]",
+		"```",
+		"",
+	}, "\n")
+	var res string
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
+	evalJS(t, ctx, `document.querySelectorAll('#wysiwyg .mermaid-render')[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); 'ok'`, &res)
+	evalJS(t, ctx, `document.querySelector('[data-context-command="diagram-assistant"]').click(); 'ok'`, &res)
+
+	var editDialog bool
+	evalJS(t, ctx, `document.querySelector('[data-diagram-assistant][data-diagram-edit-index="1"]') !== null`, &editDialog)
+	if !editDialog {
+		t.Fatal("contextual diagram assistant should edit the selected diagram fence")
+	}
+
+	evalJS(t, ctx, `(() => {
+		const input = document.querySelector('[data-diagram-field="yes"]')
+		input.value = 'Updated'
+		input.dispatchEvent(new Event('input', { bubbles: true }))
+		document.querySelector('[data-diagram-action="insert"]').click()
+		return 'ok'
+	})()`, &res)
+
+	var md string
+	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
+	if !strings.Contains(md, "A[First] --> B[Keep]") {
+		t.Fatalf("diagram edit should not mutate first diagram:\n%s", md)
+	}
+	if !strings.Contains(md, "C[Updated]") && !strings.Contains(md, "C[Updated]") {
+		t.Fatalf("diagram edit should replace the selected second diagram:\n%s", md)
+	}
+	if strings.Count(md, "```mermaid") != 2 {
+		t.Fatalf("diagram edit should replace, not append, mermaid fences:\n%s", md)
+	}
+}
+
 func TestExistingCodeBlockLanguageCanBeChangedFromBlockTools(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()
@@ -1910,6 +2218,68 @@ func TestVisualBaselineScreensRenderWithoutOverflow(t *testing.T) {
 	})()`, &exportVisible)
 	if !exportVisible {
 		t.Fatal("Export control should fit inside the constrained default window")
+	}
+}
+
+func TestResponsiveShellAdaptsToReducedWindowWidths(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `window.__app.setMarkdown("# Responsive\n\nParagraph\n").then(() => "ok")`, &res)
+
+	widths := []int64{1280, 980, 760}
+	for _, width := range widths {
+		if err := chromedp.Run(ctx, chromedp.EmulateViewport(width, 820)); err != nil {
+			t.Fatalf("set viewport %d: %v", width, err)
+		}
+		var layoutOK bool
+		evalJS(t, ctx, `document.documentElement.scrollWidth <= window.innerWidth + 1`, &layoutOK)
+		if !layoutOK {
+			var report string
+			evalJS(t, ctx, `JSON.stringify({
+				width: window.innerWidth,
+				scrollWidth: document.documentElement.scrollWidth,
+				ribbonWidth: document.getElementById('ribbon').getBoundingClientRect().width,
+				export: document.querySelector('[data-export-toggle]').getBoundingClientRect().toJSON?.() || {}
+			})`, &report)
+			t.Fatalf("responsive shell should not overflow at %dpx: %s", width, report)
+		}
+		var exportVisible bool
+		evalJS(t, ctx, `(() => {
+			const rect = document.querySelector('[data-export-toggle]').getBoundingClientRect()
+			return rect.left >= 0 && rect.right <= window.innerWidth && rect.width > 0
+		})()`, &exportVisible)
+		if !exportVisible {
+			t.Fatalf("Export should remain fully visible at %dpx", width)
+		}
+	}
+
+	if err := chromedp.Run(ctx, chromedp.EmulateViewport(760, 820)); err != nil {
+		t.Fatalf("set narrow viewport: %v", err)
+	}
+	var collapsedAccessible bool
+	evalJS(t, ctx, `Array.from(document.querySelectorAll('.ribbon-controls.labelled button')).every((button) => {
+		const rect = button.getBoundingClientRect()
+		return rect.width <= 44 && button.getAttribute('aria-label') && button.title
+	})`, &collapsedAccessible)
+	if !collapsedAccessible {
+		t.Fatal("labelled ribbon buttons should collapse to icon-sized controls with aria labels and tooltips at narrow widths")
+	}
+
+	var canvasVisible bool
+	evalJS(t, ctx, `document.getElementById('document-region').getBoundingClientRect().width >= 360`, &canvasVisible)
+	if !canvasVisible {
+		var report string
+		evalJS(t, ctx, `JSON.stringify({
+			documentRegion: document.getElementById('document-region').getBoundingClientRect().width,
+			fileRail: document.getElementById('file-rail').getBoundingClientRect().width,
+			outline: document.getElementById('outline-panel').getBoundingClientRect().width,
+			empty: document.getElementById('empty-state').getBoundingClientRect().width
+		})`, &report)
+		t.Fatalf("reduced window should preserve a usable document canvas: %s", report)
 	}
 }
 

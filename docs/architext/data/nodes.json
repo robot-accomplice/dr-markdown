@@ -99,18 +99,21 @@
       "id": "frontend-shell",
       "type": "service",
       "name": "Frontend editor shell",
-      "summary": "The browser-view shell that manages document buffers, ribbon commands, modes, file rail, empty state, raw options, outline, settings, and status without duplicating the native title bar.",
+      "summary": "The browser-view shell that manages document buffers, ribbon commands, modes, file rail, empty state, raw options, outline, settings, recents, and status without duplicating the native title bar.",
       "responsibilities": [
         "Maintain active in-memory document state",
         "Route ribbon, template, rail, mode, and raw-option interactions",
-        "Apply session runtime preferences for appearance and source-editor options",
+        "Load and apply persisted runtime preferences for appearance and source-editor options",
+        "Render native recent-file entries on the start screen and reopen them through the bridge",
         "Render backed code-block and Mermaid Diagram assistants before inserting fenced blocks",
         "Render Split preview inline markdown semantics for links, emphasis, strong text, and inline code",
         "Wrap rendered fenced code blocks in a shared language/copy chrome",
         "Render Mermaid fenced blocks as diagrams in formatted and split preview surfaces",
         "Use local SVG symbols for ribbon insert icons",
+        "Compact ribbon controls and side panels at reduced window widths without clipping primary actions",
         "Track independent left and right side-panel visibility",
         "Render contextual document controls for detected table, code block, and Mermaid Diagram blocks",
+        "Target contextual table and Mermaid Diagram controls at the selected rendered block instead of the first matching block",
         "Expose block-local language editing for rendered non-Mermaid code blocks",
         "Render formatted print output and invoke the macOS print-to-PDF path through the webview print dialog",
         "Load installed font family names through the bridge for font settings",
@@ -144,7 +147,9 @@
         "markdown-document",
         "dirty-state",
         "editor-mode",
-        "installed-font-family"
+        "installed-font-family",
+        "application-preferences",
+        "recent-document"
       ],
       "security": [
         "Suppresses browser context menu and drag/drop navigation in the shell"
@@ -172,8 +177,11 @@
         "TestRibbonIconSpacingAndBackedButtonsVisibility",
         "TestSidePanelsCanBeHiddenIndependently",
         "TestContextualDocumentControlsManageBlocksInPlace",
+        "TestContextualTableControlsTargetSelectedRenderedTable",
+        "TestContextualDiagramAssistantTargetsSelectedRenderedDiagram",
         "TestExistingCodeBlockLanguageCanBeChangedFromBlockTools",
         "TestPrintAndPDFExportUseFormattedPrintPipeline",
+        "TestResponsiveShellAdaptsToReducedWindowWidths",
         "TestVisualBaselineScreensRenderWithoutOverflow"
       ]
     },
@@ -194,12 +202,15 @@
       "runtime": "Embedded webview JavaScript and Wails binding layer",
       "interfaces": [
         "OpenDocument",
+        "OpenRecentDocument",
         "SaveDocument",
         "SaveDocumentAs",
         "SetDirty",
         "UpdateContent",
         "ResolveUnsavedChanges",
-        "ListFontFamilies"
+        "ListFontFamilies",
+        "LoadPreferences",
+        "SavePreferences"
       ],
       "dependencies": [
         "wails-go-api"
@@ -208,7 +219,9 @@
         "markdown-document",
         "local-file-path",
         "dirty-state",
-        "installed-font-family"
+        "installed-font-family",
+        "application-preferences",
+        "recent-document"
       ],
       "security": [
         "No direct filesystem access from frontend code"
@@ -233,11 +246,14 @@
       "id": "wails-go-api",
       "type": "service",
       "name": "Wails Go API",
-      "summary": "The Go object bound into Wails that owns native dialogs, dirty state, current content, close guard, and title updates.",
+      "summary": "The Go object bound into Wails that adapts native dialogs, document IO, preference storage, dirty state, current content, close guard, font discovery, and title updates behind testable ports.",
       "responsibilities": [
         "Open and save markdown files through native dialogs",
+        "Open a specific recent document path without showing the picker",
         "Track dirty/current content for close protection",
         "Update the native window title",
+        "Load and save application preferences",
+        "Record recent documents after open and save",
         "List installed font families for settings controls",
         "Override Wails message-dialog alert artwork with a transparent icon"
       ],
@@ -251,13 +267,16 @@
       ],
       "dependencies": [
         "document-io",
-        "font-discovery"
+        "font-discovery",
+        "preference-store"
       ],
       "dataHandled": [
         "markdown-document",
         "local-file-path",
         "dirty-state",
-        "installed-font-family"
+        "installed-font-family",
+        "application-preferences",
+        "recent-document"
       ],
       "security": [
         "Uses native dialog APIs for file paths",
@@ -277,7 +296,56 @@
       "verification": [
         "e2e/e2e_test.go",
         "internal/fonts/fonts_test.go",
+        "internal/preferences/store_test.go",
+        "app_m5_test.go",
         "TestIconFreeMessageDialogPNGIsValidTransparentImage"
+      ]
+    },
+    {
+      "id": "preference-store",
+      "type": "module",
+      "name": "Preference store",
+      "summary": "A Go package that persists editor settings, raw view options, and recent document entries as local JSON under the user's config directory.",
+      "responsibilities": [
+        "Load an empty preference envelope when no preference file exists",
+        "Save backed settings and raw editor options as JSON",
+        "Record recent documents with de-duplication and newest-first ordering",
+        "Reject corrupt preference JSON rather than silently discarding it"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "internal/preferences/store.go",
+        "internal/preferences/store_test.go"
+      ],
+      "runtime": "Go inside Wails application process",
+      "interfaces": [
+        "preferences.Store.Load",
+        "preferences.Store.Save",
+        "preferences.Store.RecordRecent"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "application-preferences",
+        "recent-document",
+        "local-file-path"
+      ],
+      "security": [
+        "Stores only local preferences and recent document paths on the user's machine"
+      ],
+      "observability": [
+        "Go unit tests"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "open-save-document",
+        "configure-runtime-settings"
+      ],
+      "relatedDecisions": [
+        "session-runtime-settings"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "internal/preferences/store_test.go"
       ]
     },
     {
@@ -410,12 +478,13 @@
       "id": "raw-editor",
       "type": "module",
       "name": "Raw editor adapter",
-      "summary": "A highlighted textarea source editor that mounts raw markdown editing with line numbers, soft-wrap configuration, and a synchronized syntax overlay.",
+      "summary": "A highlighted textarea source editor that mounts raw markdown editing with line numbers, soft-wrap configuration, marker hiding, and a synchronized tokenized syntax layer.",
       "responsibilities": [
         "Create and destroy the raw source editor",
         "Serialize raw markdown",
         "Emit raw-mode edits to the frontend shell",
-        "Render markdown highlighting without mutating source text"
+        "Render markdown highlighting without mutating source text",
+        "Tokenize markdown marker glyphs so Raw and Split source modes can hide them without changing textarea content"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -450,12 +519,11 @@
       "relatedDecisions": [
         "vendored-editor-bundles"
       ],
-      "knownRisks": [
-        "raw-syntax-layer-missing"
-      ],
+      "knownRisks": [],
       "verification": [
         "TestRawScreenControlsAreBacked",
-        "TestSourceModesRenderMarkdownSyntaxHighlighting"
+        "TestSourceModesRenderMarkdownSyntaxHighlighting",
+        "TestSplitSourceHonorsHideMarkdownMarkersWithoutMutatingSource"
       ]
     },
     {

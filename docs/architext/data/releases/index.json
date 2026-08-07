@@ -11,11 +11,11 @@
       "lastUpdated": "2026-08-07T00:00:00.000Z",
       "summary": "Bring the Dr. Markdown macOS editor shell, current formatted screen, raw, split, insert, and settings surfaces to honest backed behavior.",
       "counts": {
-        "features": 22,
+        "features": 24,
         "bugFixes": 0,
         "workstreams": 1,
-        "blockers": 3,
-        "complete": 20,
+        "blockers": 0,
+        "complete": 24,
         "inProgress": 0,
         "planned": 0,
         "stretch": 0
