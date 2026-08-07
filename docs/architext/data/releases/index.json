@@ -1,0 +1,26 @@
+{
+  "currentReleaseId": "initial-architext-buildout",
+  "releases": [
+    {
+      "id": "initial-architext-buildout",
+      "version": "0.3.0",
+      "name": "M3 editor surface",
+      "status": "in-progress",
+      "posture": "at-risk",
+      "targetWindow": "Current milestone",
+      "lastUpdated": "2026-08-07T00:00:00.000Z",
+      "summary": "Bring the Dr. Markdown macOS editor shell, current formatted screen, raw, split, insert, and settings surfaces to honest backed behavior.",
+      "counts": {
+        "features": 22,
+        "bugFixes": 0,
+        "workstreams": 1,
+        "blockers": 3,
+        "complete": 20,
+        "inProgress": 0,
+        "planned": 0,
+        "stretch": 0
+      },
+      "file": "initial-architext-buildout.json"
+    }
+  ]
+}

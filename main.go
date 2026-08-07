@@ -17,8 +17,8 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:  "Dr. Markdown",
-		Width:  1280,
-		Height: 800,
+		Width:  1440,
+		Height: 900,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

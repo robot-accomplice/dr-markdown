@@ -18,7 +18,12 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 ### Available today
 
 - WYSIWYG editing of GitHub-flavored markdown: tables, task lists, strikethrough, and syntax-highlighted code blocks (via Milkdown Crepe's built-ins)
-- Raw markdown mode with a `Ctrl/Cmd+E` toggle — switch between rendered and source views without losing your place
+- Raw and split markdown modes with formatted preview/source switching
+- Native syntax highlighting for raw markdown and language-tagged fenced code blocks
+- Mermaid Diagram rendering plus a guided Mermaid starter assistant
+- Contextual table, code-block language, and diagram controls on the document surface
+- Runtime settings for document font, code font, ligatures, editor width, default mode, and format-on-save
+- Print and PDF export through the native print dialog path
 - Native open/save dialogs; files associate with the app on macOS
 - Atomic saves — a crashed write never leaves you a truncated file
 - Dirty tracking with an unsaved-changes close guard and an open-over-dirty guard
@@ -27,14 +32,15 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 
 ### On the roadmap
 
-- **M3** — full ribbon toolbar
-- **M4** — mermaid inline rendering; proper YAML frontmatter handling
-- **M5** — images; HTML and PDF export
-- **M6** — themes, focus mode, status bar; Windows and Linux packaging
+- Persistent preferences and recent-workspace indexing
+- Precise per-block editor selection models beyond the current contextual controls
+- Image asset copying and richer export formats
+- Comments, sharing, sync/Git, extensions, and collaboration surfaces
+- Developer ID signing, notarization, and Windows/Linux packaging
 
 ## Screenshots
 
-Coming once the M3 ribbon lands — the current UI is a clean editing surface, not much to show off yet.
+Coming after the alpha UI stabilizes.
 
 ## Getting started
 
@@ -83,11 +89,15 @@ Markdown on disk is the source of truth. The WYSIWYG surface round-trips through
 | Wails | v2.13.0 |
 | Milkdown Crepe | 7.22.0 |
 | CodeMirror | 6.0.2 |
+| Highlight.js | 11.11.1 |
+| Mermaid | 11.6.0 |
 | chromedp (e2e) | v0.16.0 |
 
 ## Known limitations
 
-- YAML frontmatter is currently re-parsed as markdown body content (proper handling planned for M4).
+- Runtime preferences are session-scoped until a native preference store lands.
+- Code-block hover/right-click language editing targets rendered fenced blocks; deeper cursor-aware block editing is still future work.
+- Direct PDF file generation is not implemented; PDF export uses the OS print dialog's Save as PDF path.
 - Raw-mode syntax highlighting is deferred — CodeMirror currently runs without a markdown language pack.
 - Native-dialog flows (open/save/dirty guards) have manual checks pending beyond the automated corpus.
 

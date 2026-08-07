@@ -1,0 +1,468 @@
+{
+  "flows": [
+    {
+      "id": "app-boot",
+      "name": "Application boot",
+      "status": "implemented",
+      "summary": "Wails embeds frontend assets, creates the Go app binding, and mounts the editor shell with a blank in-memory document.",
+      "trigger": "User launches Dr. Markdown",
+      "actors": [
+        "macos-user"
+      ],
+      "steps": [
+        {
+          "id": "start-app",
+          "from": "macos-user",
+          "to": "wails-desktop-app",
+          "action": "launchApplication",
+          "summary": "The user launches the Wails application.",
+          "data": []
+        },
+        {
+          "id": "bind-go-api",
+          "from": "wails-desktop-app",
+          "to": "wails-go-api",
+          "action": "bindAppApi",
+          "summary": "Wails binds the Go App object and startup hook.",
+          "data": [
+            "dirty-state"
+          ]
+        },
+        {
+          "id": "mount-shell",
+          "from": "wails-desktop-app",
+          "to": "frontend-shell",
+          "action": "serveEmbeddedAssets",
+          "summary": "The embedded frontend assets mount the shell and blank document state.",
+          "data": [
+            "editor-mode"
+          ]
+        },
+        {
+          "id": "mount-wysiwyg",
+          "from": "frontend-shell",
+          "to": "wysiwyg-editor",
+          "action": "createFormattedEditor",
+          "summary": "The formatted editor mounts with an empty markdown document.",
+          "data": [
+            "markdown-document"
+          ]
+        }
+      ],
+      "guarantees": [
+        "Application opens to a blank document instead of sample content",
+        "Embedded app content does not duplicate the native window title bar"
+      ],
+      "failureBehavior": [
+        "Wails logs startup/build errors in dev mode"
+      ],
+      "observability": [
+        "Wails dev output",
+        "TestEditorBoots"
+      ],
+      "verification": [
+        "go test ./... -count=1"
+      ],
+      "knownGaps": []
+    },
+    {
+      "id": "open-save-document",
+      "name": "Open and save document",
+      "status": "implemented",
+      "summary": "The frontend calls the Wails bridge, the Go API uses native dialogs, and Document IO reads or atomically writes markdown files.",
+      "trigger": "User opens or saves a markdown document",
+      "actors": [
+        "macos-user"
+      ],
+      "steps": [
+        {
+          "id": "request-file-operation",
+          "from": "frontend-shell",
+          "to": "wails-bridge",
+          "action": "callDocumentOperation",
+          "summary": "The shell requests open, save, save-as, or unsaved-change resolution.",
+          "data": [
+            "markdown-document",
+            "local-file-path",
+            "dirty-state"
+          ]
+        },
+        {
+          "id": "invoke-native-api",
+          "from": "wails-bridge",
+          "to": "wails-go-api",
+          "action": "invokeBoundMethod",
+          "summary": "The bridge calls a bound Go method through Wails.",
+          "data": [
+            "markdown-document",
+            "local-file-path",
+            "dirty-state"
+          ]
+        },
+        {
+          "id": "read-or-write-file",
+          "from": "wails-go-api",
+          "to": "document-io",
+          "action": "readOrWriteMarkdown",
+          "summary": "The Go API reads selected files or atomically writes saved content.",
+          "data": [
+            "markdown-document",
+            "local-file-path"
+          ]
+        },
+        {
+          "id": "return-document-state",
+          "from": "wails-go-api",
+          "to": "frontend-shell",
+          "action": "returnResult",
+          "summary": "The shell updates document path, content, dirty state, file rail, and title state.",
+          "data": [
+            "markdown-document",
+            "local-file-path",
+            "dirty-state"
+          ],
+          "kind": "return",
+          "returnOf": "invoke-native-api"
+        }
+      ],
+      "guarantees": [
+        "Save writes atomically through the document package",
+        "Dirty buffers are guarded before open/close replacement"
+      ],
+      "failureBehavior": [
+        "Open/save failures show native error dialogs and do not discard dirty content"
+      ],
+      "observability": [
+        "Window title dirty marker",
+        "Bridge stub call assertions"
+      ],
+      "verification": [
+        "TestFileFlowWithStubBridge",
+        "TestOpenOverDirtyGuard",
+        "internal/document/document_test.go"
+      ],
+      "knownGaps": [
+        "No persistent workspace/recent-file index yet"
+      ]
+    },
+    {
+      "id": "edit-markdown-document",
+      "name": "Edit markdown document",
+      "status": "implemented",
+      "summary": "The frontend shell maintains in-memory documents, routes ribbon/template interactions, renders backed assistant previews, and pushes dirty/content updates to the Wails API.",
+      "trigger": "User types or invokes a backed editor command",
+      "actors": [
+        "macos-user"
+      ],
+      "steps": [
+        {
+          "id": "edit-buffer",
+          "from": "macos-user",
+          "to": "frontend-shell",
+          "action": "editOrCommandDocument",
+          "summary": "The user edits directly or applies a backed ribbon/template command.",
+          "data": [
+            "markdown-document"
+          ]
+        },
+        {
+          "id": "update-editor",
+          "from": "frontend-shell",
+          "to": "wysiwyg-editor",
+          "action": "mountOrSerializeMarkdown",
+          "summary": "The shell serializes or rebuilds the active formatted editor as needed.",
+          "data": [
+            "markdown-document"
+          ]
+        },
+        {
+          "id": "render-code-or-diagram-assistant",
+          "from": "frontend-shell",
+          "to": "diagram-renderer",
+          "action": "renderAssistantPreview",
+          "summary": "Code block insertion opens a language chooser, while Mermaid Diagram insertion opens a type-specific assistant with live diagram preview.",
+          "data": [
+            "markdown-document"
+          ]
+        },
+        {
+          "id": "render-mermaid-block",
+          "from": "frontend-shell",
+          "to": "diagram-renderer",
+          "action": "renderMermaidFence",
+          "summary": "Mermaid fenced blocks render as SVG diagrams in formatted and split preview surfaces.",
+          "data": [
+            "markdown-document"
+          ]
+        },
+        {
+          "id": "render-markdown-preview-semantics",
+          "from": "frontend-shell",
+          "to": "syntax-highlighter",
+          "action": "renderPreviewMarkdown",
+          "summary": "The shell renders Split preview inline markdown semantics and shared code-block chrome without mutating source markdown.",
+          "data": [
+            "markdown-document"
+          ]
+        },
+        {
+          "id": "toggle-side-panel-visibility",
+          "from": "macos-user",
+          "to": "frontend-shell",
+          "action": "toggleSidePanel",
+          "summary": "The user hides or restores the left file rail and right document panel independently without changing the markdown buffer.",
+          "data": [
+            "editor-mode"
+          ]
+        },
+        {
+          "id": "push-dirty",
+          "from": "frontend-shell",
+          "to": "wails-bridge",
+          "action": "pushDirtyAndContent",
+          "summary": "The shell pushes dirty state immediately and content after debounce.",
+          "data": [
+            "markdown-document",
+            "dirty-state"
+          ]
+        }
+      ],
+      "guarantees": [
+        "Visible enabled controls are backed by behavior",
+        "Formatting controls transform selected/current block content before insertion fallback",
+        "Code block insertion can declare a language from formatted mode",
+        "Mermaid fenced blocks render as diagrams instead of generic code blocks",
+        "Split preview renders common inline markdown syntax as document semantics",
+        "Rendered code blocks include language and Copy chrome",
+        "Left and right side panels can be hidden or restored independently without mutating markdown",
+        "Contextual document controls manage table, code-block language, and Mermaid Diagram assistance from the document surface",
+        "Right-click and hover tools on existing code blocks open a language dialog for the acted-on fenced block",
+        "Print and PDF export render formatted markdown and invoke the OS print dialog without mutating markdown"
+      ],
+      "failureBehavior": [
+        "Unavailable future controls are removed from the current screen rather than faked"
+      ],
+      "observability": [
+        "Status bar",
+        "Outline panel",
+        "E2E assertions"
+      ],
+      "verification": [
+        "TestCurrentScreenHasNoDecorativeEnabledControls",
+        "TestRibbonFormattingUsesSelectionInsteadOfAppending",
+        "TestStructureControlsFormatCurrentBlockInsteadOfAppending",
+        "TestBlockCommandsFormatCurrentBlockInsteadOfAppending",
+        "TestCodeBlockAssistantInsertsSelectedLanguageFromFormattedMode",
+        "TestMermaidDiagramAssistantInsertsSelectedDiagramType",
+        "TestMermaidBlocksRenderAsDiagrams",
+        "TestSplitPreviewRendersInlineMarkdownSemantics",
+        "TestFormattedDocumentUsesConfiguredDocumentFont",
+        "TestFencedCodeBlocksRenderDesignChrome",
+        "TestSidePanelsCanBeHiddenIndependently",
+        "TestContextualDocumentControlsManageBlocksInPlace",
+        "TestExistingCodeBlockLanguageCanBeChangedFromBlockTools",
+        "TestPrintAndPDFExportUseFormattedPrintPipeline",
+        "TestVisualBaselineScreensRenderWithoutOverflow"
+      ],
+      "knownGaps": [
+        "Image asset copying remains deferred",
+        "Share and comments remain deferred"
+      ]
+    },
+    {
+      "id": "switch-editor-mode",
+      "name": "Switch editor mode",
+      "status": "implemented",
+      "summary": "The shell switches one active markdown buffer between formatted, raw, and split editor surfaces while preserving content.",
+      "trigger": "User chooses Formatted, Raw, or Split mode",
+      "actors": [
+        "macos-user"
+      ],
+      "steps": [
+        {
+          "id": "persist-current-view",
+          "from": "frontend-shell",
+          "to": "frontend-shell",
+          "action": "persistCurrentEditorText",
+          "summary": "The shell serializes the current editor before switching modes.",
+          "data": [
+            "markdown-document",
+            "editor-mode"
+          ]
+        },
+        {
+          "id": "open-raw",
+          "from": "frontend-shell",
+          "to": "raw-editor",
+          "action": "openRawEditor",
+          "summary": "Raw mode mounts the highlighted source editor with raw options for soft wrap and line-number visibility.",
+          "data": [
+            "markdown-document",
+            "editor-mode"
+          ]
+        },
+        {
+          "id": "highlight-source",
+          "from": "raw-editor",
+          "to": "syntax-highlighter",
+          "action": "highlightMarkdownSource",
+          "summary": "The raw editor renders a synchronized markdown highlighting overlay without changing the textarea source.",
+          "data": [
+            "markdown-document"
+          ]
+        },
+        {
+          "id": "return-formatted",
+          "from": "frontend-shell",
+          "to": "wysiwyg-editor",
+          "action": "rebuildFormattedEditor",
+          "summary": "Formatted mode rebuilds Crepe from the current markdown buffer.",
+          "data": [
+            "markdown-document",
+            "editor-mode"
+          ]
+        }
+      ],
+      "guarantees": [
+        "Markdown round-trips across mode switches",
+        "Raw mode exposes only backed source-view controls"
+      ],
+      "failureBehavior": [
+        "Hide-markers is deferred because the highlighted overlay is not an editable token/decoration layer"
+      ],
+      "observability": [
+        "Mode segmented control",
+        "Raw syntax legend panel",
+        "Status mode text"
+      ],
+      "verification": [
+        "TestModeToggleRoundTrip",
+        "TestRawScreenControlsAreBacked"
+      ],
+      "knownGaps": [
+        "Hide markers is not implemented"
+      ]
+    },
+    {
+      "id": "configure-runtime-settings",
+      "name": "Configure runtime settings",
+      "status": "implemented",
+      "summary": "The frontend shell opens a settings modal, loads installed font families through the native bridge, stages user preference changes in a draft, and applies only backed runtime preferences on Save.",
+      "trigger": "User opens Settings from the primary ribbon tab row",
+      "actors": [
+        "macos-user"
+      ],
+      "steps": [
+        {
+          "id": "open-settings-modal",
+          "from": "macos-user",
+          "to": "frontend-shell",
+          "action": "openSettings",
+          "summary": "The shell copies current runtime settings and raw options into a modal draft.",
+          "data": [
+            "editor-mode"
+          ]
+        },
+        {
+          "id": "load-installed-fonts",
+          "from": "frontend-shell",
+          "to": "wails-bridge",
+          "action": "listFontFamilies",
+          "summary": "The shell asks the native app for installed font family names before rendering font controls.",
+          "data": [
+            "installed-font-family"
+          ]
+        },
+        {
+          "id": "invoke-font-api",
+          "from": "wails-bridge",
+          "to": "wails-go-api",
+          "action": "invokeListFontFamilies",
+          "summary": "The bridge calls the Wails-bound font listing method.",
+          "data": [
+            "installed-font-family"
+          ]
+        },
+        {
+          "id": "discover-fonts",
+          "from": "wails-go-api",
+          "to": "font-discovery",
+          "action": "listFamilies",
+          "summary": "The Go API reads system and user font directories and normalizes family names.",
+          "data": [
+            "installed-font-family"
+          ]
+        },
+        {
+          "id": "return-installed-fonts",
+          "from": "wails-go-api",
+          "to": "frontend-shell",
+          "action": "returnFontFamilies",
+          "summary": "The Go API returns sorted font family names discovered from system and user font directories.",
+          "data": [
+            "installed-font-family"
+          ],
+          "kind": "return",
+          "returnOf": "invoke-font-api"
+        },
+        {
+          "id": "edit-settings-draft",
+          "from": "macos-user",
+          "to": "frontend-shell",
+          "action": "editSettingsDraft",
+          "summary": "The user changes staged default mode, formatted marker visibility, editor width, format-on-save, theme, document font, document font size, code font, code ligatures, soft-wrap, or line-number preferences.",
+          "data": [
+            "editor-mode",
+            "installed-font-family"
+          ]
+        },
+        {
+          "id": "save-settings-draft",
+          "from": "frontend-shell",
+          "to": "frontend-shell",
+          "action": "applyRuntimeSettings",
+          "summary": "Save applies the draft to body classes, CSS variables, and raw editor options.",
+          "data": [
+            "editor-mode"
+          ]
+        },
+        {
+          "id": "discard-settings-draft",
+          "from": "frontend-shell",
+          "to": "frontend-shell",
+          "action": "closeSettings",
+          "summary": "Cancel closes the modal without mutating runtime settings.",
+          "data": [
+            "editor-mode"
+          ]
+        }
+      ],
+      "guarantees": [
+        "Settings controls are backed by runtime behavior",
+        "Code font options come from native installed-font discovery when Wails bindings are available",
+        "Document and code font preferences apply to rendered editor surfaces",
+        "Cancel does not apply draft preferences",
+        "Future-only settings categories are visible but disabled"
+      ],
+      "failureBehavior": [
+        "Preferences are not persisted across application launches until a native preference store is added"
+      ],
+      "observability": [
+        "Settings modal",
+        "Theme class",
+        "CSS preference variables",
+        "Raw editor option state"
+      ],
+      "verification": [
+        "TestSettingsModalAppliesBackedRuntimePreferences",
+        "TestSettingsCancelDiscardsDraftAndMarksFutureSectionsDisabled",
+        "TestSettingsEditorDesignControlsAreBacked",
+        "TestFamilyNameNormalizesFontFilenames"
+      ],
+      "knownGaps": [
+        "No persistent preference store",
+        "No Markdown flavour, Sync, Git, or Extensions settings yet"
+      ]
+    }
+  ]
+}

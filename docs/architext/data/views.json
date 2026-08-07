@@ -1,0 +1,170 @@
+{
+  "views": [
+    {
+      "id": "system-map",
+      "name": "Dr. Markdown System Map",
+      "type": "system-map",
+      "summary": "Local macOS app boundary, frontend shell, native Go API, editor adapters, and vendored editor assets.",
+      "lanes": [
+        {
+          "id": "user",
+          "name": "User",
+          "nodeIds": [
+            "macos-user"
+          ]
+        },
+        {
+          "id": "app",
+          "name": "Desktop App",
+          "nodeIds": [
+            "wails-desktop-app",
+            "frontend-shell",
+            "wails-bridge",
+            "wails-go-api"
+          ]
+        },
+        {
+          "id": "editing",
+          "name": "Editors and IO",
+          "nodeIds": [
+            "wysiwyg-editor",
+            "raw-editor",
+            "document-io",
+            "vendored-editor-assets"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dataflow",
+      "name": "Document Dataflow",
+      "type": "dataflow",
+      "summary": "Markdown content moves between local editor state, Wails bridge calls, native file operations, and editor adapters.",
+      "lanes": [
+        {
+          "id": "input",
+          "name": "User Input",
+          "nodeIds": [
+            "macos-user"
+          ]
+        },
+        {
+          "id": "frontend",
+          "name": "Frontend State",
+          "nodeIds": [
+            "frontend-shell",
+            "wysiwyg-editor",
+            "raw-editor",
+            "wails-bridge"
+          ]
+        },
+        {
+          "id": "native",
+          "name": "Native Boundary",
+          "nodeIds": [
+            "wails-go-api",
+            "document-io"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sequence",
+      "name": "Open and Save Sequence",
+      "type": "sequence",
+      "summary": "Native document IO sequence through the frontend bridge and Wails-bound Go API.",
+      "lanes": [
+        {
+          "id": "participants",
+          "name": "Participants",
+          "nodeIds": [
+            "macos-user",
+            "frontend-shell",
+            "wails-bridge",
+            "wails-go-api",
+            "document-io"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c4-context",
+      "name": "C4 Context",
+      "type": "c4-context",
+      "summary": "Dr. Markdown is a local desktop system used by a macOS user.",
+      "lanes": [
+        {
+          "id": "people",
+          "name": "People",
+          "nodeIds": [
+            "macos-user"
+          ]
+        },
+        {
+          "id": "system",
+          "name": "System",
+          "nodeIds": [
+            "wails-desktop-app"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c4-container",
+      "name": "C4 Container",
+      "type": "c4-container",
+      "summary": "The Wails application contains an embedded frontend shell, a Wails bridge/API boundary, editor adapters, and document IO.",
+      "scopeNodeId": "wails-desktop-app",
+      "lanes": [
+        {
+          "id": "frontend",
+          "name": "Frontend Webview",
+          "nodeIds": [
+            "frontend-shell"
+          ]
+        },
+        {
+          "id": "native",
+          "name": "Go Native Layer",
+          "nodeIds": [
+            "wails-go-api"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c4-component",
+      "name": "Frontend Shell Components",
+      "type": "c4-component",
+      "summary": "The frontend shell coordinates the bridge, WYSIWYG editor, and raw editor around one active markdown buffer.",
+      "scopeNodeId": "frontend-shell",
+      "lanes": [
+        {
+          "id": "components",
+          "name": "Components",
+          "nodeIds": [
+            "wails-bridge",
+            "wysiwyg-editor",
+            "raw-editor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c4-component-native",
+      "name": "Go API Components",
+      "type": "c4-component",
+      "summary": "The Wails Go API delegates local file reads and atomic writes to Document IO.",
+      "scopeNodeId": "wails-go-api",
+      "lanes": [
+        {
+          "id": "components",
+          "name": "Components",
+          "nodeIds": [
+            "document-io"
+          ]
+        }
+      ]
+    }
+  ]
+}

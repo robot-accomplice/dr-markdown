@@ -1,0 +1,124 @@
+{
+  "decisions": [
+    {
+      "id": "local-wails-app",
+      "status": "accepted",
+      "title": "Ship Dr. Markdown as a local Wails desktop app",
+      "context": "The application is targeted at macOS and embeds frontend assets through Wails rather than serving a website.",
+      "decision": "Use Wails to host the editor UI locally and bind native Go document operations into the frontend.",
+      "consequences": [
+        "The frontend can remain static assets embedded in the binary",
+        "Native file dialogs and close guards live in Go",
+        "Browser-only behavior must be suppressed or replaced where it leaks into the desktop UX"
+      ],
+      "relatedNodes": [
+        "wails-desktop-app",
+        "frontend-shell",
+        "wails-go-api"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "open-save-document"
+      ]
+    },
+    {
+      "id": "native-file-boundary",
+      "status": "accepted",
+      "title": "Keep filesystem access behind the Wails Go API",
+      "context": "The frontend shell runs in a webview and should not directly read or write local files.",
+      "decision": "Route open, save, save-as, dirty-state, and unsaved-change guard behavior through Wails-bound Go methods.",
+      "consequences": [
+        "E2E tests can stub bridge methods without native dialogs",
+        "Document IO stays testable as a Go package",
+        "The frontend owns editor state but not filesystem writes"
+      ],
+      "relatedNodes": [
+        "frontend-shell",
+        "wails-bridge",
+        "wails-go-api",
+        "document-io"
+      ],
+      "relatedFlows": [
+        "open-save-document"
+      ]
+    },
+    {
+      "id": "atomic-local-save",
+      "status": "accepted",
+      "title": "Write saved documents atomically",
+      "context": "Markdown saves should not leave a truncated target file if the process fails mid-write.",
+      "decision": "Write content to a same-directory temp file, fsync, close, and rename over the target path.",
+      "consequences": [
+        "Save behavior is covered by focused Go unit tests",
+        "Write failures remove the temp file when possible"
+      ],
+      "relatedNodes": [
+        "document-io"
+      ],
+      "relatedFlows": [
+        "open-save-document"
+      ]
+    },
+    {
+      "id": "vendored-editor-bundles",
+      "status": "accepted",
+      "title": "Use vendored editor bundles",
+      "context": "The frontend is currently static assets under frontend/dist and does not depend on an npm build at runtime.",
+    "decision": "Use vendored Milkdown Crepe, Highlight.js, Mermaid, and editor bundles through small local adapters.",
+      "consequences": [
+        "The app can build through Wails without npm install/build commands",
+        "Editor capabilities are limited to what the vendored bundles expose",
+      "Raw and Split source highlighting plus fenced-code highlighting are backed by the shared Highlight.js adapter",
+      "Mermaid assistant previews and Mermaid fenced-block rendering are backed by the shared Mermaid adapter",
+      "Raw hide-markers still require a future editable token/decoration layer"
+      ],
+    "relatedNodes": [
+      "wysiwyg-editor",
+      "raw-editor",
+      "syntax-highlighter",
+      "diagram-renderer",
+      "vendored-editor-assets"
+    ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
+    },
+    {
+      "id": "honest-visible-controls",
+      "status": "accepted",
+      "title": "Do not render decorative enabled controls",
+      "context": "The current screen is being brought to functional parity before moving through concept screens.",
+      "decision": "Visible enabled controls must either mutate state, call a native bridge, or be removed until their subsystem exists.",
+      "consequences": [
+        "Preview, Share, Export, Split, fake docs rows, and unsupported marker hiding are deferred rather than faked",
+        "E2E tests enforce that shell buttons are backed"
+      ],
+      "relatedNodes": [
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
+    },
+    {
+      "id": "session-runtime-settings",
+      "status": "accepted",
+      "title": "Keep first settings slice session-scoped",
+      "context": "The Settings concept includes application preferences, Sync, Git, extensions, and markdown flavour choices, but the current source has no native preference store or backing subsystems for those areas.",
+      "decision": "Implement Settings as a frontend-shell runtime preference modal with backed Editor, Appearance, and Shortcuts sections only; defer persistence and unbacked sections.",
+      "consequences": [
+        "Settings can stage changes and apply them without inventing a storage boundary",
+        "Theme, document font, document font size, system-derived code font, code ligatures, raw soft wrap, and raw line numbers are real session preferences",
+        "Markdown flavour, Sync, Git, Extensions, Preview, Share, Export, and Help settings remain absent until their backing subsystems exist"
+      ],
+      "relatedNodes": [
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "configure-runtime-settings"
+      ]
+    }
+  ]
+}
