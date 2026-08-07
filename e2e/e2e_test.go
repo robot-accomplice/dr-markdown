@@ -1675,6 +1675,97 @@ func TestDroppedImageFilesImportThroughAssetPolicy(t *testing.T) {
 	}
 }
 
+// The editor is the product; a bridge call failing at boot must not stop it
+// mounting. Previously a corrupt preferences.json rejected here and left a
+// blank window with no in-app recovery (issue #17).
+func TestBootSurvivesRejectedPreferences(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+
+	bootAppWithNativeStub(t, ctx, url, `globalThis.go = { main: { App: {
+		LoadPreferences: async () => { throw new Error('decode preferences: unexpected end of JSON input') },
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } };`)
+
+	var mounted bool
+	evalJS(t, ctx, `Boolean(window.__app && window.__app.ready === true &&
+		document.getElementById('wysiwyg') !== null)`, &mounted)
+	if !mounted {
+		t.Fatal("a rejected preferences load must not prevent the editor mounting")
+	}
+
+	// Defaults must still apply rather than leaving the shell unstyled.
+	var settingsApplied bool
+	evalJS(t, ctx, `typeof window.__app.state.settings.documentFontSize === 'number'`, &settingsApplied)
+	if !settingsApplied {
+		t.Error("runtime defaults should still be applied after a failed preferences load")
+	}
+}
+
+// Image resolution has to happen on every render surface, because a relative
+// asset path cannot resolve against the webview origin on any of them. Pinning
+// all three from one fixture means adding a fourth unresolved surface fails a
+// test that already exists (issue #18).
+func TestImageAssetsResolveOnEveryRenderSurface(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => ({ dataURI: 'data:image/png;base64,SURFACE', exists: true }),
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; window.print = () => {}; 'ok'`, &res)
+	evalJS(t, ctx, `(() => {
+		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
+		doc.path = '/tmp/doc.md'
+		return 'ok'
+	})()`, &res)
+	evalJS(t, ctx,
+		"window.__app.setMarkdown('# Surfaces\\n\\n![photo](doc.assets/photo.png)\\n').then(() => 'ok')", &res)
+
+	// 1. formatted editor
+	var formatted bool
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			if (document.querySelector('#wysiwyg img[src^="data:image/png;base64,SURFACE"]')) return true
+			await new Promise((r) => setTimeout(r, 20))
+		}
+		return false
+	})()`, &formatted)
+	if !formatted {
+		t.Error("formatted editor did not resolve the image asset")
+	}
+
+	// 2. split preview
+	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
+	var split bool
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			if (document.querySelector('#split-preview img[src^="data:image/png;base64,SURFACE"]')) return true
+			await new Promise((r) => setTimeout(r, 20))
+		}
+		return false
+	})()`, &split)
+	if !split {
+		t.Error("split preview did not resolve the image asset")
+	}
+
+	// 3. print / export
+	evalJS(t, ctx, "window.__app.printDocument('pdf').then(() => 'ok')", &res)
+	var printed bool
+	evalJS(t, ctx,
+		`Boolean(document.querySelector('#print-root img[src^="data:image/png;base64,SURFACE"]'))`, &printed)
+	if !printed {
+		t.Error("print/export did not resolve the image asset")
+	}
+}
+
 func TestSettingsModalAppliesBackedRuntimePreferences(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()
