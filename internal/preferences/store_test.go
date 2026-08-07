@@ -3,9 +3,76 @@ package preferences
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+// A corrupt preferences file must never stop the app starting: the editor is
+// the product, preferences are an enhancement. The bad file is preserved so
+// the failure is diagnosable rather than silently discarded.
+func TestLoadBacksUpCorruptPreferencesAndReturnsDefaults(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir, time.Now)
+	corrupt := []byte(`{"settings":{"theme":"da`)
+	if err := os.WriteFile(filepath.Join(dir, "preferences.json"), corrupt, 0o600); err != nil {
+		t.Fatalf("seed corrupt file: %v", err)
+	}
+
+	prefs, err := store.Load()
+	if err != nil {
+		t.Fatalf("corrupt preferences must not fail Load: %v", err)
+	}
+	if prefs.Settings == nil || prefs.RawOptions == nil || prefs.Recents == nil {
+		t.Fatalf("corrupt preferences should degrade to empty defaults, got %#v", prefs)
+	}
+	if len(prefs.Settings) != 0 || len(prefs.Recents) != 0 {
+		t.Fatalf("corrupt preferences should not yield partial data, got %#v", prefs)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	var backup string
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "preferences.json.corrupt-") {
+			backup = entry.Name()
+		}
+	}
+	if backup == "" {
+		t.Fatal("the corrupt file should be preserved for diagnosis, not discarded")
+	}
+	saved, err := os.ReadFile(filepath.Join(dir, backup))
+	if err != nil || string(saved) != string(corrupt) {
+		t.Fatalf("backup should hold the original bytes, got %q err %v", saved, err)
+	}
+}
+
+// Narrow on purpose: this pins temp-file cleanup, not atomicity. The atomicity
+// property (a failed write never truncates the existing file) is only
+// falsifiable where the write happens, so it is tested in internal/atomicfile.
+func TestSaveLeavesNoTempFilesBehind(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir, time.Now)
+	if err := store.Save(Preferences{Settings: map[string]any{"theme": "dark"}}); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.Name() != "preferences.json" {
+			t.Errorf("Save left a stray file behind: %s", entry.Name())
+		}
+	}
+	loaded, err := store.Load()
+	if err != nil || loaded.Settings["theme"] != "dark" {
+		t.Fatalf("round trip failed: %#v err %v", loaded, err)
+	}
+}
 
 func TestStoreLoadMissingFileReturnsEmptyPreferences(t *testing.T) {
 	store := NewStore(t.TempDir(), fixedClock())
@@ -90,7 +157,11 @@ func TestStoreRecordRecentDeduplicatesAndKeepsNewestFirst(t *testing.T) {
 	}
 }
 
-func TestStoreLoadRejectsCorruptJSON(t *testing.T) {
+// Superseded by TestLoadBacksUpCorruptPreferencesAndReturnsDefaults. Rejecting
+// corrupt JSON was the behaviour that prevented the app from starting at all
+// (issue #17); Load now recovers instead, so the contract asserted here
+// inverted deliberately rather than being dropped.
+func TestStoreLoadRecoversFromCorruptJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "preferences.json")
 	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
@@ -98,8 +169,12 @@ func TestStoreLoadRejectsCorruptJSON(t *testing.T) {
 	}
 	store := NewStore(dir, fixedClock())
 
-	if _, err := store.Load(); err == nil {
-		t.Fatal("Load should reject corrupt preferences JSON")
+	prefs, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load should recover from corrupt preferences JSON, got %v", err)
+	}
+	if len(prefs.Settings) != 0 || len(prefs.Recents) != 0 {
+		t.Fatalf("recovered preferences should be empty defaults, got %#v", prefs)
 	}
 }
 
@@ -131,15 +206,25 @@ func TestStoreSaveReturnsDirectoryCreationError(t *testing.T) {
 	}
 }
 
-func TestStoreRecordRecentPropagatesLoadError(t *testing.T) {
+// With Load recovering rather than failing (issue #17), a corrupt file must not
+// stop a recent being recorded either — the user's next open repairs the store.
+func TestStoreRecordRecentRecoversFromCorruptPreferences(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "preferences.json"), []byte("{"), 0o600); err != nil {
 		t.Fatalf("write corrupt fixture: %v", err)
 	}
 	store := NewStore(dir, fixedClock())
 
-	if _, err := store.RecordRecent("/tmp/doc.md"); err == nil {
-		t.Fatal("RecordRecent should return corrupt preference load errors")
+	recents, err := store.RecordRecent("/tmp/doc.md")
+	if err != nil {
+		t.Fatalf("RecordRecent should recover from corrupt preferences, got %v", err)
+	}
+	if len(recents) != 1 || recents[0].Path != "/tmp/doc.md" {
+		t.Fatalf("recents = %#v, want the newly opened document", recents)
+	}
+	reloaded, err := store.Load()
+	if err != nil || len(reloaded.Recents) != 1 {
+		t.Fatalf("store should be repaired on disk: %#v err %v", reloaded, err)
 	}
 }
 
