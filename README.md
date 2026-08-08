@@ -9,7 +9,25 @@
 [![Node.js](https://img.shields.io/badge/Node.js-not%20required-success.svg)](#architecture)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/robot-accomplice/dr-markdown/issues)
 
-Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) with a real editing surface — Milkdown Crepe on ProseMirror, CodeMirror for raw mode — vendored as self-contained ESM bundles. Markdown on disk is the source of truth; what you see is what gets saved.
+Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) with a real editing surface — Milkdown Crepe on ProseMirror, CodeMirror for raw mode — vendored as self-contained ESM bundles.
+
+> ## ⚠️ Caution: WYSIWYG editing rewrites your file
+>
+> **Editing a document in the WYSIWYG surface does not preserve your markdown byte-for-byte.** The surface parses markdown into ProseMirror's document model and re-serializes the whole document on save, so anything the model cannot represent is rewritten — and because an edit replaces the entire buffer, **one keystroke can change lines you never touched.**
+>
+> Measured on the current build, WYSIWYG editing will:
+>
+> - **delete inline `<br>`**, joining the words either side of it — `Cell one<br>cell two` becomes `Cell onecell two`
+> - **delete link reference definitions** and inline the links that used them; unused definitions are dropped outright
+> - rewrite **CRLF line endings to LF** across the whole file
+> - rewrite two-space hard breaks to `\`, `-`/`+` bullets to `*`, setext headings to ATX, indented code to fenced, `~~~` fences to ```` ``` ````, and `---` breaks to `***`
+> - strip closing `##` from ATX headings, strip trailing whitespace, and reflow table padding
+>
+> **If the exact bytes matter — a Hugo or Jekyll site, an Obsidian vault, anything under version control — edit in Raw mode (⌘/Ctrl-R).** Raw mode preserves every construct listed above. Its one exception is that line endings are still normalized to LF, because the underlying text control does that per the HTML spec.
+>
+> This is a property of the vendored editor, not a bug we can patch at the seams, so **we are actively evaluating alternative editing engines** with faithful markdown round-tripping. Until then the behaviour above is recorded in `e2e/fidelity_test.go`, which fails if any of it changes.
+>
+> Related: opening a document whose first block is a list currently marks it modified without any edit from you, so quitting offers to save the re-serialized text. Choose **Don't Save** unless you meant to change it.
 
 **Why?** Typora set the bar for distraction-free markdown editing, then went closed and paid. Dr. Markdown is the open-source answer: MIT licensed, native via the OS webview (no Electron), and built with zero Node.js anywhere — not at development time, not at build time, not at runtime. If you have Go, you can build it.
 
@@ -99,7 +117,9 @@ Outputs:
 - `build/bin/dr-markdown.app` — the app bundle
 - `build/dr-markdown.dmg` — drag the app to Applications and you're done
 
-Builds are self-signed ad-hoc. On machines other than the build host, Gatekeeper will flag the app: right-click → Open (or remove the quarantine attribute). Developer ID signing and notarization are future work.
+Builds carry only the linker's ad-hoc signature — they are neither Developer ID signed nor notarized — so on any machine but the build host Gatekeeper will refuse to open the app.
+
+To run it anyway: open it once, dismiss the warning, then go to **System Settings → Privacy & Security** and choose **Open Anyway**. The older right-click → Open shortcut no longer works for blocked apps on macOS 15 (Sequoia) and later. Developer ID signing and notarization are future work.
 
 ## Architecture
 
@@ -109,7 +129,7 @@ Three layers, no Node anywhere:
 2. **Vendored ESM bundles** — Milkdown Crepe and CodeMirror, pre-bundled once and committed; the app loads them as-is.
 3. **Hand-written app JS** — the glue: mode switching, load/save plumbing, dirty tracking.
 
-Markdown on disk is the source of truth. The WYSIWYG surface round-trips through it, and the chromedp round-trip corpus in `testdata/roundtrip` is the correctness gate — if a fixture doesn't round-trip, the change doesn't land. Full design notes: [docs/superpowers/specs/2026-08-05-dr-markdown-design.md](docs/superpowers/specs/2026-08-05-dr-markdown-design.md).
+Markdown on disk is the source of truth, and the chromedp round-trip corpus in `testdata/roundtrip` is the correctness gate — if a fixture doesn't round-trip, the change doesn't land. The corpus covers the constructs the WYSIWYG surface preserves; the constructs it **rewrites** are recorded separately in `e2e/fidelity_test.go` and summarized in the caution at the top of this file. Neither file is a claim of completeness: markdown the corpus has never been shown is markdown whose fidelity is unknown. Full design notes: [docs/superpowers/specs/2026-08-05-dr-markdown-design.md](docs/superpowers/specs/2026-08-05-dr-markdown-design.md).
 
 ## Tech stack
 
@@ -125,6 +145,11 @@ Markdown on disk is the source of truth. The WYSIWYG surface round-trips through
 
 ## Known limitations
 
+- **WYSIWYG editing rewrites markdown it cannot represent, and deletes inline `<br>` and link reference definitions — see the caution at the top of this file. Use Raw mode when the exact bytes matter.**
+- There is no check that a file changed on disk since you opened it. If another program (a `git pull`, a sync client, a second window) writes the file while it is open, saving overwrites those changes without warning.
+- Saving replaces the file via an atomic rename, which breaks hard links to it and drops extended attributes such as Finder tags. A read-only file can still be replaced this way, because the rename needs permission on the directory rather than the file.
+- Large documents are slow: roughly 4 s to open a 140 KB file and 10 s for 280 KB, with no progress indicator and no way to cancel. There is no size limit.
+- Builds are unsigned and un-notarized, so macOS Gatekeeper and Windows SmartScreen will both warn. On macOS 15 and later, approve it under System Settings → Privacy & Security → Open Anyway.
 - Code-block hover/right-click language editing targets rendered fenced blocks; deeper cursor-aware block editing is still future work.
 - Direct PDF file generation is not implemented; PDF export uses the OS print dialog's Save as PDF path.
 - Images must be inserted into a saved document — an unsaved document has no location to resolve a portable relative asset path against, so the import is refused up front.
