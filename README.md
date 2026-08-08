@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/robot-accomplice/dr-markdown)](go.mod)
 [![Wails v2.13](https://img.shields.io/badge/Wails-v2.13.0-red.svg)](https://wails.io)
-[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#building--installing-macos)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%C2%B7%20Linux%20planned-lightgrey.svg)](#building--installing-macos)
 [![Node.js](https://img.shields.io/badge/Node.js-not%20required-success.svg)](#architecture)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/robot-accomplice/dr-markdown/issues)
 
@@ -31,7 +31,7 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 - Atomic saves for documents *and* preferences — a crashed write never leaves you a truncated file, and an unreadable preference store is quarantined and replaced with defaults rather than stopping the app from starting
 - Dirty tracking with an unsaved-changes close guard and an open-over-dirty guard
 - A round-trip corpus (markdown → WYSIWYG → markdown) driven by chromedp, comparing the editor's own serialized output against the fixture — verified to fail when the serializer is broken
-- macOS packaging: `tools/build-macos.sh` produces an ad-hoc-signed `.app` and a distributable `.dmg` with a custom icon. It is **not** Developer ID signed or notarized, so Gatekeeper will flag it on any machine but the build host (see [Known limitations](#known-limitations))
+- macOS packaging: `tools/build-macos.sh` produces a `.app` and a distributable `.dmg` with a custom icon. The script performs **no code signing at all** — the ad-hoc signature on the binary is a linker artifact, not a build step — so it is neither Developer ID signed nor notarized and Gatekeeper will flag it on any machine but the build host (see [Known limitations](#known-limitations))
 
 ### On the roadmap
 

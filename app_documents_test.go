@@ -117,3 +117,27 @@ func TestCloseGuardAllowsCloseWhenNoTabIsDirty(t *testing.T) {
 		t.Fatal("a fully clean workspace should close without prompting")
 	}
 }
+
+// One binary, three platforms: the reveal command must not be macOS's `open`
+// everywhere. It was, so revealing an asset failed silently off macOS.
+func TestRevealCommandIsSelectedPerPlatform(t *testing.T) {
+	for _, tc := range []struct {
+		goos string
+		want string
+	}{
+		{"darwin", "open"},
+		{"windows", "explorer"},
+		{"linux", "xdg-open"},
+	} {
+		name, args := revealCommand(tc.goos, "/tmp/notes.assets/photo.png")
+		if name != tc.want {
+			t.Errorf("%s: command = %q, want %q", tc.goos, name, tc.want)
+		}
+		if len(args) == 0 {
+			t.Errorf("%s: no arguments passed", tc.goos)
+		}
+	}
+	if name, _ := revealCommand("plan9", "/x"); name != "" {
+		t.Errorf("an unknown platform should report unsupported, got %q", name)
+	}
+}
