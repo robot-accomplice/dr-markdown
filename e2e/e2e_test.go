@@ -103,6 +103,32 @@ func evalJS(t *testing.T, ctx context.Context, expr string, out interface{}) {
 	}
 }
 
+// waitForJS polls a boolean JS expression until it holds, and reports whether
+// it ever did.
+//
+// The formatted surface re-renders asynchronously, so any assertion made
+// straight after a click or a dispatched change samples a DOM that may still
+// be mid-remount. Sampling once makes the test's result depend on machine
+// speed: TestContextualDocumentControlsManageBlocksInPlace passed all of
+// 2026-08-07 and failed deterministically on 2026-08-08 with nothing in the
+// repo changed, catching both the old and new <pre> present and no
+// .code-block-shell yet applied.
+//
+// Use this rather than a bare evalJS whenever the assertion follows an action
+// that mutates the document.
+func waitForJS(t *testing.T, ctx context.Context, expr string) bool {
+	t.Helper()
+	var ok bool
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			if (`+expr+`) return true
+			await new Promise((resolve) => setTimeout(resolve, 20))
+		}
+		return false
+	})()`, &ok)
+	return ok
+}
+
 func TestEditorBoots(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()
@@ -2362,8 +2388,7 @@ func TestContextualDocumentControlsManageBlocksInPlace(t *testing.T) {
 	if !strings.Contains(md, "```python\nconst answer = 42") {
 		t.Fatalf("contextual code language control did not update the fenced language: %q", md)
 	}
-	var highlighted bool
-	evalJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-language="python"]') !== null`, &highlighted)
+	highlighted := waitForJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-language="python"]') !== null`)
 	if !highlighted {
 		var rendered string
 		evalJS(t, ctx, `JSON.stringify({
