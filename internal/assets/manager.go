@@ -57,9 +57,39 @@ func LoadForDocument(documentPath string, markdownPath string) (LoadedImage, err
 		return LoadedImage{}, fmt.Errorf("load image: %q is not a local asset", markdownPath)
 	}
 
-	absolute := filepath.FromSlash(markdownPath)
-	if !filepath.IsAbs(absolute) {
-		absolute = filepath.Join(filepath.Dir(documentPath), absolute)
+	// Containment. This application exists to view ARBITRARY markdown, so an
+	// opened document is untrusted input, and resolveImageAssets loads every
+	// image reference automatically on render with no user interaction. An
+	// unconstrained path therefore turns "open this file" into "read any file
+	// this user can read" — absolute paths, `..` traversal and non-image
+	// extensions all worked, and the bytes landed in the DOM as a data URI.
+	//
+	// The trade-off is deliberate: a document may only reference assets at or
+	// below its own directory. That refuses legitimate layouts like
+	// `../shared/logo.png`, which is the cost of not reading a stranger's
+	// choice of path. Refusals surface through the existing missing-asset
+	// render state rather than failing the document.
+	if filepath.IsAbs(markdownPath) {
+		return LoadedImage{}, fmt.Errorf("load image: absolute paths are not read from documents: %s", markdownPath)
+	}
+	docDir := filepath.Dir(documentPath)
+	absolute := filepath.Join(docDir, filepath.FromSlash(markdownPath))
+	if !withinDirectory(docDir, absolute) {
+		return LoadedImage{}, fmt.Errorf("load image: %q resolves outside the document directory", markdownPath)
+	}
+	// Re-check after following links, so a symlink inside the directory cannot
+	// be used as a door out of it. BOTH sides must be resolved before
+	// comparing: on macOS the document directory itself frequently sits under
+	// a symlink (/var -> /private/var), and comparing a resolved target against
+	// an unresolved base rejects perfectly ordinary paths.
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		base := docDir
+		if resolvedDir, err := filepath.EvalSymlinks(docDir); err == nil {
+			base = resolvedDir
+		}
+		if !withinDirectory(base, resolved) {
+			return LoadedImage{}, fmt.Errorf("load image: %q links outside the document directory", markdownPath)
+		}
 	}
 	info, err := os.Stat(absolute)
 	if os.IsNotExist(err) || (err == nil && info.IsDir()) {
@@ -166,4 +196,13 @@ func copyFile(target string, source string) error {
 		return fmt.Errorf("copy image asset: %w", err)
 	}
 	return nil
+}
+
+// withinDirectory reports whether target is dir itself or below it.
+func withinDirectory(dir, target string) bool {
+	rel, err := filepath.Rel(dir, target)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
