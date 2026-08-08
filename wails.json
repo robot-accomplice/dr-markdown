@@ -7,5 +7,11 @@
   "frontend:build": "",
   "author": {
     "name": "Robot Accomplice"
+  },
+  "info": {
+    "productName": "Dr. Markdown",
+    "productVersion": "0.4.0",
+    "copyright": "MIT licensed",
+    "comments": "Native WYSIWYG markdown editor"
   }
 }

@@ -66,3 +66,23 @@ func TestListFamiliesIncludesUserFontDirectory(t *testing.T) {
 		t.Fatalf("ListFamilies(%q) = %#v, want User Font", home, got)
 	}
 }
+
+// The app ships as one binary for three platforms, so font discovery must not
+// be macOS-only. It was, which left the settings font pickers empty on Windows
+// and Linux with nothing to explain why.
+func TestSystemFontDirsCoverEveryTargetPlatform(t *testing.T) {
+	for _, goos := range []string{"darwin", "windows", "linux"} {
+		if dirs := systemFontDirs(goos); len(dirs) == 0 {
+			t.Errorf("systemFontDirs(%q) returned nothing", goos)
+		}
+	}
+	if got := userFontDir("darwin", "/Users/x"); got != "/Users/x/Library/Fonts" {
+		t.Errorf("darwin user dir = %q", got)
+	}
+	if got := userFontDir("linux", "/home/x"); got != "/home/x/.local/share/fonts" {
+		t.Errorf("linux user dir = %q", got)
+	}
+	if got := userFontDir("linux", ""); got != "" {
+		t.Errorf("no home should yield no user dir, got %q", got)
+	}
+}
