@@ -2944,3 +2944,50 @@ func TestRoundTripCorpus(t *testing.T) {
 		})
 	}
 }
+
+// Go must be told which document every write targets. The close guard used to
+// pair a single dirty boolean with whatever path Go had last opened, which
+// wrote a new tab's text over the previously opened file.
+func TestFrontendReportsEveryTabWithItsOwnPath(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.__synced = null;
+	globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		SyncDocuments: async (docs) => { globalThis.__synced = docs },
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; 'ok'`, &res)
+
+	// Tab one, given a path and edited.
+	evalJS(t, ctx, `(() => {
+		const doc = window.__app.state.docs.find((d) => d.id === window.__app.state.activeDocId)
+		doc.path = '/tmp/notes.md'
+		return 'ok'
+	})()`, &res)
+	evalJS(t, ctx, "window.__app.setMarkdown('# Notes\\n').then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.debugSimulateEdit('# Notes edited\\n'); 'ok'", &res)
+
+	// Tab two: a new, pathless document with different content.
+	evalJS(t, ctx, "window.__app.newDocument().then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.debugSimulateEdit('scratch from another tab\\n'); 'ok'", &res)
+
+	var synced string
+	evalJS(t, ctx, "JSON.stringify(globalThis.__synced || [])", &synced)
+
+	if !strings.Contains(synced, "/tmp/notes.md") {
+		t.Fatalf("the first tab's path was not reported to Go: %s", synced)
+	}
+	if !strings.Contains(synced, "scratch from another tab") {
+		t.Fatalf("the second tab's content was not reported: %s", synced)
+	}
+	// The decisive property: the pathless tab's content must not be attached
+	// to the other tab's path anywhere in the payload.
+	if strings.Contains(synced, `"path":"/tmp/notes.md","content":"scratch from another tab`) {
+		t.Fatalf("a tab's content was reported against another tab's path: %s", synced)
+	}
+}

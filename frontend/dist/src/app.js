@@ -2448,7 +2448,22 @@ function markEdited(md) {
   }, 300)
 }
 
+// Go must never infer which document a write targets. Push the whole tab set
+// — path, content and dirty flag per tab — so the close guard saves each one
+// to its own file. Previously only a single boolean crossed the bridge, and Go
+// paired it with whatever path it had last opened, which wrote one tab's text
+// over another tab's file and discarded dirty background tabs entirely.
+function pushDocumentState() {
+  bridge.syncDocuments(state.docs.map((doc) => ({
+    path: doc.path ?? '',
+    content: doc.markdown ?? '',
+    dirty: Boolean(doc.dirty),
+    active: doc.id === state.activeDocId,
+  })))
+}
+
 function pushDirtyState() {
+  pushDocumentState()
   if (state.dirty !== lastPushedDirty) {
     bridge.setDirty(state.dirty)
     lastPushedDirty = state.dirty
