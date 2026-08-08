@@ -17,15 +17,17 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 >
 > Measured on the current build, WYSIWYG editing will:
 >
-> - **delete inline `<br>`**, joining the words either side of it — `Cell one<br>cell two` becomes `Cell onecell two`
 > - **delete link reference definitions** and inline the links that used them; unused definitions are dropped outright
-> - rewrite **CRLF line endings to LF** across the whole file
 > - rewrite two-space hard breaks to `\`, `-`/`+` bullets to `*`, setext headings to ATX, indented code to fenced, `~~~` fences to ```` ``` ````, and `---` breaks to `***`
 > - strip closing `##` from ATX headings, strip trailing whitespace, and reflow table padding
 >
-> **If the exact bytes matter — a Hugo or Jekyll site, an Obsidian vault, anything under version control — edit in Raw mode (⌘/Ctrl-R).** Raw mode preserves every construct listed above. Its one exception is that line endings are still normalized to LF, because the underlying text control does that per the HTML spec.
+> Inline HTML is **preserved** — `<b>`, `<span>`, `<kbd>`, comments and block-level `<div>` all round-trip byte-identically.
 >
-> This is a property of the vendored editor, not a bug we can patch at the seams, so **we are actively evaluating alternative editing engines** with faithful markdown round-tripping. Until then the behaviour above is recorded in `e2e/fidelity_test.go`, which fails if any of it changes.
+> **If the exact bytes matter — a Hugo or Jekyll site, an Obsidian vault, anything under version control — edit in Raw mode (⌘/Ctrl-R).** Raw mode preserves every construct listed above.
+>
+> **Fixed since v0.4.0**, and shipping in the next release: inline `<br>` is no longer deleted (it used to join the words either side of it), and CRLF line endings now survive an edit instead of rewriting the whole file. Both were narrow bugs rather than the architectural limit this caution originally claimed — the correction is recorded in the v0.4.0 release notes.
+>
+> The remaining items follow from the vendored editor re-serializing the whole document. They are measured in `e2e/fidelity_test.go`, which fails if any of it changes, and the route to closing them is scoped in [docs/decisions/2026-08-08-markdown-fidelity-scope.md](docs/decisions/2026-08-08-markdown-fidelity-scope.md).
 >
 > Related: opening a document whose first block is a list currently marks it modified without any edit from you, so quitting offers to save the re-serialized text. Choose **Don't Save** unless you meant to change it.
 
@@ -145,7 +147,7 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 
 ## Known limitations
 
-- **WYSIWYG editing rewrites markdown it cannot represent, and deletes inline `<br>` and link reference definitions — see the caution at the top of this file. Use Raw mode when the exact bytes matter.**
+- **WYSIWYG editing rewrites some markdown, and deletes link reference definitions — see the caution at the top of this file. Use Raw mode when the exact bytes matter.** Inline `<br>` deletion and CRLF rewriting are fixed since v0.4.0.
 - There is no check that a file changed on disk since you opened it. If another program (a `git pull`, a sync client, a second window) writes the file while it is open, saving overwrites those changes without warning.
 - Saving replaces the file via an atomic rename, which breaks hard links to it and drops extended attributes such as Finder tags. A read-only file can still be replaced this way, because the rename needs permission on the directory rather than the file.
 - Large documents are slow: roughly 4 s to open a 140 KB file and 10 s for 280 KB, with no progress indicator and no way to cancel. There is no size limit.

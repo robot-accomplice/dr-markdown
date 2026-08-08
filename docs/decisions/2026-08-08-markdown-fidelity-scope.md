@@ -150,3 +150,55 @@ aimed at a bug that may be a few hours.
 
 The stations measured *symptoms* correctly and inferred a *cause*. Consensus among reviewers is not
 evidence about the code.
+
+---
+
+## Spike result — 2026-08-08
+
+**Question:** can a source range be recovered for an ordinary edit, which decides whether
+source-preserving editing (option b) is a project or a fantasy?
+
+**Answer: preliminary NO, on the vendored bundle as shipped.** Recorded with its limits, because this
+conclusion is about to remove weeks of work from the plan and it should be overturnable by evidence.
+
+### Established
+
+1. **The bundle exports no parser.** `frontend/dist/vendor/crepe.bundle.mjs` exports exactly
+   `Crepe`, `CrepeBuilder`, `CrepeFeature`, `useCrepe`, `useCrepeFeatures`. No remark, no mdast
+   utilities, no ProseMirror. Verified by importing it and enumerating the module namespace.
+2. **The ProseMirror view is not reachable from the DOM.** `.ProseMirror` carries a `pmViewDesc`
+   key, but `pmViewDesc.view` is falsy in this build, so editor state cannot be inspected that way.
+
+### Not established
+
+Whether the `Crepe` *instance* exposes `.editor`/`.ctx`, and through it the view and node
+attributes. The probe for that failed on module resolution and I reverted the temporary hook rather
+than keep going. **Someone should finish this before treating option (b) as closed.**
+
+### Why the negative holds anyway
+
+Source-preserving editing needs two things: **source positions from the parser**, and a mapping from
+an editor transaction back to them. Point 1 removes the first outright — with no parser export there
+is no position data to map to, whatever the instance turns out to expose. Obtaining it means
+rebundling Milkdown with a wider export surface, which requires a Node toolchain and so collides
+with this project's defining constraint, or persuading upstream to export more.
+
+### Revised recommendation
+
+**Take option (a): incremental CommonMark fidelity.** It works entirely through the Crepe
+configuration and the `editor.js` seam, both of which are already proven — frontmatter, alt text and
+now `<br>` and line endings are all fixed that way, without touching the bundle.
+
+Its known weakness stands and should be stated plainly: it converges on "everything we have tested,"
+so the corpus remains the map of what we thought to check. The mitigation is that every fix ships
+with fixtures and the characterization test fails when behaviour changes in either direction — which
+is how the `<br>` fix was caught updating a stale claim rather than silently diverging from it.
+
+**Reopen option (b) only if** the no-Node constraint is relaxed, or upstream Milkdown exports its
+parser. Neither is worth planning around today.
+
+### Next, in order
+
+1. Link reference definitions (the remaining item that *deletes* content) — 1–2 weeks.
+2. Serializer style options with per-document detection — days.
+3. Re-run the fidelity gate and retire the README caution item by item as each closes.
