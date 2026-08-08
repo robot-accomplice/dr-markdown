@@ -69,8 +69,13 @@ func newTestBrowser(t *testing.T) (context.Context, context.CancelFunc) {
 			"coverage of the frontend, so it must not pass by being absent. "+
 			"Install Chrome, or set %s=1 to accept an unverified frontend.", skipE2EEnv)
 	}
-	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(),
-		chromedp.DefaultExecAllocatorOptions[:]...)
+	// Chrome's setuid sandbox cannot initialize on a CI runner without extra
+	// privileges — it aborts in ZygoteHostImpl::Init before any test runs. The
+	// browser here only ever loads frontend/dist from a local httptest server,
+	// so disabling the sandbox costs nothing this harness relies on.
+	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
+	opts = append(opts, chromedp.NoSandbox)
+	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	ctx, cancel := chromedp.NewContext(allocCtx)
 	return ctx, func() { cancel(); cancelAlloc() }
 }
