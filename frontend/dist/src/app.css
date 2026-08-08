@@ -64,6 +64,10 @@ button:disabled {
   background: var(--panel);
 }
 
+/* The only place the app's mark appears while it is running: macOS shows no
+   icon in the window title bar, so without this the product has no visible
+   identity on screen. It is not the chrome M3.7 removed — that decision owns
+   the application and document NAME, which the empty state still omits. */
 .empty-logo {
   display: grid;
   place-items: center;
@@ -1163,6 +1167,15 @@ body.app-empty #editor-host {
   font: 700 10px/1 var(--mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* The bindings this hint names are the only discoverability surface for them
+   in the empty state. The native title bar shows no shortcuts, so this is not
+   the chrome duplication M3.7 removed. */
+.empty-shortcuts {
+  margin: 0;
+  color: var(--muted-2);
+  font: 500 11px/1 var(--mono);
 }
 
 .template-grid {
