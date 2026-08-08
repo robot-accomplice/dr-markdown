@@ -2,8 +2,11 @@
 // It serves frontend/dist over httptest (matching the Wails asset-server
 // environment) and talks to the page through the window.__app hooks.
 //
-// Requires a Chrome/Chromium binary on the machine; tests skip if none is
-// found. Pure Go — no Node involved.
+// Requires a Chrome/Chromium binary on the machine. Tests FAIL rather than
+// skip when none is found, because this package is the only coverage of the
+// frontend and a silent skip once let the whole suite vanish while `go test`
+// still printed ok. Set DRMD_SKIP_E2E to opt out deliberately. Pure Go — no
+// Node involved.
 package e2e
 
 import (
