@@ -17,9 +17,30 @@ export async function loadTheme() {
   }
 }
 
+// YAML frontmatter, only at the very start of the document.
+// Trailing blank lines are part of the captured block: the editor trims
+// leading blank lines from its body, so leaving the separator behind would
+// silently close the gap between frontmatter and the first heading.
+const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n(?:[ \t]*\r?\n)*)?/
+
+// splitFrontmatter returns [frontmatter, body]. The frontmatter is kept
+// verbatim and never shown to the editor.
+//
+// Crepe parses `---` as a thematic break and re-serializes the block as `***`
+// followed by a setext heading, so a single edit silently destroyed the title,
+// date, tags and draft status of every Hugo, Jekyll, Obsidian and Astro
+// document. Markdown on disk is this product's source of truth; bytes the
+// editor cannot represent must not pass through it.
+export function splitFrontmatter(markdown) {
+  const match = markdown.match(FRONTMATTER)
+  return match ? [match[0], markdown.slice(match[0].length)] : ['', markdown]
+}
+
 export class WysiwygEditor {
   #crepe = null
   #onChange = null
+  // Frontmatter stripped from the current document, re-attached on the way out.
+  #frontmatter = ''
   // Last serialized markdown we treated as the unedited baseline. Crepe
   // fires an initial markdownUpdated when its async feature mounting
   // finishes — a normalization pass, not a user edit — so events that
@@ -32,10 +53,12 @@ export class WysiwygEditor {
   }
 
   async #build(host, markdown) {
+    const [frontmatter, body] = splitFrontmatter(markdown)
+    this.#frontmatter = frontmatter
     host.replaceChildren()
     const crepe = new Crepe({
       root: host,
-      defaultValue: markdown,
+      defaultValue: body,
       features: {
         // Math is out of dialect (GFM + mermaid only).
         [Crepe.Feature.Latex]: false,
@@ -48,7 +71,7 @@ export class WysiwygEditor {
       listener.markdownUpdated((_ctx, md, prev) => {
         if (md === prev || md === this.#baseline) return
         this.#baseline = md
-        this.#onChange?.(md)
+        this.#onChange?.(this.#frontmatter + md)
       })
     })
     await crepe.create()
@@ -57,7 +80,7 @@ export class WysiwygEditor {
   }
 
   getMarkdown() {
-    return this.#crepe.getMarkdown()
+    return this.#frontmatter + this.#crepe.getMarkdown()
   }
 
   // Replaces the whole document by rebuilding the editor (see Global

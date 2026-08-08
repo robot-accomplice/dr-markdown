@@ -958,6 +958,13 @@ function formatMarkdownForSave(md) {
 }
 
 async function closeActiveTab() {
+  // Cancel the debounced UpdateContent before the tab goes away. It carries
+  // THIS tab's text; surviving the close means it lands after the next tab is
+  // active and Go writes the closed tab's content into the surviving tab's
+  // file. Every other document transition (activate, new, open, save, saveAs)
+  // already cancels — this was the one that did not, and it reproduced the
+  // cross-document overwrite the tab-identity fix was meant to end.
+  cancelPendingPush()
   if (state.dirty) {
     const proceed = await bridge.resolveUnsavedChanges()
     if (!proceed) return
@@ -2046,6 +2053,22 @@ function rewriteImage(md, imageIndex, transform) {
   return before + formatImageToken(next) + after
 }
 
+// Schemes a document may link to. Anything else — javascript:, data:, file:,
+// vbscript:, or a scheme invented later — is refused rather than filtered,
+// because a denylist of dangerous schemes is a list you can always add to.
+const SAFE_LINK_SCHEMES = ['http:', 'https:', 'mailto:']
+
+function isSafeLinkTarget(href) {
+  const value = String(href).trim()
+  // Relative links carry no scheme and cannot escape the origin.
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value) === false) return true
+  try {
+    return SAFE_LINK_SCHEMES.includes(new URL(value, 'https://example.invalid').protocol)
+  } catch {
+    return false
+  }
+}
+
 function htmlImageAttribute(tag, name) {
   const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i'))
   return match?.[1] ?? ''
@@ -2089,7 +2112,13 @@ function inlineMarkdownNode(token) {
   if (link) {
     const anchor = document.createElement('a')
     anchor.textContent = link[1]
-    anchor.href = link[2]
+    // Only navigable schemes. An opened document is untrusted input, and this
+    // webview holds the native bindings — SaveDocument writes any path,
+    // OpenRecentDocument reads any path. A `javascript:` href here executed
+    // attacker script in the app origin on a single click, which is an
+    // ordinary action in a markdown viewer.
+    if (isSafeLinkTarget(link[2])) anchor.href = link[2]
+    else anchor.dataset.blockedHref = 'true'
     return anchor
   }
   return document.createTextNode(token)

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	runtime2 "runtime"
 	"sync"
 	"time"
 
@@ -37,6 +38,9 @@ type App struct {
 
 	mu   sync.Mutex
 	docs []OpenDocument
+	// unsyncedDirty covers a frontend that reported dirty before ever syncing
+	// its documents. It forces a prompt; it never names a write target.
+	unsyncedDirty bool
 	// currentPath is the last path opened or saved. It names the window title
 	// and the Save-As default only; it is NEVER a write target, because
 	// inferring the target from ambient state is what destroyed documents.
@@ -205,9 +209,13 @@ func (a *App) SyncDocuments(docs []OpenDocument) {
 }
 
 // SetDirty records the frontend's dirty state for the active tab.
+//
+// With no synced documents the flag is kept on its own rather than invented
+// against the last opened path: not knowing which file is dirty must lead to
+// asking the user, never to writing a guess.
 func (a *App) SetDirty(dirty bool) {
 	a.mu.Lock()
-	a.ensureImplicitDocument()
+	a.unsyncedDirty = dirty && len(a.docs) == 0
 	for i := range a.docs {
 		if a.docs[i].Active {
 			a.docs[i].Dirty = dirty
@@ -249,7 +257,6 @@ func (a *App) activeDocument() OpenDocument {
 // debounced by the frontend) so the close guard can save without a round-trip.
 func (a *App) UpdateContent(content string) {
 	a.mu.Lock()
-	a.ensureImplicitDocument()
 	for i := range a.docs {
 		if a.docs[i].Active {
 			a.docs[i].Content = content
@@ -366,7 +373,10 @@ func (a *App) ResolveUnsavedChanges() bool {
 // beforeClose implements the unsaved-changes guard: Save / Don't Save /
 // Cancel, matching the spec's error-handling contract.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
-	if len(a.dirtyDocuments()) == 0 {
+	a.mu.Lock()
+	unsynced := a.unsyncedDirty && len(a.docs) == 0
+	a.mu.Unlock()
+	if len(a.dirtyDocuments()) == 0 && !unsynced {
 		return false
 	}
 	return a.promptUnsaved()
@@ -398,6 +408,14 @@ func (a *App) promptUnsaved() (prevent bool) {
 // file. A pathless tab goes through Save As. Any failure or cancellation stops
 // the close so the remaining documents are not lost.
 func (a *App) saveCurrent() bool {
+	a.mu.Lock()
+	unsynced, content := a.unsyncedDirty && len(a.docs) == 0, a.currentText
+	a.mu.Unlock()
+	if unsynced {
+		// No document list, so no known target. Ask rather than guess.
+		path, err := a.SaveDocumentAs(content)
+		return err == nil && path != ""
+	}
 	for _, doc := range a.dirtyDocuments() {
 		if doc.Path == "" {
 			path, err := a.SaveDocumentAs(doc.Content)
@@ -411,16 +429,6 @@ func (a *App) saveCurrent() bool {
 		}
 	}
 	return true
-}
-
-// ensureImplicitDocument keeps single-document callers working: when nothing
-// has been synced yet there is exactly one buffer, so deriving it from the
-// last opened path is unambiguous rather than a guess between tabs.
-// Callers must hold a.mu.
-func (a *App) ensureImplicitDocument() {
-	if len(a.docs) == 0 {
-		a.docs = append(a.docs, OpenDocument{Path: a.currentPath, Content: a.currentText, Active: true})
-	}
 }
 
 func (a *App) openPath(path string) (OpenResult, error) {
@@ -512,10 +520,35 @@ func (wailsNative) SubscribeFileDrop(ctx context.Context) {
 	})
 }
 
-// RevealPath selects the file in Finder rather than opening it, so the user
-// lands on the asset inside its document asset folder.
+// RevealPath shows the file in the platform's file browser rather than opening
+// it, so the user lands on the asset inside its document asset folder.
+//
+// This ships as one binary for macOS, Windows and Linux, so the command is
+// selected from GOOS rather than assumed. It previously always ran macOS's
+// `open -R`, which fails silently everywhere else.
 func (wailsNative) RevealPath(_ context.Context, path string) error {
-	return exec.Command("open", "-R", path).Run()
+	name, args := revealCommand(runtime2.GOOS, path)
+	if name == "" {
+		return fmt.Errorf("reveal: unsupported platform %s", runtime2.GOOS)
+	}
+	return exec.Command(name, args...).Run()
+}
+
+// revealCommand maps an OS to its reveal-in-file-browser invocation. Split out
+// from RevealPath so the mapping is testable without executing anything.
+func revealCommand(goos, path string) (string, []string) {
+	switch goos {
+	case "darwin":
+		return "open", []string{"-R", path}
+	case "windows":
+		// /select, must be one argument with the path appended.
+		return "explorer", []string{"/select," + path}
+	case "linux":
+		// No universal "select the file" verb; open the containing directory.
+		return "xdg-open", []string{filepath.Dir(path)}
+	default:
+		return "", nil
+	}
 }
 
 func (wailsNative) ShowError(ctx context.Context, title string, message string) {

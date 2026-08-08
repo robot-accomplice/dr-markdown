@@ -3,13 +3,46 @@ package fonts
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
 
-var fontDirs = []string{
-	"/System/Library/Fonts",
-	"/Library/Fonts",
+// fontDirs is the resolved system font directory list. It stays a package
+// variable so tests can isolate discovery from the host's real fonts.
+var fontDirs = systemFontDirs(runtime.GOOS)
+
+// systemFontDirs returns the OS font directories. This ships as one binary for
+// macOS, Windows and Linux; the list was macOS-only, so the settings font
+// pickers came up empty everywhere else with no error to explain it.
+func systemFontDirs(goos string) []string {
+	switch goos {
+	case "darwin":
+		return []string{"/System/Library/Fonts", "/Library/Fonts"}
+	case "windows":
+		dirs := []string{`C:\Windows\Fonts`}
+		if local := os.Getenv("LOCALAPPDATA"); local != "" {
+			dirs = append(dirs, filepath.Join(local, "Microsoft", "Windows", "Fonts"))
+		}
+		return dirs
+	default: // linux and other unix
+		return []string{"/usr/share/fonts", "/usr/local/share/fonts"}
+	}
+}
+
+// userFontDir returns the per-user font directory for goos, relative to home.
+func userFontDir(goos, home string) string {
+	if home == "" {
+		return ""
+	}
+	switch goos {
+	case "darwin":
+		return filepath.Join(home, "Library", "Fonts")
+	case "windows":
+		return "" // covered by LOCALAPPDATA above
+	default:
+		return filepath.Join(home, ".local", "share", "fonts")
+	}
 }
 
 // ListFamilies returns installed font family names discovered from macOS font
@@ -17,8 +50,8 @@ var fontDirs = []string{
 // style faces where the filename makes that distinction clear.
 func ListFamilies(home string) []string {
 	dirs := append([]string{}, fontDirs...)
-	if home != "" {
-		dirs = append(dirs, filepath.Join(home, "Library", "Fonts"))
+	if userDir := userFontDir(runtime.GOOS, home); userDir != "" {
+		dirs = append(dirs, userDir)
 	}
 
 	names := map[string]bool{}
