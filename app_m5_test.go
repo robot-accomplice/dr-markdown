@@ -292,17 +292,17 @@ func TestAppListFontFamiliesDelegatesToProvider(t *testing.T) {
 }
 
 type fakeNative struct {
-	openPath      string
-	savePath      string
-	imagePath     string
-	unsavedChoice string
+	openPath        string
+	savePath        string
+	imagePath       string
+	unsavedChoice   string
 	overwriteChoice string
 	overwriteAsked  bool
-	title         string
-	openCalled    bool
-	imageCalled   bool
-	revealedPath  string
-	externalURL   string
+	title           string
+	openCalled      bool
+	imageCalled     bool
+	revealedPath    string
+	externalURL     string
 
 	fileDropSubscribed bool
 	errorTitle         string
