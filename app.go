@@ -48,6 +48,10 @@ type App struct {
 	// inferring the target from ambient state is what destroyed documents.
 	currentPath string
 	currentText string
+	// onDisk records, per path, the bytes the app last read from or wrote to
+	// that file. It is the baseline the staleness check compares against; it is
+	// never a write target.
+	onDisk      map[string]string
 	native      nativePort
 	documents   documentPort
 	fonts       fontPort
@@ -68,6 +72,7 @@ type nativePort interface {
 	SaveMarkdownFile(context.Context, string) (string, error)
 	SelectImageFile(context.Context) (string, error)
 	RevealPath(context.Context, string) error
+	ConfirmOverwriteChanged(context.Context, string) (string, error)
 	OpenExternalURL(context.Context, string) error
 	SubscribeFileDrop(context.Context)
 	ShowError(context.Context, string, string)
@@ -147,9 +152,17 @@ func (a *App) OpenDocument() (OpenResult, error) {
 }
 
 // SaveDocument writes content to path atomically. path must be non-empty.
+//
+// Before overwriting, it checks that the file on disk still holds the bytes the
+// app last saw there. Nothing did that before, so a change made by anything else
+// — a git pull, a sync client, a second window — was replaced with no error and
+// no prompt.
 func (a *App) SaveDocument(path, content string) error {
 	if path == "" {
 		return fmt.Errorf("SaveDocument: empty path")
+	}
+	if err := a.confirmNoExternalChange(path); err != nil {
+		return err
 	}
 	if err := a.documents.WriteMarkdown(path, content); err != nil {
 		a.native.ShowError(a.ctx, "Save Failed", err.Error())
@@ -158,6 +171,7 @@ func (a *App) SaveDocument(path, content string) error {
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
+	a.rememberOnDisk(path, content)
 	for i := range a.docs {
 		if a.docs[i].Path == path || (a.docs[i].Active && a.docs[i].Path == "") {
 			a.docs[i].Path = path
@@ -378,6 +392,47 @@ func (a *App) OpenExternalURL(raw string) error {
 	return a.native.OpenExternalURL(a.ctx, cleaned)
 }
 
+// rememberOnDisk records the bytes now believed to be on disk at path.
+// Callers must hold a.mu.
+func (a *App) rememberOnDisk(path, content string) {
+	if a.onDisk == nil {
+		a.onDisk = map[string]string{}
+	}
+	a.onDisk[path] = content
+}
+
+// confirmNoExternalChange refuses a save that would overwrite a change the app
+// never saw, unless the user explicitly chooses to overwrite.
+//
+// It compares against what the app last READ OR WROTE, not against what it
+// first opened — otherwise every second save to the same file would look like
+// an external edit and the prompt would become noise the user learns to click
+// through, which is worse than no prompt at all.
+//
+// A path the app has never touched has no baseline and is saved without
+// interruption; so is one that cannot be re-read, because failing to verify is
+// not evidence of a conflict and must not block the user from saving their work.
+func (a *App) confirmNoExternalChange(path string) error {
+	a.mu.Lock()
+	expected, known := a.onDisk[path]
+	a.mu.Unlock()
+	if !known {
+		return nil
+	}
+	current, err := a.documents.ReadMarkdown(path)
+	if err != nil || current == expected {
+		return nil
+	}
+	choice, err := a.native.ConfirmOverwriteChanged(a.ctx, path)
+	if err != nil {
+		return err
+	}
+	if choice != "Overwrite" {
+		return fmt.Errorf("save canceled: %s changed on disk since it was opened", filepath.Base(path))
+	}
+	return nil
+}
+
 func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 	loaded, err := a.images.LoadForDocument(documentPath, markdownPath)
 	if err != nil {
@@ -478,6 +533,7 @@ func (a *App) openPath(path string) (OpenResult, error) {
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
+	a.rememberOnDisk(path, content)
 	for i := range a.docs {
 		if a.docs[i].Path == path || (a.docs[i].Active && a.docs[i].Path == "") {
 			a.docs[i].Path = path
@@ -587,6 +643,18 @@ func revealCommand(goos, path string) (string, []string) {
 	default:
 		return "", nil
 	}
+}
+
+func (wailsNative) ConfirmOverwriteChanged(ctx context.Context, path string) (string, error) {
+	return runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         "File Changed on Disk",
+		Message:       filepath.Base(path) + " has been modified by another program since you opened it.\n\nSaving now replaces those changes with your version.",
+		Buttons:       []string{"Overwrite", "Cancel"},
+		DefaultButton: "Cancel",
+		CancelButton:  "Cancel",
+		Icon:          iconFreeMessageDialogPNG,
+	})
 }
 
 func (wailsNative) OpenExternalURL(ctx context.Context, url string) error {
