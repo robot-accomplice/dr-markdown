@@ -3,7 +3,7 @@
   "project": {
     "id": "dr-markdown-md",
     "name": "dr-markdown-md",
-    "summary": "A local Wails macOS markdown editor with a backed editor shell, WYSIWYG/raw modes, native file operations, and vendored editor adapters."
+    "summary": "A local Wails desktop markdown editor with a backed editor shell, WYSIWYG/raw/split modes, native file operations, and vendored editor adapters. Targets macOS, Windows and Linux from one binary; only macOS is packaged today. Opened documents are UNTRUSTED input, so the webview is a trust boundary."
   },
   "generatedAt": "2026-08-07T05:35:27.617Z",
   "defaultViewId": "system-map",

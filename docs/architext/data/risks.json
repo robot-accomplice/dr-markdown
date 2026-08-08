@@ -38,6 +38,128 @@
       "relatedFlows": [
         "edit-markdown-document"
       ]
+    },
+    {
+      "id": "wysiwyg-lossy-round-trip",
+      "title": "WYSIWYG editing rewrites markdown it cannot represent",
+      "category": "technical",
+      "severity": "high",
+      "status": "accepted",
+      "summary": "The WYSIWYG surface parses markdown into the vendored ProseMirror model and re-serializes the WHOLE document, so any construct the model cannot express is rewritten or lost, and because an edit replaces the entire buffer the blast radius of one keystroke is the whole file. Measured: inline <br> deleted (joining adjacent words), link reference definitions deleted and inlined, CRLF rewritten whole-file, plus respellings of bullets, fences, setext headings, hard breaks and thematic breaks. Accepted for the 0.4.0 GA by maintainer decision with disclosure as the mitigation; the defect itself is open.",
+      "mitigations": [
+        "README leads with a caution naming each rewrite and directing users to Raw mode when exact bytes matter",
+        "e2e/fidelity_test.go measures the behaviour so the caution cannot drift from the code",
+        "Raw mode preserves every affected construct and is the documented safe path",
+        "Evaluate a replacement editing engine: a CommonMark-faithful schema, or source-preserving editing where WYSIWYG edits patch the original text instead of replacing it with a re-serialization"
+      ],
+      "relatedNodes": [
+        "wysiwyg-editor",
+        "vendored-editor-assets"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document"
+      ]
+    },
+    {
+      "id": "no-write-staleness-check",
+      "title": "Saving clobbers changes made outside the app",
+      "category": "technical",
+      "severity": "high",
+      "status": "open",
+      "summary": "Nothing compares modification time, size or content before overwriting. A file changed on disk since it was opened — by a git pull, a sync client, or a second window — is replaced silently with no error. Raised as a blocking finding in ABORT Round 1 and carried across three rounds without a recorded justification.",
+      "mitigations": [
+        "Disclosed in the README's Known limitations",
+        "Record the content or modification time at open and refuse or prompt when it has changed at save"
+      ],
+      "relatedNodes": [
+        "atomic-file-writer",
+        "document-io"
+      ],
+      "relatedFlows": [
+        "open-save-document"
+      ]
+    },
+    {
+      "id": "atomic-rename-metadata-loss",
+      "title": "Replacement by rename loses file identity and metadata",
+      "category": "technical",
+      "severity": "medium",
+      "status": "open",
+      "summary": "Saving writes a temp file and renames it over the target. That breaks hard links to the document, drops extended attributes such as Finder tags, and replaces a read-only file, because rename needs permission on the directory rather than on the file.",
+      "mitigations": [
+        "Disclosed in the README's Known limitations",
+        "Copy extended attributes onto the temp file before rename, and refuse a target the user cannot write"
+      ],
+      "relatedNodes": [
+        "atomic-file-writer"
+      ],
+      "relatedFlows": [
+        "open-save-document"
+      ]
+    },
+    {
+      "id": "asset-containment-not-type-bounded",
+      "title": "Asset containment bounds the directory but not the file type",
+      "category": "security",
+      "severity": "medium",
+      "status": "open",
+      "summary": "A document may only reference assets at or below its own directory, which is enforced. But a non-image extension falls back to application/octet-stream and its bytes are still inlined, so any file at or below the document directory is readable on render — and rendering is automatic, with no user interaction. For a markdown file opened from a Downloads folder or a repository root, that set is not small.",
+      "mitigations": [
+        "Restrict inlining to the known image extensions and refuse everything else",
+        "Refusals already surface through the existing missing-asset render state"
+      ],
+      "relatedNodes": [
+        "image-asset-manager"
+      ],
+      "relatedFlows": []
+    },
+    {
+      "id": "no-recorded-state-for-rca",
+      "title": "No logging, crash record or error trail reaches the maintainer",
+      "category": "operational",
+      "severity": "high",
+      "status": "open",
+      "summary": "Frontend diagnostics are console warnings with no devtools in a production build; Go errors surface only as an ephemeral modal carrying the error string. Nothing is persisted. A bug reported by a user cannot be tied to a build or reproduced from recorded state, which this project's own rules require of any new failure surface.",
+      "mitigations": [
+        "Version identity now ships in the bundle so a report can at least name the build",
+        "Add a structured event trail persisted beside the preference store"
+      ],
+      "relatedNodes": [
+        "wails-go-api",
+        "frontend-shell"
+      ],
+      "relatedFlows": []
+    },
+    {
+      "id": "no-ci-enforcement",
+      "title": "Every release gate is hand-run and nothing enforces them",
+      "category": "operational",
+      "severity": "medium",
+      "status": "open",
+      "summary": "There is no CI configuration in the repository. Tests, vet, Architext validation, screenshot regeneration, vendoring and packaging are all run by hand, so forgetting any one of them is silent — and the release artifact was in fact found two rounds stale during ABORT Round 4.",
+      "mitigations": [
+        "Disclosed in the ABORT artifact",
+        "Add a workflow running go test, go vet and architext validate on push"
+      ],
+      "relatedNodes": [
+        "vendored-editor-assets"
+      ],
+      "relatedFlows": []
+    },
+    {
+      "id": "vendored-bundles-unverified",
+      "title": "Vendored editor bundles carry no integrity record",
+      "category": "security",
+      "severity": "medium",
+      "status": "open",
+      "summary": "tools/vendor.sh fetches several megabytes of third-party JavaScript over the network and records no checksum; NOTICE.md records package and version but no hash, and the committed bundle is patched in place so it matches no upstream artifact. Provenance cannot be re-established later.",
+      "mitigations": [
+        "Record a SHA-256 per bundle in NOTICE.md and verify it in vendor.sh before writing"
+      ],
+      "relatedNodes": [
+        "vendored-editor-assets"
+      ],
+      "relatedFlows": []
     }
   ]
 }

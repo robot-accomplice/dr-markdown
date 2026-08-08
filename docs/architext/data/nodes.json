@@ -3,8 +3,8 @@
     {
       "id": "macos-user",
       "type": "actor",
-      "name": "macOS user",
-      "summary": "A local user editing markdown documents in the Dr. Markdown desktop app.",
+      "name": "Desktop user",
+      "summary": "A person editing markdown on their own machine. macOS is the only packaged platform today; Windows and Linux are targeted by the code but unbuilt.",
       "responsibilities": [
         "Create, open, edit, save, and review markdown documents"
       ],
@@ -155,7 +155,11 @@
         "recent-document"
       ],
       "security": [
-        "Suppresses browser context menu and drag/drop navigation in the shell"
+        "A Content-Security-Policy in index.html restricts script, style, image, font and connect sources; object-src, base-uri, form-action and frame-ancestors are 'none'",
+        "Document links are routed to the OS browser via OpenExternalURL instead of navigating the app window",
+        "Rendered document links pass a scheme allowlist (http, https, mailto). The candidate is normalized exactly as the URL parser normalizes it — tabs, CR and LF stripped — because the check must refuse what the BROWSER navigates to, not what the raw string looks like",
+        "Suppresses browser context menu and drag/drop navigation in the shell",
+        "safeLinkHref returns the href to assign rather than a boolean, so a caller cannot validate one string and use another"
       ],
       "observability": [
         "End-to-end tests through window.__app hooks"
@@ -168,6 +172,7 @@
         "honest-visible-controls"
       ],
       "knownRisks": [
+        "no-recorded-state-for-rca",
         "raw-syntax-layer-missing"
       ],
       "verification": [
@@ -195,7 +200,8 @@
       "summary": "A small JavaScript adapter over Wails bindings that lets tests stub native document operations.",
       "responsibilities": [
         "Call Wails-bound Go methods lazily",
-        "Gracefully warn when native bindings are unavailable in browser tests"
+        "Gracefully warn when native bindings are unavailable in browser tests",
+        "Report every open tab with its own path via SyncDocuments, so no write target is inferred from ambient state"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -251,18 +257,19 @@
       "name": "Wails Go API",
       "summary": "The Go object bound into Wails that adapts native dialogs, document IO, preference storage, dirty state, current content, close guard, font discovery, and title updates behind testable ports.",
       "responsibilities": [
-        "Open and save markdown files through native dialogs",
-        "Open a specific recent document path without showing the picker",
-        "Track dirty/current content for close protection",
-        "Update the native window title",
-        "Load and save application preferences",
-        "Record recent documents after open and save",
-        "List installed font families for settings controls",
-        "Override Wails message-dialog alert artwork with a transparent icon",
+        "Dispatch reveal-in-file-browser per platform (darwin/windows/linux) rather than assuming macOS",
+        "Forward Wails file-drop paths to the frontend",
         "Import images through the native picker or a dropped file path",
         "Inline document-relative image assets for rendering and export",
+        "List installed font families for settings controls",
+        "Load and save application preferences",
+        "Open a specific recent document path without showing the picker",
+        "Open and save markdown files through native dialogs",
+        "Override Wails message-dialog alert artwork with a transparent icon",
+        "Record recent documents after open and save",
         "Reveal an existing image asset in the OS file browser",
-        "Forward Wails file-drop paths to the frontend"
+        "Track dirty/current content for close protection",
+        "Update the native window title"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -288,8 +295,9 @@
         "image-asset"
       ],
       "security": [
-        "Uses native dialog APIs for file paths",
-        "Prompts before discarding dirty buffers"
+        "OpenExternalURL re-checks the scheme in Go rather than trusting the webview, because the webview is where untrusted document content is parsed",
+        "Prompts before discarding dirty buffers",
+        "Uses native dialog APIs for file paths"
       ],
       "observability": [
         "Native title state"
@@ -456,8 +464,10 @@
       "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown and suppresses initial normalization as a dirty edit.",
       "responsibilities": [
         "Create and rebuild the formatted editor",
+        "Emit user edits to the frontend shell",
+        "Record image alt text per destination on load and restore it on serialize",
         "Serialize markdown from Crepe",
-        "Emit user edits to the frontend shell"
+        "Split YAML frontmatter out before the editor sees it and re-attach it on the way out"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -478,6 +488,7 @@
         "markdown-document"
       ],
       "security": [
+        "Frontmatter never enters the editor model, so bytes the model cannot represent cannot be rewritten by it",
         "Latex feature is disabled in the configured editor"
       ],
       "observability": [
@@ -490,9 +501,13 @@
       "relatedDecisions": [
         "vendored-editor-bundles"
       ],
-      "knownRisks": [],
+      "knownRisks": [
+        "wysiwyg-lossy-round-trip"
+      ],
       "verification": [
-        "TestRoundTripCorpus"
+        "TestRawModeEditsPreserveEveryOtherByte",
+        "TestRoundTripCorpus",
+        "TestWysiwygRewritesTheseConstructs"
       ]
     },
     {
@@ -679,7 +694,9 @@
         "vendored-editor-bundles"
       ],
       "knownRisks": [
-        "raw-syntax-layer-missing"
+        "no-ci-enforcement",
+        "raw-syntax-layer-missing",
+        "vendored-bundles-unverified"
       ],
       "verification": [
         "frontend/dist/vendor/NOTICE.md"
@@ -716,8 +733,10 @@
         "markdown-document"
       ],
       "security": [
-        "Refuses to write assets for unsaved documents, preventing absolute local paths in portable markdown",
-        "Reads only paths the open document references"
+        "A document may only reference assets at or below its own directory; absolute paths and traversal are refused, and containment is re-checked after resolving symlinks on BOTH sides",
+        "Percent-encoded destinations are decoded BEFORE every check that reads the path, so %2e%2e%2f cannot smuggle traversal past containment",
+        "Reads only paths the open document references",
+        "Refuses to write assets for unsaved documents, preventing absolute local paths in portable markdown"
       ],
       "observability": [],
       "relatedFlows": [
@@ -727,7 +746,9 @@
         "portable-image-asset-policy",
         "inline-image-assets"
       ],
-      "knownRisks": [],
+      "knownRisks": [
+        "asset-containment-not-type-bounded"
+      ],
       "verification": [
         "internal/assets/manager_test.go",
         "TestImportForSavedDocumentCopiesImageAndReturnsPortableMarkdown",
@@ -771,7 +792,10 @@
       "relatedDecisions": [
         "recover-from-corrupt-preferences"
       ],
-      "knownRisks": [],
+      "knownRisks": [
+        "no-write-staleness-check",
+        "atomic-rename-metadata-loss"
+      ],
       "verification": [
         "internal/atomicfile/atomicfile_test.go",
         "TestFailedWriteLeavesExistingFileIntact",
