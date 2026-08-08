@@ -37,7 +37,12 @@ export function splitFrontmatter(markdown) {
 }
 
 // Markdown image syntax: alt, destination, optional title.
-const IMAGE = /!\[([^\]]*)\]\(([^()\s]*)((?:\s+"[^"]*")?)\)/g
+//
+// The alt alternation admits escapes and one level of balanced brackets. A flat
+// `[^\]]*` stopped at the first `]`, so `![alt with [x] inside](b.png)` matched
+// nothing at all, was absent from the recorded map, and restoration then wrote
+// `![](b.png)` — deleting the caption it exists to protect.
+const IMAGE = /!\[((?:\\.|\[[^\]]*\]|[^[\]\\])*)\]\(([^()\s]*)((?:\s+"[^"]*")?)\)/g
 
 // The shape Crepe writes into the alt slot — `ratio.toFixed(2)`. Deliberately
 // exact so a real alt text of "3" or "1.5" is left alone.

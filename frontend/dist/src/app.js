@@ -2058,15 +2058,50 @@ function rewriteImage(md, imageIndex, transform) {
 // because a denylist of dangerous schemes is a list you can always add to.
 const SAFE_LINK_SCHEMES = ['http:', 'https:', 'mailto:']
 
-function isSafeLinkTarget(href) {
-  const value = String(href).trim()
-  // Relative links carry no scheme and cannot escape the origin.
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value) === false) return true
+// The URL parser removes every ASCII tab, LF and CR from a URL, and ignores
+// leading and trailing C0 controls and spaces, BEFORE it parses the scheme. Any
+// check that reads the raw string is therefore checking a different string than
+// the one the browser navigates to: `jav<TAB>ascript:` carries no scheme by a
+// regex's reading and `javascript:` by the parser's. That is how the previous
+// check — which looked for a scheme pattern and treated its absence as "this is
+// a relative link" — passed four separate spellings of javascript: through.
+function normalizeHref(href) {
+  return String(href).replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '')
+}
+
+// safeLinkHref returns the href to assign, or null to refuse. Returning the
+// normalized value rather than a boolean is the point: the caller cannot
+// validate one string and then assign another, which is the whole defect class
+// above rather than one instance of it.
+//
+// Every candidate is resolved against a base, so there is no "looks relative"
+// branch to slip past — a genuine relative link resolves to the base's https:
+// and is allowed on the same rule as everything else.
+function safeLinkHref(href) {
+  const value = normalizeHref(href)
   try {
-    return SAFE_LINK_SCHEMES.includes(new URL(value, 'https://example.invalid').protocol)
+    const resolved = new URL(value, 'https://example.invalid')
+    return SAFE_LINK_SCHEMES.includes(resolved.protocol) ? value : null
   } catch {
-    return false
+    return null
   }
+}
+
+// handleDocumentLinkClick sends document links to the user's browser.
+//
+// The href was already filtered by safeLinkHref when the anchor was built, but
+// it is re-checked here rather than trusted: this handler is bound to the whole
+// document, so it must be safe for any anchor that reaches it, not only the
+// ones this module created.
+function handleDocumentLinkClick(event) {
+  const anchor = event.target.closest?.('a[href]')
+  if (!anchor) return
+  const safe = safeLinkHref(anchor.getAttribute('href'))
+  event.preventDefault()
+  if (safe === null) return
+  bridge.openExternalURL(safe)?.catch?.((error) => {
+    console.warn('bridge: refused to open link', error)
+  })
 }
 
 function htmlImageAttribute(tag, name) {
@@ -2117,7 +2152,8 @@ function inlineMarkdownNode(token) {
     // OpenRecentDocument reads any path. A `javascript:` href here executed
     // attacker script in the app origin on a single click, which is an
     // ordinary action in a markdown viewer.
-    if (isSafeLinkTarget(link[2])) anchor.href = link[2]
+    const safe = safeLinkHref(link[2])
+    if (safe !== null) anchor.href = safe
     else anchor.dataset.blockedHref = 'true'
     return anchor
   }
@@ -2531,6 +2567,14 @@ function wire() {
     const button = event.target.closest('[data-panel-toggle]')
     if (button) toggleSidePanel(button.dataset.panelToggle)
   })
+  // Every link in a rendered document is handled here, once, at the document
+  // level. A link left to its default action navigates THIS window — a
+  // chrome-less desktop window with no address bar and no back button — so a
+  // single click on a document's link replaces the application with a remote
+  // page and the only way out is quitting. Delegating from the document covers
+  // the split preview, the print surface and anything added later, rather than
+  // leaving each new render surface to remember on its own.
+  document.addEventListener('click', handleDocumentLinkClick)
   els.wysiwyg.addEventListener('click', handleRenderedBlockSelection)
   document.querySelectorAll('[data-export-toggle]').forEach((button) => {
     button.addEventListener('click', toggleExportMenu)

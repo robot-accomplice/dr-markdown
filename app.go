@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	runtime2 "runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +68,7 @@ type nativePort interface {
 	SaveMarkdownFile(context.Context, string) (string, error)
 	SelectImageFile(context.Context) (string, error)
 	RevealPath(context.Context, string) error
+	OpenExternalURL(context.Context, string) error
 	SubscribeFileDrop(context.Context)
 	ShowError(context.Context, string, string)
 	ConfirmUnsaved(context.Context) (string, error)
@@ -340,6 +343,41 @@ func (a *App) LoadImageAsset(documentPath string, markdownPath string) (imageass
 
 // RevealImageAsset shows an image asset in the OS file browser. A missing
 // asset is reported instead of silently doing nothing.
+// safeExternalSchemes is the Go-side allowlist for opening a URL in the user's
+// browser. It deliberately duplicates the frontend check rather than trusting
+// it: the webview is where untrusted document content is parsed, so a bound
+// method that hands any string to the OS URL opener is a second route to the
+// execution the frontend check exists to prevent — and the OS opener will
+// happily launch a registered local handler for a scheme a browser would never
+// navigate to.
+var safeExternalSchemes = map[string]bool{"http": true, "https": true, "mailto": true}
+
+// OpenExternalURL opens a web link in the user's browser.
+//
+// Without it, clicking a link in the preview navigated the app's own window to
+// the remote page — a chrome-less window with no address bar and no back
+// button, from which the only escape is quitting.
+func (a *App) OpenExternalURL(raw string) error {
+	// Strip exactly what a URL parser strips, so this check cannot be fooled by
+	// a string that reads as harmless here and as `javascript:` to the opener.
+	cleaned := strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, raw)
+	cleaned = strings.TrimFunc(cleaned, func(r rune) bool { return r <= ' ' })
+
+	parsed, err := url.Parse(cleaned)
+	if err != nil {
+		return fmt.Errorf("open link: %q is not a URL", raw)
+	}
+	if !safeExternalSchemes[strings.ToLower(parsed.Scheme)] {
+		return fmt.Errorf("open link: refusing scheme %q", parsed.Scheme)
+	}
+	return a.native.OpenExternalURL(a.ctx, cleaned)
+}
+
 func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 	loaded, err := a.images.LoadForDocument(documentPath, markdownPath)
 	if err != nil {
@@ -549,6 +587,11 @@ func revealCommand(goos, path string) (string, []string) {
 	default:
 		return "", nil
 	}
+}
+
+func (wailsNative) OpenExternalURL(ctx context.Context, url string) error {
+	runtime.BrowserOpenURL(ctx, url)
+	return nil
 }
 
 func (wailsNative) ShowError(ctx context.Context, title string, message string) {

@@ -300,6 +300,7 @@ type fakeNative struct {
 	openCalled    bool
 	imageCalled   bool
 	revealedPath  string
+	externalURL   string
 
 	fileDropSubscribed bool
 	errorTitle         string
@@ -324,6 +325,11 @@ func (f *fakeNative) SubscribeFileDrop(context.Context) { f.fileDropSubscribed =
 
 func (f *fakeNative) RevealPath(_ context.Context, path string) error {
 	f.revealedPath = path
+	return nil
+}
+
+func (f *fakeNative) OpenExternalURL(_ context.Context, url string) error {
+	f.externalURL = url
 	return nil
 }
 

@@ -23,6 +23,7 @@ export const bridge = {
     wails()?.ImportDroppedImage?.(documentPath, sourcePath) ?? missing('ImportDroppedImage'),
   loadImageAsset: (documentPath, markdownPath) =>
     wails()?.LoadImageAsset?.(documentPath, markdownPath) ?? missing('LoadImageAsset'),
+  openExternalURL: (url) => wails()?.OpenExternalURL?.(url) ?? missing('OpenExternalURL'),
   revealImageAsset: (documentPath, markdownPath) =>
     wails()?.RevealImageAsset?.(documentPath, markdownPath) ?? missing('RevealImageAsset'),
   setDirty: (d) => wails()?.SetDirty(d),
