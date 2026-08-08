@@ -1,10 +1,10 @@
 {
   "id": "initial-architext-buildout",
-  "version": "0.4.0-beta.1",
-  "name": "M8 image asset management (beta)",
+  "version": "0.4.0",
+  "name": "M8 image asset management (GA)",
   "status": "complete",
   "posture": "at-risk",
-  "summary": "Ship M8 image asset management as a beta pre-release: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import and image-local controls, plus the two blocking defects a pre-release slop-ferret sweep verified \u2014 startup no longer fails on an unreadable preference store, and image resolution is pinned on every render surface. A 2026-08-08 ABORT review of promoting this to a non-beta release returned NO-GO on all five stations; the data-destruction and correctness-gate findings are fixed and recorded here, and the remaining conditions live in docs/releases/v0.4.0-abort.md.",
+  "summary": "Ship M8 image asset management as the 0.4.0 GA release: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import and image-local controls. Four ABORT rounds drove out the security and data-destruction defects recorded here — obfuscated link schemes reaching the Go bindings, document links replacing the app window, broken image references and destroyed alt text, frontmatter loss, cross-document overwrite and a correctness gate that could not fail. All five red-team stations still returned NO-GO; the maintainer accepted the residual risk and authorised GA with disclosure as the mitigation, because the remaining blocker is the vendored editor rewriting markdown it cannot represent, which follows from its parse-and-re-serialize model rather than from a defect that can be patched. That behaviour is measured in e2e/fidelity_test.go and led by a caution in the README, alternative editing engines are under evaluation, and the full decision record is docs/releases/v0.4.0-abort.md.",
   "targetWindow": "Current milestone",
   "lastUpdated": "2026-08-08T00:00:00.000Z",
   "updateSource": "Source-backed maintenance pass",
@@ -440,6 +440,78 @@
         ]
       },
       {
+        "id": "link-scheme-bypass",
+        "title": "Obfuscated link schemes no longer reach the Go bindings",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "The link allowlist checked the raw destination while the browser navigates a normalized one. The URL parser strips every ASCII tab, LF and CR and ignores leading control characters before parsing a scheme, so `jav<TAB>ascript:` carried no scheme by the check's reading and `javascript:` by the parser's — and a javascript: URL runs in the app origin, where the bindings expose SaveDocument and OpenRecentDocument with no path restriction, giving a document arbitrary file read and write. The check now normalizes exactly what the parser normalizes, resolves every candidate against a base so there is no looks-relative branch to slip past, and returns the href to assign rather than a boolean so a caller cannot validate one string and use another.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestObfuscatedSchemesAreRefusedInRenderedLinks"
+        ]
+      },
+      {
+        "id": "external-links-open-in-browser",
+        "title": "Document links open in the browser instead of replacing the app window",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Nothing intercepted anchor clicks, so clicking an ordinary https link in a rendered document navigated the application's own window to the remote page — a chrome-less window with no address bar and no back button, escapable only by quitting. A delegated document-level handler now routes links through a new OpenExternalURL binding, which re-checks the scheme in Go rather than trusting the webview, because the webview is where untrusted document content is parsed.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestDocumentLinksOpenExternallyAndNeverNavigateTheAppWindow",
+          "TestExternalLinksOpenInTheBrowserNotTheAppWindow",
+          "TestOpenExternalURLRefusesSchemesTheFrontendWouldRefuse"
+        ]
+      },
+      {
+        "id": "image-reference-integrity",
+        "title": "Imported image references are valid markdown and keep their alt text",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Image references were built with raw string formatting, so the default macOS screenshot name — which contains spaces — produced a destination no CommonMark parser reads as a link, and the app's own image feature wrote broken markdown into the document and saved it. Destinations are now percent-encoded and the loader decodes before every check that reads the path, so an encoded traversal cannot slip past containment. Separately, the vendored editor stores its resize ratio in the image alt attribute and discards the text on parse, so every alt became 1.00 on open; alt text is now recorded per destination in document order and restored on serialize, which also fixes captions being lost when one asset is referenced twice and when an alt is bracketed or numeric.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestImportForDocumentEmitsAValidMarkdownReference",
+          "TestImportedImageRoundTripsThroughTheLoader",
+          "TestPercentEncodingCannotSmuggleTraversalPastContainment",
+          "TestRoundTripCorpus"
+        ]
+      },
+      {
+        "id": "wysiwyg-fidelity-disclosure",
+        "title": "WYSIWYG markdown rewriting is measured and disclosed",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "The WYSIWYG surface parses markdown into the vendored editor's document model and re-serializes the whole document, so constructs the model cannot express are rewritten and an edit's blast radius is the entire file. Red-team measurement found inline <br> deleted outright, link reference definitions deleted and inlined, CRLF rewritten whole-file, and a range of respellings. None of it was disclosed, and the README claimed the opposite. The behaviour is now recorded in e2e/fidelity_test.go, which fails if any of it changes, and the README leads with a caution naming each case and directing users to Raw mode when exact bytes matter. This is disclosure, not repair — the defect follows from the vendored editor's model and alternative editing engines are under evaluation.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestWysiwygRewritesTheseConstructs",
+          "TestRawModeEditsPreserveEveryOtherByte"
+        ]
+      },
+      {
+        "id": "build-version-identity",
+        "title": "Builds report their real version instead of 1.0.0",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Every build ever produced identified itself as 1.0.0, because the darwin Info.plist hardcoded both version keys and wails.json carried no info block to override them. With no logging reaching users, the version string is the only build identity a bug report could carry, so alpha, beta and GA were indistinguishable in the field. The plist now takes the product version from wails.json so it is declared once and follows the release.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "build/darwin/Info.plist",
+          "wails.json"
+        ]
+      },
+      {
         "id": "image-command-fail-loud",
         "title": "Image command fails loud instead of silently doing nothing",
         "kind": "bug-fix",
@@ -520,7 +592,7 @@
         "title": "Writes never infer their target document",
         "kind": "bug-fix",
         "status": "complete",
-        "summary": "Go held a single ambient (currentPath, currentText) while the frontend is multi-tab, so the quit-time close guard wrote the active tab's text to whatever file had last been opened \u2014 destroying a document the user had not touched. Reproduced. The frontend now reports every tab with its own path and dirty flag, and each dirty tab is saved to its own file.",
+        "summary": "Go held a single ambient (currentPath, currentText) while the frontend is multi-tab, so the quit-time close guard wrote the active tab's text to whatever file had last been opened — destroying a document the user had not touched. Reproduced. The frontend now reports every tab with its own path and dirty flag, and each dirty tab is saved to its own file.",
         "owner": "Project maintainers",
         "workstreamId": "editor-shell",
         "dependsOn": [],
@@ -565,7 +637,7 @@
         "title": "The round-trip corpus can fail",
         "kind": "bug-fix",
         "status": "complete",
-        "summary": "The corpus compared app.getMarkdown() \u2014 the cached input string \u2014 against the fixture, so it never invoked the WYSIWYG serializer and could not fail for the class of defect it existed to catch. It now reads the editor's own serialized output; demonstrated by breaking the serializer and observing the old corpus report ok while the new one failed naming the fixture.",
+        "summary": "The corpus compared app.getMarkdown() — the cached input string — against the fixture, so it never invoked the WYSIWYG serializer and could not fail for the class of defect it existed to catch. It now reads the editor's own serialized output; demonstrated by breaking the serializer and observing the old corpus report ok while the new one failed naming the fixture.",
         "owner": "Project maintainers",
         "workstreamId": "editor-shell",
         "dependsOn": [],
@@ -653,10 +725,10 @@
   "blockers": [
     {
       "id": "stable-release-gate",
-      "title": "A non-beta release is blocked by the ABORT review",
+      "title": "GA shipped over a NO-GO ABORT verdict, with disclosure as the mitigation",
       "severity": "high",
-      "status": "open",
-      "summary": "The 2026-08-08 ABORT review of a first non-beta release returned NO-GO from all five red-team stations. The data-destruction and correctness-gate conditions are now closed; what remains open is recorded in docs/releases/v0.4.0-abort.md. The shipped 0.4.0-beta.1 is unaffected \u2014 this blocks dropping the beta label, not the beta itself.",
+      "status": "accepted",
+      "summary": "The 2026-08-08 ABORT review returned NO-GO from all five red-team stations over four rounds. The maintainer accepted the residual risk and authorised the 0.4.0 GA release on 2026-08-08. The mitigation is disclosure, not repair: the README now leads with a caution that WYSIWYG editing rewrites markdown the vendored editor cannot represent — deleting inline <br> and link reference definitions, rewriting CRLF, and changing lines the user never touched — and directs users to Raw mode when exact bytes matter. Recorded as ACCEPTED rather than resolved, because the underlying fidelity defect is open: it follows from the vendored editor's parse-and-re-serialize model and cannot be patched at the seams. Alternative editing engines are under evaluation. Full record: docs/releases/v0.4.0-abort.md.",
       "owner": "Project maintainers"
     }
   ],
