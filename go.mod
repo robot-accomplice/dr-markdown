@@ -7,6 +7,7 @@ require (
 	github.com/chromedp/chromedp v0.16.0
 	github.com/wailsapp/wails/v2 v2.13.0
 	golang.org/x/image v0.44.0
+	golang.org/x/sys v0.47.0
 )
 
 require (
@@ -41,6 +42,5 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 )

@@ -100,6 +100,19 @@ func LoadForDocument(documentPath string, markdownPath string) (LoadedImage, err
 			return LoadedImage{}, fmt.Errorf("load image: %q links outside the document directory", markdownPath)
 		}
 	}
+	// Bound the file TYPE as well as the directory, and do it BEFORE reading any
+	// bytes. Containment alone still allowed `.env`, `id_rsa` or `secrets.yaml`
+	// beside the document to be read and inlined as a data URI, because an
+	// unknown extension fell back to application/octet-stream and was served
+	// anyway. Rendering resolves every image reference automatically with no
+	// user interaction, so for a markdown file opened from a Downloads folder or
+	// a repository root that made "view this document" mean "read the
+	// interesting files next to it".
+	mime, ok := imageMimeTypes[strings.ToLower(filepath.Ext(absolute))]
+	if !ok {
+		return LoadedImage{}, fmt.Errorf("load image: %q is not an image asset", markdownPath)
+	}
+
 	info, err := os.Stat(absolute)
 	if os.IsNotExist(err) || (err == nil && info.IsDir()) {
 		return LoadedImage{AbsolutePath: absolute}, nil
@@ -110,11 +123,6 @@ func LoadForDocument(documentPath string, markdownPath string) (LoadedImage, err
 	data, err := os.ReadFile(absolute)
 	if err != nil {
 		return LoadedImage{AbsolutePath: absolute}, fmt.Errorf("read image asset: %w", err)
-	}
-
-	mime, ok := imageMimeTypes[strings.ToLower(filepath.Ext(absolute))]
-	if !ok {
-		mime = "application/octet-stream"
 	}
 	return LoadedImage{
 		AbsolutePath: absolute,
@@ -148,6 +156,13 @@ func ImportForDocument(documentPath string, sourcePath string) (ImportedImage, e
 	}
 	if info.IsDir() {
 		return ImportedImage{}, fmt.Errorf("import image: source is a directory")
+	}
+	// Refuse here what LoadForDocument will refuse on render. Copying a file the
+	// renderer will not display writes a reference into the user's document that
+	// can never resolve — the import reports success and leaves behind a
+	// permanently broken image.
+	if _, ok := imageMimeTypes[strings.ToLower(filepath.Ext(sourcePath))]; !ok {
+		return ImportedImage{}, fmt.Errorf("import image: %s is not a supported image type", filepath.Base(sourcePath))
 	}
 
 	docDir := filepath.Dir(documentPath)

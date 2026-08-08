@@ -292,15 +292,17 @@ func TestAppListFontFamiliesDelegatesToProvider(t *testing.T) {
 }
 
 type fakeNative struct {
-	openPath      string
-	savePath      string
-	imagePath     string
-	unsavedChoice string
-	title         string
-	openCalled    bool
-	imageCalled   bool
-	revealedPath  string
-	externalURL   string
+	openPath        string
+	savePath        string
+	imagePath       string
+	unsavedChoice   string
+	overwriteChoice string
+	overwriteAsked  bool
+	title           string
+	openCalled      bool
+	imageCalled     bool
+	revealedPath    string
+	externalURL     string
 
 	fileDropSubscribed bool
 	errorTitle         string
@@ -331,6 +333,14 @@ func (f *fakeNative) RevealPath(_ context.Context, path string) error {
 func (f *fakeNative) OpenExternalURL(_ context.Context, url string) error {
 	f.externalURL = url
 	return nil
+}
+
+func (f *fakeNative) ConfirmOverwriteChanged(_ context.Context, _ string) (string, error) {
+	f.overwriteAsked = true
+	if f.overwriteChoice == "" {
+		return "Cancel", nil
+	}
+	return f.overwriteChoice, nil
 }
 
 func (f *fakeNative) ShowError(_ context.Context, title string, message string) {
@@ -376,6 +386,13 @@ func (f *fakeDocuments) WriteMarkdown(path, content string) error {
 		f.writes = map[string]string{}
 	}
 	f.writes[path] = content
+	// Model a real filesystem: what was just written is what the next read
+	// returns. Without this the fake reports every second save as an external
+	// modification, and the staleness check could not be tested honestly.
+	if f.read == nil {
+		f.read = map[string]string{}
+	}
+	f.read[path] = content
 	return nil
 }
 
