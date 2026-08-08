@@ -3,19 +3,19 @@
   "releases": [
     {
       "id": "initial-architext-buildout",
-      "version": "0.4.0-beta.1",
-      "name": "M8 image asset management (beta)",
+      "version": "0.4.0",
+      "name": "M8 image asset management (GA)",
       "status": "complete",
       "posture": "at-risk",
       "targetWindow": "Current milestone",
       "lastUpdated": "2026-08-08T00:00:00.000Z",
-      "summary": "Ship M8 image asset management as a beta pre-release: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import and image-local controls, plus the two blocking defects a pre-release slop-ferret sweep verified — startup no longer fails on an unreadable preference store, and image resolution is pinned on every render surface. A 2026-08-08 ABORT review of promoting this to a non-beta release returned NO-GO on all five stations; the data-destruction and correctness-gate findings are fixed and recorded here, and the remaining conditions live in docs/releases/v0.4.0-abort.md.",
+      "summary": "Ship M8 image asset management as the 0.4.0 GA release: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import and image-local controls. Four ABORT rounds drove out the security and data-destruction defects recorded here — obfuscated link schemes reaching the Go bindings, document links replacing the app window, broken image references and destroyed alt text, frontmatter loss, cross-document overwrite and a correctness gate that could not fail. All five red-team stations still returned NO-GO; the maintainer accepted the residual risk and authorised GA with disclosure as the mitigation, because the remaining blocker is the vendored editor rewriting markdown it cannot represent, which follows from its parse-and-re-serialize model rather than from a defect that can be patched. That behaviour is measured in e2e/fidelity_test.go and led by a caution in the README, alternative editing engines are under evaluation, and the full decision record is docs/releases/v0.4.0-abort.md.",
       "counts": {
         "features": 25,
-        "bugFixes": 9,
+        "bugFixes": 14,
         "workstreams": 1,
         "blockers": 1,
-        "complete": 34,
+        "complete": 39,
         "inProgress": 0,
         "planned": 0,
         "stretch": 0

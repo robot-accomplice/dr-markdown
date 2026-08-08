@@ -3,6 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Defence in depth behind the link-scheme allowlist and the <img> attribute
+       filter. This webview holds the native file bindings, so a script foothold
+       here reads and writes arbitrary paths; `connect-src 'none'` removes the
+       exfiltration channel and `default-src 'self'` stops remote script.
+       `img-src` allows data: because local images are inlined as data URIs by
+       design (the asset-server origin cannot resolve document-relative paths).
+       `connect-src 'self'` rather than 'none': the editor fetches its own
+       vendored theme manifest at boot. Same-origin only still removes the
+       remote exfiltration channel. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
   <title>Dr. Markdown</title>
   <link rel="stylesheet" href="src/app.css">
 </head>
