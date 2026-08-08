@@ -16,6 +16,21 @@ import (
 // preferences — so the guarantee holds for every file the app owns rather than
 // only the one whose corruption was noticed first.
 func Write(path string, data []byte, perm os.FileMode) error {
+	// Write THROUGH a symlink, not over it. Replacing the link would leave the
+	// user's edit in a new regular file at the link's path while the real note
+	// kept its old bytes — the save reported success and the document the user
+	// believed they were editing never changed. Users keep notes in vaults
+	// reached by symlink, so this is an ordinary layout, not an exotic one.
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	// Keep the file's existing permissions. A fresh temp file would otherwise
+	// impose the caller's mode on every save, silently turning a
+	// group-readable or published document owner-only.
+	if info, err := os.Stat(path); err == nil {
+		perm = info.Mode().Perm()
+	}
+
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
 
