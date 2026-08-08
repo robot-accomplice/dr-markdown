@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	runtime2 "runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,9 +18,15 @@ import (
 
 	imageassets "dr-markdown/internal/assets"
 	"dr-markdown/internal/document"
+	"dr-markdown/internal/eventlog"
 	"dr-markdown/internal/fonts"
 	"dr-markdown/internal/preferences"
 )
+
+// appVersion is the build identity carried into every recorded event, so a
+// user's bug report can be tied to what actually ran. Kept in step with
+// wails.json by TestAppVersionMatchesWailsConfig.
+const appVersion = "0.4.0"
 
 var iconFreeMessageDialogPNG = []byte{
 	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -57,6 +64,7 @@ type App struct {
 	fonts       fontPort
 	preferences preferencePort
 	images      imageAssetPort
+	events      *eventlog.Log
 }
 
 type appDependencies struct {
@@ -65,6 +73,7 @@ type appDependencies struct {
 	fonts       fontPort
 	preferences preferencePort
 	images      imageAssetPort
+	events      *eventlog.Log
 }
 
 type nativePort interface {
@@ -105,7 +114,12 @@ func NewApp() *App {
 	if err != nil {
 		store = preferences.NewStore(filepath.Join(os.TempDir(), "Dr. Markdown"), time.Now)
 	}
+	logDir, err := os.UserConfigDir()
+	if err != nil {
+		logDir = os.TempDir()
+	}
 	return newAppWithDependencies(appDependencies{
+		events:      eventlog.New(filepath.Join(logDir, "Dr. Markdown"), appVersion, time.Now),
 		native:      wailsNative{},
 		documents:   documentAdapter{},
 		fonts:       fontAdapter{},
@@ -116,6 +130,7 @@ func NewApp() *App {
 
 func newAppWithDependencies(deps appDependencies) *App {
 	return &App{
+		events:      deps.events,
 		native:      deps.native,
 		documents:   deps.documents,
 		fonts:       deps.fonts,
@@ -165,9 +180,11 @@ func (a *App) SaveDocument(path, content string) error {
 		return err
 	}
 	if err := a.documents.WriteMarkdown(path, content); err != nil {
+		a.events.Record("document.save.failed", map[string]string{"path": path, "error": err.Error()})
 		a.native.ShowError(a.ctx, "Save Failed", err.Error())
 		return err
 	}
+	a.events.Record("document.saved", map[string]string{"path": path, "bytes": strconv.Itoa(len(content))})
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
@@ -427,10 +444,24 @@ func (a *App) confirmNoExternalChange(path string) error {
 	if err != nil {
 		return err
 	}
+	a.events.Record("document.conflict", map[string]string{"path": path, "choice": choice})
 	if choice != "Overwrite" {
 		return fmt.Errorf("save canceled: %s changed on disk since it was opened", filepath.Base(path))
 	}
 	return nil
+}
+
+// RecordClientEvent lets the frontend put a diagnostic into the same trail as
+// the Go side. Frontend failures were console warnings, and a production build
+// has no devtools, so nothing the webview reported ever reached anyone.
+//
+// Fields are recorded as data, never interpreted. The webview parses untrusted
+// document content, so anything arriving here is untrusted too.
+func (a *App) RecordClientEvent(event string, fields map[string]string) {
+	if event == "" {
+		return
+	}
+	a.events.Record("client."+event, fields)
 }
 
 func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
@@ -527,9 +558,11 @@ func (a *App) saveCurrent() bool {
 func (a *App) openPath(path string) (OpenResult, error) {
 	content, err := a.documents.ReadMarkdown(path)
 	if err != nil {
+		a.events.Record("document.open.failed", map[string]string{"path": path, "error": err.Error()})
 		a.native.ShowError(a.ctx, "Open Failed", err.Error())
 		return OpenResult{}, err
 	}
+	a.events.Record("document.opened", map[string]string{"path": path, "bytes": strconv.Itoa(len(content))})
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
