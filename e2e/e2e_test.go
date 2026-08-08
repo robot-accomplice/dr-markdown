@@ -2,8 +2,11 @@
 // It serves frontend/dist over httptest (matching the Wails asset-server
 // environment) and talks to the page through the window.__app hooks.
 //
-// Requires a Chrome/Chromium binary on the machine; tests skip if none is
-// found. Pure Go — no Node involved.
+// Requires a Chrome/Chromium binary on the machine. Tests FAIL rather than
+// skip when none is found, because this package is the only coverage of the
+// frontend and a silent skip once let the whole suite vanish while `go test`
+// still printed ok. Set DRMD_SKIP_E2E to opt out deliberately. Pure Go — no
+// Node involved.
 package e2e
 
 import (
@@ -31,7 +34,14 @@ func chromeAvailable() bool {
 		return true // macOS default install
 	}
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		for _, name := range []string{"google-chrome", "chrome", "chromium", "chromium-browser", "chrome-headless-shell"} {
+		// The `.exe` names matter now that a missing browser fails instead of
+		// skipping: this is a three-platform product, and a Windows developer
+		// with Chrome installed would otherwise get a hard failure telling them
+		// to install what they already have.
+		for _, name := range []string{
+			"google-chrome", "chrome", "chromium", "chromium-browser", "chrome-headless-shell",
+			"chrome.exe", "chromium.exe", "chrome-headless-shell.exe",
+		} {
 			if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 				return true
 			}
@@ -40,10 +50,24 @@ func chromeAvailable() bool {
 	return false
 }
 
+// skipE2EEnv is the explicit, deliberate opt-out from browser coverage. It
+// exists so that skipping is a decision someone recorded, never a default.
+const skipE2EEnv = "DRMD_SKIP_E2E"
+
 func newTestBrowser(t *testing.T) (context.Context, context.CancelFunc) {
 	t.Helper()
+	// Fail, do not skip. Every test of this application's frontend logic lives
+	// in this package and runs through Chrome, so a missing binary silently
+	// removed the entire behavioural suite while `go test ./...` still printed
+	// `ok` — a green board that had verified nothing. An environment that
+	// genuinely cannot run a browser has to say so out loud.
 	if !chromeAvailable() {
-		t.Skip("no Chrome/Chromium binary found; skipping e2e")
+		if os.Getenv(skipE2EEnv) != "" {
+			t.Skipf("no Chrome/Chromium binary found and %s is set", skipE2EEnv)
+		}
+		t.Fatalf("no Chrome/Chromium binary found: the e2e suite is the only "+
+			"coverage of the frontend, so it must not pass by being absent. "+
+			"Install Chrome, or set %s=1 to accept an unverified frontend.", skipE2EEnv)
 	}
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(),
 		chromedp.DefaultExecAllocatorOptions[:]...)
