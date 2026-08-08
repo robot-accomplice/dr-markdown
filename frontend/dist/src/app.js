@@ -2448,7 +2448,22 @@ function markEdited(md) {
   }, 300)
 }
 
+// Go must never infer which document a write targets. Push the whole tab set
+// — path, content and dirty flag per tab — so the close guard saves each one
+// to its own file. Previously only a single boolean crossed the bridge, and Go
+// paired it with whatever path it had last opened, which wrote one tab's text
+// over another tab's file and discarded dirty background tabs entirely.
+function pushDocumentState() {
+  bridge.syncDocuments(state.docs.map((doc) => ({
+    path: doc.path ?? '',
+    content: doc.markdown ?? '',
+    dirty: Boolean(doc.dirty),
+    active: doc.id === state.activeDocId,
+  })))
+}
+
 function pushDirtyState() {
+  pushDocumentState()
   if (state.dirty !== lastPushedDirty) {
     bridge.setDirty(state.dirty)
     lastPushedDirty = state.dirty
@@ -2596,6 +2611,11 @@ async function boot() {
     ready: true,
     state,
     getMarkdown,
+    // The markdown the WYSIWYG editor itself serializes, bypassing the cached
+    // doc.markdown. The round-trip corpus MUST use this: getMarkdown() returns
+    // the string that was last put in, so a corpus built on it compares a value
+    // to itself and cannot fail for the class of defect it exists to catch.
+    getEditorMarkdown: () => wysiwyg.getMarkdown(),
     setMarkdown,
     toggleMode,
     setMode,
