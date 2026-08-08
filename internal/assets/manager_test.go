@@ -233,3 +233,84 @@ func TestLoadForDocumentRefusesSymlinkEscape(t *testing.T) {
 		t.Fatal("a symlink pointing outside the document directory must not be followed")
 	}
 }
+
+// The default macOS screenshot name contains spaces, which are illegal in a
+// CommonMark destination. The importer emitted them raw, so the app's own
+// headline feature wrote a broken link into the user's document and saved it.
+func TestImportForDocumentEmitsAValidMarkdownReference(t *testing.T) {
+	root := t.TempDir()
+	docPath := filepath.Join(root, "notes.md")
+
+	for _, name := range []string{
+		"Screen Shot 2026-08-07 at 10.02.11.png",
+		"a(b)c.png",
+		"square[bracket].png",
+	} {
+		source := filepath.Join(root, name)
+		if err := os.WriteFile(source, []byte("png"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		result, err := ImportForDocument(docPath, source)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		dest := result.Markdown[strings.Index(result.Markdown, "](")+2 : len(result.Markdown)-1]
+		if strings.ContainsAny(dest, " ()") {
+			t.Errorf("%s: destination is not a valid CommonMark link: %q", name, result.Markdown)
+		}
+		alt := result.Markdown[2:strings.Index(result.Markdown, "](")]
+		if strings.Contains(alt, "[") && !strings.Contains(alt, `\[`) {
+			t.Errorf("%s: unescaped bracket in alt text: %q", name, result.Markdown)
+		}
+	}
+}
+
+// Import and render are two halves of one feature. The importer now
+// percent-encodes the destination, so the loader must decode it or every
+// imported image with a space in its name renders as missing — the reference
+// would be valid markdown pointing at a file that does not exist.
+func TestImportedImageRoundTripsThroughTheLoader(t *testing.T) {
+	root := t.TempDir()
+	docPath := filepath.Join(root, "notes.md")
+	source := filepath.Join(root, "Screen Shot 2026-08-07 at 10.02.11.png")
+	if err := os.WriteFile(source, []byte("png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	imported, err := ImportForDocument(docPath, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest := imported.Markdown[strings.Index(imported.Markdown, "](")+2 : len(imported.Markdown)-1]
+
+	loaded, err := LoadForDocument(docPath, dest)
+	if err != nil {
+		t.Fatalf("load %q: %v", dest, err)
+	}
+	if !loaded.Exists {
+		t.Errorf("the image just imported does not render: %q -> %q", dest, loaded.AbsolutePath)
+	}
+}
+
+// Decoding must happen BEFORE containment, or percent-encoding becomes the
+// bypass: `%2e%2e%2f` is `../` and a containment check on the encoded string
+// sees an ordinary filename. This app opens arbitrary markdown, so the document
+// choosing the path is untrusted input.
+func TestPercentEncodingCannotSmuggleTraversalPastContainment(t *testing.T) {
+	root := t.TempDir()
+	docDir := filepath.Join(root, "vault")
+	if err := os.MkdirAll(docDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.png")
+	if err := os.WriteFile(secret, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := LoadForDocument(filepath.Join(docDir, "notes.md"), "%2e%2e%2fsecret.png")
+	if err == nil {
+		t.Fatalf("encoded traversal was accepted: %#v", loaded)
+	}
+	if strings.Contains(loaded.DataURI, base64.StdEncoding.EncodeToString([]byte("private"))) {
+		t.Error("the file outside the document directory was read")
+	}
+}
