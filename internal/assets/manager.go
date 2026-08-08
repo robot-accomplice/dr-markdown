@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,14 @@ func LoadForDocument(documentPath string, markdownPath string) (LoadedImage, err
 	}
 	if markdownPath == "" {
 		return LoadedImage{}, fmt.Errorf("load image: empty asset path")
+	}
+	// A markdown destination is URL-encoded, so `%20` denotes a space on disk.
+	// Decode BEFORE every check that reads the path, never after: `%2e%2e%2f`
+	// decodes to `../`, and a containment check run on the encoded form would
+	// pass it through. A filename holding a literal `%` fails to unescape and is
+	// used verbatim.
+	if decoded, err := url.PathUnescape(markdownPath); err == nil {
+		markdownPath = decoded
 	}
 	if isNonLocalSource(markdownPath) {
 		return LoadedImage{}, fmt.Errorf("load image: %q is not a local asset", markdownPath)
@@ -162,8 +171,39 @@ func ImportForDocument(documentPath string, sourcePath string) (ImportedImage, e
 		SourcePath:   sourcePath,
 		AssetPath:    target,
 		MarkdownPath: markdownPath,
-		Markdown:     fmt.Sprintf("![%s](%s)", alt, markdownPath),
+		Markdown:     fmt.Sprintf("![%s](%s)", escapeLinkText(alt), escapeLinkDestination(markdownPath)),
 	}, nil
+}
+
+// escapeLinkDestination percent-encodes everything outside the unreserved set,
+// keeping `/` as the path separator.
+//
+// The importer built the reference with raw Sprintf, and the default macOS
+// screenshot filename contains spaces — so importing one produced
+// `![...](notes.assets/Screen Shot 2026-08-07 at 10.02.11.png)`, which no
+// CommonMark parser reads as a link. The app's own image feature wrote broken
+// markdown into the document and then saved it. Parentheses close the
+// destination early and break it the same way, so the conservative allowlist is
+// the fix rather than a space-only substitution.
+func escapeLinkDestination(path string) string {
+	var b strings.Builder
+	for i := 0; i < len(path); i++ {
+		c := path[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
+			c == '-', c == '.', c == '_', c == '~', c == '/':
+			b.WriteByte(c)
+		default:
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
+}
+
+// escapeLinkText escapes the characters that end an alt-text span early.
+func escapeLinkText(text string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`)
+	return replacer.Replace(text)
 }
 
 func uniqueTargetPath(dir string, filename string) string {
