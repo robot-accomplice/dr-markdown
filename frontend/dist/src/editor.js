@@ -55,18 +55,39 @@ const RATIO_ALT = /^\d+\.\d{2}$/
 // preserved — it means nothing to any other markdown renderer anyway. Recording
 // the originals here rather than patching the bundle keeps the fix alive across
 // `tools/vendor.sh` refreshes.
+// Every alt in the document, in order, grouped by destination. A document may
+// reference one asset more than once — a before/after comparison is the obvious
+// case — with a different caption each time, so one alt per URL is wrong: the
+// last one read would be stamped over every occurrence. Ratio-shaped alts are
+// recorded too, because a file that already says `![1.00](x.png)` on disk means
+// exactly that, and because excluding them deleted any real alt that happened
+// to be a two-decimal number.
 function collectAltText(markdown) {
   const byURL = new Map()
   for (const [, alt, url] of markdown.matchAll(IMAGE)) {
-    if (alt && !RATIO_ALT.test(alt)) byURL.set(url, alt)
+    if (!byURL.has(url)) byURL.set(url, [])
+    byURL.get(url).push(alt)
   }
   return byURL
 }
 
+// Restores in document order, consuming each destination's queue. An image the
+// map does not know — one added inside the editor, where Crepe discarded its alt
+// before we ever saw it — gets an empty alt rather than the meaningless ratio.
+//
+// Known limit: deleting one of several images that share a destination shifts
+// the remaining captions by one, because the queue is positional and there is
+// nothing in the serialized output tying an image back to its original slot.
+// That is a narrower and less destructive failure than either the ratio
+// overwrite or the last-alt-wins bug it replaces.
 function restoreAltText(markdown, byURL) {
-  return markdown.replace(IMAGE, (whole, alt, url, title) =>
-    RATIO_ALT.test(alt) ? `![${byURL.get(url) ?? ''}](${url}${title})` : whole,
-  )
+  const pending = new Map()
+  for (const [url, alts] of byURL) pending.set(url, [...alts])
+  return markdown.replace(IMAGE, (whole, alt, url, title) => {
+    if (!RATIO_ALT.test(alt)) return whole
+    const queue = pending.get(url)
+    return `![${queue?.length ? queue.shift() : ''}](${url}${title})`
+  })
 }
 
 export class WysiwygEditor {
