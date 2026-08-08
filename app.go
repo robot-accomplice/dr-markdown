@@ -35,8 +35,11 @@ var iconFreeMessageDialogPNG = []byte{
 type App struct {
 	ctx context.Context
 
-	mu          sync.Mutex
-	dirty       bool
+	mu   sync.Mutex
+	docs []OpenDocument
+	// currentPath is the last path opened or saved. It names the window title
+	// and the Save-As default only; it is NEVER a write target, because
+	// inferring the target from ambient state is what destroyed documents.
 	currentPath string
 	currentText string
 	native      nativePort
@@ -148,7 +151,13 @@ func (a *App) SaveDocument(path, content string) error {
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
-	a.dirty = false
+	for i := range a.docs {
+		if a.docs[i].Path == path || (a.docs[i].Active && a.docs[i].Path == "") {
+			a.docs[i].Path = path
+			a.docs[i].Content = content
+			a.docs[i].Dirty = false
+		}
+	}
 	a.mu.Unlock()
 	a.recordRecent(path)
 	a.updateTitle()
@@ -171,19 +180,81 @@ func (a *App) SaveDocumentAs(content string) (string, error) {
 	return path, nil
 }
 
-// SetDirty records the frontend's dirty state and refreshes the title.
-func (a *App) SetDirty(dirty bool) {
+// OpenDocument is one editor tab as the frontend sees it. Go does not infer
+// which document is current; the frontend names it on every push.
+type OpenDocument struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	Dirty   bool   `json:"dirty"`
+	Active  bool   `json:"active"`
+}
+
+// SyncDocuments replaces Go's view of the open tabs.
+//
+// This exists because Go used to hold a single ambient (currentPath,
+// currentText). The frontend is multi-tab and never reset the path when a new
+// tab opened, so the close guard wrote the new tab's text over the previously
+// opened FILE — silently destroying a document the user had not touched. Any
+// write must now name its own target, and dirty state aggregates across tabs
+// rather than tracking only the visible one.
+func (a *App) SyncDocuments(docs []OpenDocument) {
 	a.mu.Lock()
-	a.dirty = dirty
+	a.docs = append(a.docs[:0], docs...)
 	a.mu.Unlock()
 	a.updateTitle()
 }
 
-// UpdateContent stores the latest markdown (pushed debounced by the
-// frontend) so the close guard can save without a round-trip.
+// SetDirty records the frontend's dirty state for the active tab.
+func (a *App) SetDirty(dirty bool) {
+	a.mu.Lock()
+	a.ensureImplicitDocument()
+	for i := range a.docs {
+		if a.docs[i].Active {
+			a.docs[i].Dirty = dirty
+		}
+	}
+	a.mu.Unlock()
+	a.updateTitle()
+}
+
+// dirtyDocuments returns a copy of every tab with unsaved changes.
+func (a *App) dirtyDocuments() []OpenDocument {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var out []OpenDocument
+	for _, d := range a.docs {
+		if d.Dirty {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// activeDocument returns the focused tab, or the first, or a zero value.
+func (a *App) activeDocument() OpenDocument {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, d := range a.docs {
+		if d.Active {
+			return d
+		}
+	}
+	if len(a.docs) > 0 {
+		return a.docs[0]
+	}
+	return OpenDocument{}
+}
+
+// UpdateContent stores the latest markdown for the active tab (pushed
+// debounced by the frontend) so the close guard can save without a round-trip.
 func (a *App) UpdateContent(content string) {
 	a.mu.Lock()
-	a.currentText = content
+	a.ensureImplicitDocument()
+	for i := range a.docs {
+		if a.docs[i].Active {
+			a.docs[i].Content = content
+		}
+	}
 	a.mu.Unlock()
 }
 
@@ -286,10 +357,7 @@ func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 // dialog as the close guard; Save saves first, Don't Save proceeds, and
 // Cancel (or a dialog/save failure) aborts.
 func (a *App) ResolveUnsavedChanges() bool {
-	a.mu.Lock()
-	dirty := a.dirty
-	a.mu.Unlock()
-	if !dirty {
+	if !a.activeDocument().Dirty {
 		return true
 	}
 	return !a.promptUnsaved()
@@ -298,10 +366,7 @@ func (a *App) ResolveUnsavedChanges() bool {
 // beforeClose implements the unsaved-changes guard: Save / Don't Save /
 // Cancel, matching the spec's error-handling contract.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
-	a.mu.Lock()
-	dirty := a.dirty
-	a.mu.Unlock()
-	if !dirty {
+	if len(a.dirtyDocuments()) == 0 {
 		return false
 	}
 	return a.promptUnsaved()
@@ -326,15 +391,36 @@ func (a *App) promptUnsaved() (prevent bool) {
 
 // saveCurrent writes the latest known content. Returns false if the save
 // failed or the user canceled a Save As dialog.
+// saveCurrent saves EVERY tab with unsaved changes, each to its own path.
+//
+// It does not consult a "current" path. Choosing the target from ambient state
+// is precisely what allowed one tab's content to be written over another tab's
+// file. A pathless tab goes through Save As. Any failure or cancellation stops
+// the close so the remaining documents are not lost.
 func (a *App) saveCurrent() bool {
-	a.mu.Lock()
-	content, path := a.currentText, a.currentPath
-	a.mu.Unlock()
-	if path == "" {
-		p, err := a.SaveDocumentAs(content)
-		return err == nil && p != ""
+	for _, doc := range a.dirtyDocuments() {
+		if doc.Path == "" {
+			path, err := a.SaveDocumentAs(doc.Content)
+			if err != nil || path == "" {
+				return false
+			}
+			continue
+		}
+		if err := a.SaveDocument(doc.Path, doc.Content); err != nil {
+			return false
+		}
 	}
-	return a.SaveDocument(path, content) == nil
+	return true
+}
+
+// ensureImplicitDocument keeps single-document callers working: when nothing
+// has been synced yet there is exactly one buffer, so deriving it from the
+// last opened path is unambiguous rather than a guess between tabs.
+// Callers must hold a.mu.
+func (a *App) ensureImplicitDocument() {
+	if len(a.docs) == 0 {
+		a.docs = append(a.docs, OpenDocument{Path: a.currentPath, Content: a.currentText, Active: true})
+	}
 }
 
 func (a *App) openPath(path string) (OpenResult, error) {
@@ -346,7 +432,13 @@ func (a *App) openPath(path string) (OpenResult, error) {
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
-	a.dirty = false
+	for i := range a.docs {
+		if a.docs[i].Path == path || (a.docs[i].Active && a.docs[i].Path == "") {
+			a.docs[i].Path = path
+			a.docs[i].Content = content
+			a.docs[i].Dirty = false
+		}
+	}
 	a.mu.Unlock()
 	a.recordRecent(path)
 	a.updateTitle()
@@ -364,9 +456,13 @@ func (a *App) updateTitle() {
 	if a.ctx == nil {
 		return
 	}
-	a.mu.Lock()
-	path, dirty := a.currentPath, a.dirty
-	a.mu.Unlock()
+	active := a.activeDocument()
+	path, dirty := active.Path, active.Dirty
+	if path == "" {
+		a.mu.Lock()
+		path = a.currentPath
+		a.mu.Unlock()
+	}
 	name := "untitled"
 	if path != "" {
 		name = path

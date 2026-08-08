@@ -3,10 +3,10 @@
   "version": "0.4.0-beta.1",
   "name": "M8 image asset management (beta)",
   "status": "complete",
-  "posture": "on-track",
-  "summary": "Ship M8 image asset management as a beta pre-release: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import and image-local controls, plus the two blocking defects a pre-release slop-ferret sweep verified \u2014 startup no longer fails on an unreadable preference store, and image resolution is pinned on every render surface.",
+  "posture": "at-risk",
+  "summary": "Ship M8 image asset management as a beta pre-release: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import and image-local controls, plus the two blocking defects a pre-release slop-ferret sweep verified \u2014 startup no longer fails on an unreadable preference store, and image resolution is pinned on every render surface. A 2026-08-08 ABORT review of promoting this to a non-beta release returned NO-GO on all five stations; the data-destruction and correctness-gate findings are fixed and recorded here, and the remaining conditions live in docs/releases/v0.4.0-abort.md.",
   "targetWindow": "Current milestone",
-  "lastUpdated": "2026-08-07T00:00:00.000Z",
+  "lastUpdated": "2026-08-08T00:00:00.000Z",
   "updateSource": "Source-backed maintenance pass",
   "scope": {
     "required": [
@@ -514,6 +514,93 @@
           "TestImageAssetsResolveOnEveryRenderSurface",
           "slop-ferret sweep @802c061 (VERIFIED by mutation on a scratch copy)"
         ]
+      },
+      {
+        "id": "abort-cross-document-overwrite",
+        "title": "Writes never infer their target document",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Go held a single ambient (currentPath, currentText) while the frontend is multi-tab, so the quit-time close guard wrote the active tab's text to whatever file had last been opened \u2014 destroying a document the user had not touched. Reproduced. The frontend now reports every tab with its own path and dirty flag, and each dirty tab is saved to its own file.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "docs/releases/v0.4.0-abort.md",
+          "TestCloseGuardNeverWritesOneDocumentOverAnother",
+          "TestCloseGuardPromptsForDirtyBackgroundTabs",
+          "TestFrontendReportsEveryTabWithItsOwnPath"
+        ]
+      },
+      {
+        "id": "abort-dirty-tab-aggregation",
+        "title": "Unsaved changes aggregate across tabs",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Dirty state tracked the active document only, so quitting with a clean tab in front discarded every edited background tab with no prompt.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestCloseGuardCancelKeepsDirtyBackgroundTabsOpen",
+          "TestCloseGuardAllowsCloseWhenNoTabIsDirty"
+        ]
+      },
+      {
+        "id": "abort-path-containment",
+        "title": "Document-supplied asset paths are contained",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "The product views arbitrary markdown, and every image reference resolves automatically on render. LoadForDocument honoured absolute paths, '..' traversal and any extension, so opening a document could read any file the user could read into the DOM. Documents may now only reference assets at or below their own directory, re-checked after symlink resolution.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestLoadForDocumentRefusesPathsOutsideTheDocumentDirectory",
+          "TestLoadForDocumentRefusesSymlinkEscape",
+          "TestLoadForDocumentStillLoadsItsOwnAssetFolder"
+        ]
+      },
+      {
+        "id": "abort-roundtrip-corpus-live",
+        "title": "The round-trip corpus can fail",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "The corpus compared app.getMarkdown() \u2014 the cached input string \u2014 against the fixture, so it never invoked the WYSIWYG serializer and could not fail for the class of defect it existed to catch. It now reads the editor's own serialized output; demonstrated by breaking the serializer and observing the old corpus report ok while the new one failed naming the fixture.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestRoundTripCorpus",
+          "mutation check recorded in docs/releases/v0.4.0-abort.md"
+        ]
+      },
+      {
+        "id": "abort-symlink-and-mode",
+        "title": "Saving preserves symlinks and file mode",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Atomic save renamed over the target path, replacing a symlink with a regular file so the edit landed in a decoy while the real note kept its old bytes, and resetting every saved file to 0600. Writes now follow the link and keep the existing mode.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestWriteFollowsSymlinksInsteadOfReplacingThem",
+          "TestWritePreservesTheExistingFileMode",
+          "TestWriteUsesTheRequestedModeForANewFile"
+        ]
+      },
+      {
+        "id": "abort-readme-claims",
+        "title": "README claims corrected",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "The platform badge advertised Windows and Linux for a macOS-only build, the feature list claimed build-macos.sh produces a signed .app while the script contains no codesign at all, and the round-trip corpus was described as a gate it could not be.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "README.md"
+        ]
       }
     ],
     "planned": [],
@@ -563,7 +650,16 @@
       ]
     }
   ],
-  "blockers": [],
+  "blockers": [
+    {
+      "id": "stable-release-gate",
+      "title": "A non-beta release is blocked by the ABORT review",
+      "severity": "high",
+      "status": "open",
+      "summary": "The 2026-08-08 ABORT review of a first non-beta release returned NO-GO from all five red-team stations. The data-destruction and correctness-gate conditions are now closed; what remains open is recorded in docs/releases/v0.4.0-abort.md. The shipped 0.4.0-beta.1 is unaffected \u2014 this blocks dropping the beta label, not the beta itself.",
+      "owner": "Project maintainers"
+    }
+  ],
   "milestones": [
     {
       "id": "m3-1-current-screen",

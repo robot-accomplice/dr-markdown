@@ -26,6 +26,7 @@ export const bridge = {
   revealImageAsset: (documentPath, markdownPath) =>
     wails()?.RevealImageAsset?.(documentPath, markdownPath) ?? missing('RevealImageAsset'),
   setDirty: (d) => wails()?.SetDirty(d),
+  syncDocuments: (docs) => wails()?.SyncDocuments?.(docs),
   updateContent: (c) => wails()?.UpdateContent(c),
   listFontFamilies: () => wails()?.ListFontFamilies() ?? missing('ListFontFamilies'),
   loadPreferences: () => wails()?.LoadPreferences?.() ?? null,
