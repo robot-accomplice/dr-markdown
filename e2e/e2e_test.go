@@ -387,6 +387,7 @@ func TestSplitScreenEditsAndInsertPopoverAreBacked(t *testing.T) {
 		t.Fatal("insert popover should open from the Insert tab")
 	}
 	evalJS(t, ctx, `document.querySelector('[data-insert-command="hr"]').click(); 'ok'`, &res)
+	waitForJS(t, ctx, `window.__app.getMarkdown().includes('---')`)
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if !strings.Contains(md, "---") {
 		t.Fatalf("insert popover command did not mutate markdown: %q", md)
@@ -2098,6 +2099,7 @@ func TestEmptyStateActionsAndTemplatesAreBacked(t *testing.T) {
 	evalJS(t, ctx, "document.getElementById('empty-paste').click(); 'ok'", &res)
 
 	var md string
+	waitForJS(t, ctx, `window.__app.getMarkdown().includes('# Pasted')`)
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if !strings.Contains(md, "# Pasted") {
 		t.Fatalf("paste action did not load clipboard markdown: %q", md)
@@ -2105,6 +2107,7 @@ func TestEmptyStateActionsAndTemplatesAreBacked(t *testing.T) {
 
 	evalJS(t, ctx, "window.__app.newDocument().then(() => 'ok')", &res)
 	evalJS(t, ctx, "document.querySelector('[data-template=\"readme\"]').click(); 'ok'", &res)
+	waitForJS(t, ctx, `window.__app.getMarkdown().includes('# Project Name')`)
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if !strings.Contains(md, "# Project Name") || !strings.Contains(md, "## Installation") {
 		t.Fatalf("README template did not create markdown: %q", md)
@@ -2373,6 +2376,7 @@ func TestContextualDocumentControlsManageBlocksInPlace(t *testing.T) {
 
 	evalJS(t, ctx, `document.querySelector('[data-context-command="table-add-column"]').click(); 'ok'`, &res)
 	var md string
+	waitForJS(t, ctx, `window.__app.getMarkdown().includes('Header 3')`)
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if !strings.Contains(md, "Header 3") {
 		t.Fatalf("contextual table control did not add a column: %q", md)
