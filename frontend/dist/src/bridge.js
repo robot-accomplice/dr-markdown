@@ -23,10 +23,19 @@ export const bridge = {
     wails()?.ImportDroppedImage?.(documentPath, sourcePath) ?? missing('ImportDroppedImage'),
   loadImageAsset: (documentPath, markdownPath) =>
     wails()?.LoadImageAsset?.(documentPath, markdownPath) ?? missing('LoadImageAsset'),
+  openExternalURL: (url) => wails()?.OpenExternalURL?.(url) ?? missing('OpenExternalURL'),
   revealImageAsset: (documentPath, markdownPath) =>
     wails()?.RevealImageAsset?.(documentPath, markdownPath) ?? missing('RevealImageAsset'),
   setDirty: (d) => wails()?.SetDirty(d),
-  syncDocuments: (docs) => wails()?.SyncDocuments?.(docs),
+  // Explicit rather than an optional call: this is the only binding whose
+  // silent absence re-enables a data-loss bug, so it must warn like the rest.
+  // A stale generated binding lacking SyncDocuments used to no-op here, leaving
+  // Go with no documents at all.
+  syncDocuments: (docs) => {
+    const app = wails()
+    if (!app?.SyncDocuments) return missing('SyncDocuments')
+    return app.SyncDocuments(docs)
+  },
   updateContent: (c) => wails()?.UpdateContent(c),
   listFontFamilies: () => wails()?.ListFontFamilies() ?? missing('ListFontFamilies'),
   loadPreferences: () => wails()?.LoadPreferences?.() ?? null,

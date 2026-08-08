@@ -84,6 +84,9 @@ func TestAppResolveUnsavedChangesSavesCurrentDocumentWhenUserChoosesSave(t *test
 	if err := app.SaveDocument("/tmp/current.md", "# Saved\n"); err != nil {
 		t.Fatalf("seed saved doc: %v", err)
 	}
+	// The frontend names the document; Go no longer infers it from the last
+	// path it happened to touch.
+	app.SyncDocuments([]OpenDocument{{Path: "/tmp/current.md", Content: "# Saved\n", Active: true}})
 	app.UpdateContent("# Changed\n")
 	app.SetDirty(true)
 
@@ -250,6 +253,7 @@ func TestAppResolveUnsavedChangesHonorsDiscardCancelAndDialogError(t *testing.T)
 				fonts:       fakeFonts{},
 				preferences: &fakePreferences{},
 			})
+			app.SyncDocuments([]OpenDocument{{Path: "/tmp/current.md", Content: "x", Active: true}})
 			app.SetDirty(true)
 			if got := app.ResolveUnsavedChanges(); got != tt.want {
 				t.Fatalf("ResolveUnsavedChanges = %v, want %v", got, tt.want)
@@ -296,6 +300,7 @@ type fakeNative struct {
 	openCalled    bool
 	imageCalled   bool
 	revealedPath  string
+	externalURL   string
 
 	fileDropSubscribed bool
 	errorTitle         string
@@ -320,6 +325,11 @@ func (f *fakeNative) SubscribeFileDrop(context.Context) { f.fileDropSubscribed =
 
 func (f *fakeNative) RevealPath(_ context.Context, path string) error {
 	f.revealedPath = path
+	return nil
+}
+
+func (f *fakeNative) OpenExternalURL(_ context.Context, url string) error {
+	f.externalURL = url
 	return nil
 }
 
