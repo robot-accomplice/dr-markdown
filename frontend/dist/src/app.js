@@ -871,6 +871,29 @@ async function newDocument() {
   pushDirtyState()
 }
 
+// Line endings are a property of the FILE, not of the editing surface. Both
+// surfaces destroy them: the WYSIWYG editor re-serializes with LF, and a
+// textarea normalizes CRLF to LF on input per the HTML spec. So a
+// Windows-authored file came back whole-file changed after a one-word edit —
+// the loudest possible diff for anyone keeping notes in version control.
+//
+// Normalizing on the way in and restoring on the way out fixes both surfaces at
+// one seam, and keeps every in-memory comparison (dirty tracking, savedText)
+// working in a single representation instead of two.
+const CRLF = '\r\n'
+
+function detectLineEnding(text) {
+  return text.includes(CRLF) ? CRLF : '\n'
+}
+
+function toEditorText(text) {
+  return text.replace(/\r\n/g, '\n')
+}
+
+function toFileText(text, lineEnding) {
+  return lineEnding === CRLF ? text.replace(/\n/g, CRLF) : text
+}
+
 async function openDocument() {
   if (state.dirty) {
     const proceed = await bridge.resolveUnsavedChanges()
@@ -883,10 +906,11 @@ async function openDocument() {
   const doc = activeDoc()
   doc.path = res.path
   doc.title = titleForPath(res.path, doc.id)
-  doc.markdown = res.content
-  doc.savedText = res.content
+  doc.lineEnding = detectLineEnding(res.content)
+  doc.markdown = toEditorText(res.content)
+  doc.savedText = doc.markdown
   doc.started = true
-  await mountMarkdown(res.content)
+  await mountMarkdown(doc.markdown)
   syncActiveState()
   bridge.setDirty(false)
   lastPushedDirty = false
@@ -905,10 +929,11 @@ async function openRecentDocument(path) {
   const doc = activeDoc()
   doc.path = res.path
   doc.title = titleForPath(res.path, doc.id)
-  doc.markdown = res.content
-  doc.savedText = res.content
+  doc.lineEnding = detectLineEnding(res.content)
+  doc.markdown = toEditorText(res.content)
+  doc.savedText = doc.markdown
   doc.started = true
-  await mountMarkdown(res.content)
+  await mountMarkdown(doc.markdown)
   syncActiveState()
   bridge.setDirty(false)
   lastPushedDirty = false
@@ -920,7 +945,7 @@ async function save() {
   const doc = activeDoc()
   await formatDocumentIfRequested(doc)
   if (!doc.path) return saveAs()
-  await bridge.saveDocument(doc.path, doc.markdown)
+  await bridge.saveDocument(doc.path, toFileText(doc.markdown, doc.lineEnding))
   cancelPendingPush()
   doc.savedText = doc.markdown
   syncActiveState()
@@ -933,7 +958,7 @@ async function saveAs() {
   await persistCurrentEditorText()
   const doc = activeDoc()
   await formatDocumentIfRequested(doc)
-  const path = await bridge.saveDocumentAs(doc.markdown)
+  const path = await bridge.saveDocumentAs(toFileText(doc.markdown, doc.lineEnding))
   if (!path) return
   cancelPendingPush()
   doc.path = path
