@@ -2926,13 +2926,13 @@ func TestRoundTripCorpus(t *testing.T) {
 
 			var b string
 			evalJS(t, ctx,
-				"window.__app.setMarkdown("+string(aJSON)+").then(() => window.__app.getMarkdown())",
+				"window.__app.setMarkdown("+string(aJSON)+").then(() => window.__app.getEditorMarkdown())",
 				&b)
 
 			bJSON, _ := json.Marshal(b)
 			var c string
 			evalJS(t, ctx,
-				"window.__app.setMarkdown("+string(bJSON)+").then(() => window.__app.getMarkdown())",
+				"window.__app.setMarkdown("+string(bJSON)+").then(() => window.__app.getEditorMarkdown())",
 				&c)
 
 			if b != c {

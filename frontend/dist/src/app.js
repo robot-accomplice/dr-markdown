@@ -2611,6 +2611,11 @@ async function boot() {
     ready: true,
     state,
     getMarkdown,
+    // The markdown the WYSIWYG editor itself serializes, bypassing the cached
+    // doc.markdown. The round-trip corpus MUST use this: getMarkdown() returns
+    // the string that was last put in, so a corpus built on it compares a value
+    // to itself and cannot fail for the class of defect it exists to catch.
+    getEditorMarkdown: () => wysiwyg.getMarkdown(),
     setMarkdown,
     toggleMode,
     setMode,
