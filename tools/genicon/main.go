@@ -1,9 +1,13 @@
 // Command genicon renders the Dr. Markdown, .MD 1024x1024 app icon using
 // only the Go standard library: a medical-scrubs teal rounded-rectangle
-// background with a white "M + stethoscope" mark centered on it. The mark
-// is a bolder, simplified sibling of the banner mark in tools/genbanner so
-// it survives small (64px) rendering: chunky Y-tubes with ear tips and an
-// emphasized two-tone chestpiece.
+// background with a white "M↓" mark centered on it — the conventional
+// markdown mark, which readers already recognise.
+//
+// The arrow shares the M's stroke width, top and baseline, so the pair reads
+// as one word rather than two glyphs. Keep it that way: the mark this
+// replaced was built from fine strokes and a two-tone inner disc, and it
+// dissolved into an unreadable squiggle at 24-64px — the sizes that actually
+// ship. Any future mark has to survive the Dock, not the 1024px source.
 //
 // Usage: go run ./tools/genicon -out build/appicon.png
 package main
@@ -121,7 +125,7 @@ func main() {
 	// The mark is designed in the coordinate space below, then scaled by k
 	// about the canvas center and shifted so its bounding box is centered.
 	const k = 1.0
-	const ox, oy = -52.0, -11.0
+	const ox, oy = -45.0, -8.0
 	P := func(x, y float64) pt {
 		return pt{512 + (x-512)*k + ox, 512 + (y-512)*k + oy}
 	}
@@ -132,19 +136,12 @@ func main() {
 	stroke(img, P(240, 300), P(380, 500), mw*k, white)
 	stroke(img, P(380, 500), P(520, 300), mw*k, white)
 	stroke(img, P(520, 300), P(520, 740), mw*k, white)
-	// Stethoscope — Y-tubes with ear tips, single tube arcing right into a
-	// large two-tone chestpiece.
-	const tw = 64.0
-	stroke(img, P(648, 330), P(716, 486), tw*k, white)
-	stroke(img, P(784, 330), P(716, 486), tw*k, white)
-	disc(img, P(648, 318), 48*k, white)
-	disc(img, P(784, 318), 48*k, white)
-	stroke(img, P(716, 486), P(712, 566), tw*k, white)
-	stroke(img, P(712, 566), P(722, 636), tw*k, white)
-	stroke(img, P(722, 636), P(752, 690), tw*k, white)
-	stroke(img, P(752, 690), P(800, 714), tw*k, white)
-	disc(img, P(846, 702), 84*k, white)
-	disc(img, P(846, 702), 40*k, teal)
+	// "↓" — stem and chevron at the M's weight, sharing its top (300) and
+	// baseline (740) so the two glyphs sit on one line.
+	const ax = 760.0
+	stroke(img, P(ax, 300), P(ax, 660), mw*k, white)
+	stroke(img, P(ax-110, 566), P(ax, 740), mw*k, white)
+	stroke(img, P(ax+110, 566), P(ax, 740), mw*k, white)
 
 	f, err := os.Create(*out)
 	if err != nil {
