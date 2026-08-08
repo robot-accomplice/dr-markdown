@@ -1819,7 +1819,13 @@ async function highlightFormattedCodeBlocks(md) {
   const languages = fencedLanguages(md)
   const blocks = await waitForFormattedCodeElements(languages.length)
   for (const [index, code] of blocks.entries()) {
-    const language = languageFromElement(code) || languages[index] || ''
+    // The markdown wins. `waitForFormattedCodeElements` waits for the right
+    // NUMBER of code elements, not for their attributes to catch up, so the
+    // element's `language-*` class can still be the one from before the edit.
+    // Reading it first made a language change render the previous language
+    // roughly one time in six — markdown on disk is this project's source of
+    // truth, and it is what was just authoritatively changed.
+    const language = languages[index] || languageFromElement(code) || ''
     const fenceIndex = index
     if (normalizeLanguage(language) === 'mermaid') {
       const source = code.textContent
