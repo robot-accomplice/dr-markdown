@@ -158,15 +158,33 @@ func TestEditorBoots(t *testing.T) {
 	if !emptyStateVisible {
 		t.Error("app should launch to the in-canvas empty state")
 	}
-	var duplicatedEmptyChrome bool
+	// M3.7 Chrome Density removed the in-canvas title bar because the native
+	// macOS window owns the application and document NAME. That rationale
+	// covers the name and nothing else, so the three things the old blanket
+	// assertion lumped together are now asserted separately and for their own
+	// reasons — a single rule could not say which of them it meant.
+	var duplicatesDocumentTitle bool
 	evalJS(t, ctx, `(() => {
 		const empty = document.getElementById('empty-state')
-		return empty.querySelector('.empty-logo') !== null ||
-			Array.from(empty.querySelectorAll('h1')).some((node) => /^(Dr\. Markdown|Untitled\.md)$/.test(node.textContent.trim())) ||
-			empty.textContent.includes('⌘⇧R')
-	})()`, &duplicatedEmptyChrome)
-	if duplicatedEmptyChrome {
-		t.Error("empty state should not duplicate app chrome, document title, or shortcut instructions")
+		return Array.from(empty.querySelectorAll('h1')).some((node) => /^(Dr\. Markdown|Untitled\.md)$/.test(node.textContent.trim()))
+	})()`, &duplicatesDocumentTitle)
+	if duplicatesDocumentTitle {
+		t.Error("empty state must not repeat the application or document name; the native window title owns it (M3.7)")
+	}
+
+	var hasIdentityMark bool
+	evalJS(t, ctx, `document.querySelector('#empty-state .empty-logo') !== null`, &hasIdentityMark)
+	if !hasIdentityMark {
+		t.Error("empty state should carry the app mark: macOS shows no icon in the window title bar, so this is the only place it appears while running")
+	}
+
+	var hasShortcutHint bool
+	evalJS(t, ctx, `(() => {
+		const text = document.getElementById('empty-state').textContent
+		return text.includes('⌘⇧R') && text.includes('⌘⇧S')
+	})()`, &hasShortcutHint)
+	if !hasShortcutHint {
+		t.Error("empty state should name the raw and split shortcuts; the native title bar shows no shortcuts, so nothing else discloses them")
 	}
 	var emptyInspectorHidden bool
 	evalJS(t, ctx, `document.body.classList.contains('app-empty') &&
