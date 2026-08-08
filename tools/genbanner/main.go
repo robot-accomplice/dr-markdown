@@ -1,7 +1,7 @@
 // Command genbanner renders the Dr. Markdown, .MD 1600x420 README banner: a
 // medical-scrubs teal full-bleed background with a subtle vertical gradient,
-// the white "M + stethoscope" mark on the left (same stroke geometry as
-// tools/genicon), and the full "Dr. Markdown, .MD" wordmark plus tagline on
+// the white "M↓" mark on the left (same stroke geometry as tools/genicon),
+// and the full "Dr. Markdown, .MD" wordmark plus tagline on
 // the right. The mark is pure stdlib polygon filling; the text is rendered
 // with golang.org/x/image/font from a macOS system font.
 //
@@ -32,10 +32,19 @@ const (
 )
 
 var (
-	tealTop = color.RGBA{17, 94, 89, 255}    // gradient start (darker)
-	tealBot = color.RGBA{15, 118, 110, 255}  // gradient end (lighter)
+	tealTop = color.RGBA{17, 94, 89, 255}   // gradient start (darker)
+	tealBot = color.RGBA{15, 118, 110, 255} // gradient end (lighter)
 	white   = color.RGBA{255, 255, 255, 255}
 	tint    = color.RGBA{153, 246, 228, 255} // light teal tint for tagline
+)
+
+// The mark's design-space bounding box, including stroke caps. Shared by
+// glyph() and the layout in main() so the two cannot disagree about how much
+// room the mark needs — they were separate literals once, and changing the
+// mark updated only one of them.
+const (
+	markX0, markX1 = 174.0, 891.0
+	markY0, markY1 = 294.0, 740.0
 )
 
 type pt struct{ x, y float64 }
@@ -123,41 +132,33 @@ func background(img *image.RGBA) {
 	}
 }
 
-// glyph draws the "M + stethoscope" mark with its bounding box (including
-// stroke caps) at top-left (ox, oy), scaled to height h. The mark reads
-// "Markdown, MD": a bold M followed by a stethoscope — two binaural tubes
-// with round ear tips joining into a single tube that descends and curves
-// right into a chestpiece with a two-tone diaphragm. Returns the total
-// width occupied.
+// glyph draws the "M↓" mark with its bounding box (including stroke caps) at
+// top-left (ox, oy), scaled to height h. It is the conventional markdown
+// mark: a bold M followed by a down arrow sharing the M's stroke width, top
+// and baseline, so the pair reads as one word. Returns the total width
+// occupied.
+//
+// Keep both glyphs on one stroke width: the mark this replaced mixed a
+// heavy M with finer curves and an inner disc, and lost all of it at small
+// sizes.
 func glyph(img *image.RGBA, ox, oy, h float64, c color.RGBA) float64 {
 	// Local coordinate space: the M spans x 210..560, y 330..704 with stroke
-	// width 72; including caps and the chestpiece the mark's bounding box is
-	// x 174..926, y 294..752.
-	s := h / 458.0
-	w := 72.0 * s  // M stroke width
-	tw := 56.0 * s // stethoscope tube width, slightly finer than the M
-	at := func(x, y float64) pt { return pt{ox + (x-174)*s, oy + (y-294)*s} }
+	// width 72; including caps the mark's bounding box is x 174..891,
+	// y 294..740.
+	s := h / (markY1 - markY0)
+	w := 72.0 * s // stroke width, shared by both glyphs
+	at := func(x, y float64) pt { return pt{ox + (x-markX0)*s, oy + (y-markY0)*s} }
 	// "M" — four strokes.
 	stroke(img, at(210, 704), at(210, 330), w, c)
 	stroke(img, at(210, 330), at(385, 560), w, c)
 	stroke(img, at(385, 560), at(560, 330), w, c)
 	stroke(img, at(560, 330), at(560, 704), w, c)
-	// Stethoscope — binaural tubes opening upward, each tipped with an
-	// earpiece disc.
-	stroke(img, at(668, 352), at(748, 512), tw, c)
-	stroke(img, at(832, 352), at(752, 512), tw, c)
-	disc(img, at(668, 346), 38*s, c)
-	disc(img, at(832, 346), 38*s, c)
-	// Single tube descending from the junction, arcing right.
-	stroke(img, at(750, 512), at(746, 578), tw, c)
-	stroke(img, at(746, 578), at(752, 634), tw, c)
-	stroke(img, at(752, 634), at(776, 674), tw, c)
-	stroke(img, at(776, 674), at(812, 694), tw, c)
-	// Chestpiece — white disc with a background-teal diaphragm inside.
-	cp := at(862, 688)
-	disc(img, cp, 64*s, c)
-	disc(img, cp, 30*s, bgAt(cp.y))
-	return (926 - 174) * s
+	// "↓" — stem and chevron on the M's top and baseline.
+	const ax = 760.0
+	stroke(img, at(ax, 330), at(ax, 610), w, c)
+	stroke(img, at(ax-95, 522), at(ax, 704), w, c)
+	stroke(img, at(ax+95, 522), at(ax, 704), w, c)
+	return (markX1 - markX0) * s
 }
 
 // loadFonts tries each candidate path in order and returns (bold, regular)
@@ -247,7 +248,7 @@ func main() {
 
 	// Target sizes, scaled down uniformly if the row would overflow.
 	glyphH, wmSize, tagSize, gap := 260.0, 110.0, 48.0, 64.0
-	glyphW := (926 - 174) * (glyphH / 458.0)
+	glyphW := (markX1 - markX0) * (glyphH / (markY1 - markY0))
 
 	measure := func(f *sfnt.Font, size float64, s string) float64 {
 		fc := face(f, size)

@@ -103,6 +103,32 @@ func evalJS(t *testing.T, ctx context.Context, expr string, out interface{}) {
 	}
 }
 
+// waitForJS polls a boolean JS expression until it holds, and reports whether
+// it ever did.
+//
+// The formatted surface re-renders asynchronously, so any assertion made
+// straight after a click or a dispatched change samples a DOM that may still
+// be mid-remount. Sampling once makes the test's result depend on machine
+// speed: TestContextualDocumentControlsManageBlocksInPlace passed all of
+// 2026-08-07 and failed deterministically on 2026-08-08 with nothing in the
+// repo changed, catching both the old and new <pre> present and no
+// .code-block-shell yet applied.
+//
+// Use this rather than a bare evalJS whenever the assertion follows an action
+// that mutates the document.
+func waitForJS(t *testing.T, ctx context.Context, expr string) bool {
+	t.Helper()
+	var ok bool
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			if (`+expr+`) return true
+			await new Promise((resolve) => setTimeout(resolve, 20))
+		}
+		return false
+	})()`, &ok)
+	return ok
+}
+
 func TestEditorBoots(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()
@@ -132,15 +158,33 @@ func TestEditorBoots(t *testing.T) {
 	if !emptyStateVisible {
 		t.Error("app should launch to the in-canvas empty state")
 	}
-	var duplicatedEmptyChrome bool
+	// M3.7 Chrome Density removed the in-canvas title bar because the native
+	// macOS window owns the application and document NAME. That rationale
+	// covers the name and nothing else, so the three things the old blanket
+	// assertion lumped together are now asserted separately and for their own
+	// reasons — a single rule could not say which of them it meant.
+	var duplicatesDocumentTitle bool
 	evalJS(t, ctx, `(() => {
 		const empty = document.getElementById('empty-state')
-		return empty.querySelector('.empty-logo') !== null ||
-			Array.from(empty.querySelectorAll('h1')).some((node) => /^(Dr\. Markdown|Untitled\.md)$/.test(node.textContent.trim())) ||
-			empty.textContent.includes('⌘⇧R')
-	})()`, &duplicatedEmptyChrome)
-	if duplicatedEmptyChrome {
-		t.Error("empty state should not duplicate app chrome, document title, or shortcut instructions")
+		return Array.from(empty.querySelectorAll('h1')).some((node) => /^(Dr\. Markdown|Untitled\.md)$/.test(node.textContent.trim()))
+	})()`, &duplicatesDocumentTitle)
+	if duplicatesDocumentTitle {
+		t.Error("empty state must not repeat the application or document name; the native window title owns it (M3.7)")
+	}
+
+	var hasIdentityMark bool
+	evalJS(t, ctx, `document.querySelector('#empty-state .empty-logo') !== null`, &hasIdentityMark)
+	if !hasIdentityMark {
+		t.Error("empty state should carry the app mark: macOS shows no icon in the window title bar, so this is the only place it appears while running")
+	}
+
+	var hasShortcutHint bool
+	evalJS(t, ctx, `(() => {
+		const text = document.getElementById('empty-state').textContent
+		return text.includes('⌘⇧R') && text.includes('⌘⇧S')
+	})()`, &hasShortcutHint)
+	if !hasShortcutHint {
+		t.Error("empty state should name the raw and split shortcuts; the native title bar shows no shortcuts, so nothing else discloses them")
 	}
 	var emptyInspectorHidden bool
 	evalJS(t, ctx, `document.body.classList.contains('app-empty') &&
@@ -361,6 +405,7 @@ func TestSplitScreenEditsAndInsertPopoverAreBacked(t *testing.T) {
 		t.Fatal("insert popover should open from the Insert tab")
 	}
 	evalJS(t, ctx, `document.querySelector('[data-insert-command="hr"]').click(); 'ok'`, &res)
+	waitForJS(t, ctx, `window.__app.getMarkdown().includes('---')`)
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if !strings.Contains(md, "---") {
 		t.Fatalf("insert popover command did not mutate markdown: %q", md)
@@ -2072,6 +2117,7 @@ func TestEmptyStateActionsAndTemplatesAreBacked(t *testing.T) {
 	evalJS(t, ctx, "document.getElementById('empty-paste').click(); 'ok'", &res)
 
 	var md string
+	waitForJS(t, ctx, `window.__app.getMarkdown().includes('# Pasted')`)
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if !strings.Contains(md, "# Pasted") {
 		t.Fatalf("paste action did not load clipboard markdown: %q", md)
@@ -2079,6 +2125,7 @@ func TestEmptyStateActionsAndTemplatesAreBacked(t *testing.T) {
 
 	evalJS(t, ctx, "window.__app.newDocument().then(() => 'ok')", &res)
 	evalJS(t, ctx, "document.querySelector('[data-template=\"readme\"]').click(); 'ok'", &res)
+	waitForJS(t, ctx, `window.__app.getMarkdown().includes('# Project Name')`)
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if !strings.Contains(md, "# Project Name") || !strings.Contains(md, "## Installation") {
 		t.Fatalf("README template did not create markdown: %q", md)
@@ -2347,6 +2394,7 @@ func TestContextualDocumentControlsManageBlocksInPlace(t *testing.T) {
 
 	evalJS(t, ctx, `document.querySelector('[data-context-command="table-add-column"]').click(); 'ok'`, &res)
 	var md string
+	waitForJS(t, ctx, `window.__app.getMarkdown().includes('Header 3')`)
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if !strings.Contains(md, "Header 3") {
 		t.Fatalf("contextual table control did not add a column: %q", md)
@@ -2362,8 +2410,7 @@ func TestContextualDocumentControlsManageBlocksInPlace(t *testing.T) {
 	if !strings.Contains(md, "```python\nconst answer = 42") {
 		t.Fatalf("contextual code language control did not update the fenced language: %q", md)
 	}
-	var highlighted bool
-	evalJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-language="python"]') !== null`, &highlighted)
+	highlighted := waitForJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-language="python"]') !== null`)
 	if !highlighted {
 		var rendered string
 		evalJS(t, ctx, `JSON.stringify({
@@ -2879,13 +2926,13 @@ func TestRoundTripCorpus(t *testing.T) {
 
 			var b string
 			evalJS(t, ctx,
-				"window.__app.setMarkdown("+string(aJSON)+").then(() => window.__app.getMarkdown())",
+				"window.__app.setMarkdown("+string(aJSON)+").then(() => window.__app.getEditorMarkdown())",
 				&b)
 
 			bJSON, _ := json.Marshal(b)
 			var c string
 			evalJS(t, ctx,
-				"window.__app.setMarkdown("+string(bJSON)+").then(() => window.__app.getMarkdown())",
+				"window.__app.setMarkdown("+string(bJSON)+").then(() => window.__app.getEditorMarkdown())",
 				&c)
 
 			if b != c {
@@ -2895,5 +2942,52 @@ func TestRoundTripCorpus(t *testing.T) {
 				t.Errorf("canonical fixture rewritten:\n--- A ---\n%q\n--- B ---\n%q", a, b)
 			}
 		})
+	}
+}
+
+// Go must be told which document every write targets. The close guard used to
+// pair a single dirty boolean with whatever path Go had last opened, which
+// wrote a new tab's text over the previously opened file.
+func TestFrontendReportsEveryTabWithItsOwnPath(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.__synced = null;
+	globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		SyncDocuments: async (docs) => { globalThis.__synced = docs },
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } }; 'ok'`, &res)
+
+	// Tab one, given a path and edited.
+	evalJS(t, ctx, `(() => {
+		const doc = window.__app.state.docs.find((d) => d.id === window.__app.state.activeDocId)
+		doc.path = '/tmp/notes.md'
+		return 'ok'
+	})()`, &res)
+	evalJS(t, ctx, "window.__app.setMarkdown('# Notes\\n').then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.debugSimulateEdit('# Notes edited\\n'); 'ok'", &res)
+
+	// Tab two: a new, pathless document with different content.
+	evalJS(t, ctx, "window.__app.newDocument().then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.debugSimulateEdit('scratch from another tab\\n'); 'ok'", &res)
+
+	var synced string
+	evalJS(t, ctx, "JSON.stringify(globalThis.__synced || [])", &synced)
+
+	if !strings.Contains(synced, "/tmp/notes.md") {
+		t.Fatalf("the first tab's path was not reported to Go: %s", synced)
+	}
+	if !strings.Contains(synced, "scratch from another tab") {
+		t.Fatalf("the second tab's content was not reported: %s", synced)
+	}
+	// The decisive property: the pathless tab's content must not be attached
+	// to the other tab's path anywhere in the payload.
+	if strings.Contains(synced, `"path":"/tmp/notes.md","content":"scratch from another tab`) {
+		t.Fatalf("a tab's content was reported against another tab's path: %s", synced)
 	}
 }

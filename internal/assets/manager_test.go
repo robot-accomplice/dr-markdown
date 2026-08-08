@@ -157,3 +157,79 @@ func TestLoadForDocumentMapsExtensionToMimeType(t *testing.T) {
 		}
 	}
 }
+
+// An opened document is untrusted input — the product exists to view arbitrary
+// markdown, including files the user did not write. A document must therefore
+// not be able to name a path outside its own directory and have the editor
+// read it; the render pass resolves every image automatically, with no user
+// interaction, so this is reachable purely by opening a file.
+func TestLoadForDocumentRefusesPathsOutsideTheDocumentDirectory(t *testing.T) {
+	root := t.TempDir()
+	docDir := filepath.Join(root, "notes")
+	if err := os.MkdirAll(docDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	docPath := filepath.Join(docDir, "note.md")
+
+	secretDir := filepath.Join(root, "private")
+	if err := os.MkdirAll(secretDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(secretDir, "id_rsa")
+	if err := os.WriteFile(secret, []byte("SENSITIVE"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, markdownPath := range map[string]string{
+		"absolute path":        secret,
+		"parent traversal":     "../private/id_rsa",
+		"nested traversal":     "assets/../../private/id_rsa",
+		"absolute system path": "/etc/hosts",
+	} {
+		loaded, err := LoadForDocument(docPath, markdownPath)
+		if err == nil {
+			t.Errorf("%s: expected refusal, got none", name)
+		}
+		if loaded.DataURI != "" {
+			t.Errorf("%s: refused path still returned %d bytes of data", name, len(loaded.DataURI))
+		}
+	}
+}
+
+// Containment must not break the assets the importer itself produces.
+func TestLoadForDocumentStillLoadsItsOwnAssetFolder(t *testing.T) {
+	root := t.TempDir()
+	docPath := filepath.Join(root, "notes.md")
+	assetDir := filepath.Join(root, "notes.assets")
+	if err := os.MkdirAll(assetDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assetDir, "photo.png"), []byte("png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := LoadForDocument(docPath, "notes.assets/photo.png")
+	if err != nil || !loaded.Exists {
+		t.Fatalf("the importer's own asset layout must still load: err=%v exists=%v", err, loaded.Exists)
+	}
+}
+
+// A symlink inside the document directory must not be a way around containment.
+func TestLoadForDocumentRefusesSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	docDir := filepath.Join(root, "notes")
+	os.MkdirAll(docDir, 0o700)
+	docPath := filepath.Join(docDir, "note.md")
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("SENSITIVE"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(docDir, "innocent.png")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	loaded, err := LoadForDocument(docPath, "innocent.png")
+	if err == nil && loaded.DataURI != "" {
+		t.Fatal("a symlink pointing outside the document directory must not be followed")
+	}
+}
