@@ -62,14 +62,17 @@
     },
     {
       "id": "no-write-staleness-check",
-      "title": "Saving clobbers changes made outside the app",
+      "title": "Saving refuses to clobber changes made outside the app",
       "category": "technical",
-      "severity": "high",
-      "status": "open",
-      "summary": "Nothing compares modification time, size or content before overwriting. A file changed on disk since it was opened — by a git pull, a sync client, or a second window — is replaced silently with no error. Raised as a blocking finding in ABORT Round 1 and carried across three rounds without a recorded justification.",
+      "severity": "medium",
+      "status": "closed",
+      "summary": "Implemented and, as of 2026-08-09, actually tested. `confirmNoExternalChange` re-reads the file before writing and compares it against what the app last READ OR WROTE — not against what it first opened, which would make every second save look like an external edit and turn the prompt into noise the user learns to click through. On a mismatch the user is asked, the choice is recorded as `document.conflict`, and a refusal returns an error naming the file rather than writing. Both save paths are covered: `SaveDocumentAs` delegates to `SaveDocument`, and `openPath` establishes the baseline. The control had shipped with NO test, which is ABORT Round 4's 'control not exercised' cluster — five tests now pin it, and each was verified to fail against a deliberately broken control. Residuals: detection is content-based, so it re-reads the whole file on every save (noticeable on large documents) and cannot distinguish a file changed and changed back — which is harmless, the bytes are identical. A Save-As onto a path the app never opened has no baseline, and is covered instead by the native dialog's own replace prompt.",
       "mitigations": [
-        "Disclosed in the README's Known limitations",
-        "Record the content or modification time at open and refuse or prompt when it has changed at save"
+        "confirmNoExternalChange re-reads and compares before every write, on both save paths",
+        "The user decides; the choice is recorded as a document.conflict event",
+        "A failure to RE-READ does not block the save — failing to verify is not evidence of a conflict, and must not strand the user's work",
+        "Pinned by five tests in app_staleness_test.go, each verified to fail against a broken control",
+        "Residual, accepted with reason: content comparison costs a full re-read per save"
       ],
       "relatedNodes": [
         "atomic-file-writer",
@@ -81,14 +84,15 @@
     },
     {
       "id": "atomic-rename-metadata-loss",
-      "title": "Replacement by rename loses file identity and metadata",
+      "title": "Replacement by rename breaks hard links to the document",
       "category": "technical",
-      "severity": "medium",
-      "status": "open",
-      "summary": "Saving writes a temp file and renames it over the target. That breaks hard links to the document, drops extended attributes such as Finder tags, and replaces a read-only file, because rename needs permission on the directory rather than on the file.",
+      "severity": "low",
+      "status": "accepted",
+      "summary": "Narrowed to one consequence, after the code was checked against this record and two of its three claims turned out to be false. Extended attributes such as Finder tags ARE carried across — `atomicfile.go` calls `copyExtendedAttributes` onto the temp file before the rename, best-effort so a filesystem without xattr support cannot cost the user their document. A read-only target IS refused rather than replaced, precisely because rename takes permission on the directory and would otherwise defeat the mechanism people use read-only for. What remains true: the rename gives the document a new inode, so hard links to it break. That is accepted, not a defect — the alternative is the non-atomic in-place write that `internal/atomicfile` exists to prevent, and a broken link between two names is recoverable where lost contents are not. The README already described the behaviour correctly; this record contradicted it and the code settled it.",
       "mitigations": [
-        "Disclosed in the README's Known limitations",
-        "Copy extended attributes onto the temp file before rename, and refuse a target the user cannot write"
+        "Extended attributes are copied onto the replacement before rename",
+        "A read-only target is refused with an explicit error rather than silently replaced",
+        "Hard-link breakage is disclosed in the README's Known limitations and reasoned through in internal/atomicfile/atomicfile.go"
       ],
       "relatedNodes": [
         "atomic-file-writer"
