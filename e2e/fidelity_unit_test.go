@@ -2,6 +2,9 @@ package e2e
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -244,6 +247,27 @@ func TestMarkdownStylePolicy(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// The point of the phase: editor.js owns the Crepe lifecycle and nothing else.
+// If it still names an individual preservation, the registry is not the single
+// owner and adding the next compensation is still a multi-place edit.
+func TestEditorDoesNotKnowIndividualPreservations(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("..", "frontend", "dist", "src", "editor.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"splitFrontmatter", "protectBreaks", "restoreBreaks",
+		"collectAltText", "restoreAltText",
+		"collectLinkReferences", "restoreLinkReferences",
+		"STYLE_DEFAULTS", "BREAK_SENTINEL", "FRONTMATTER", "RATIO_ALT",
+		"trailing", "frontmatter", "breaks", "linkReferences", "altText",
+	} {
+		if strings.Contains(string(source), name) {
+			t.Errorf("editor.js still references %q; it belongs to the fidelity registry now", name)
 		}
 	}
 }
