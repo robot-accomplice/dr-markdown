@@ -82,3 +82,40 @@ func TestTrailingPreservation(t *testing.T) {
 		}
 	}
 }
+
+func TestBreaksPreservation(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const { breaks } = await import('/src/fidelity/breaks.js')
+		const roundTrip = (md) => {
+			const { state, markdown } = breaks.capture(md)
+			return breaks.restore(markdown, state)
+		}
+		const captured = breaks.capture('a<br>b<br />c\n')
+		return [
+			roundTrip('a<br>b\n'),
+			roundTrip('a<br />b<br>c\n'),
+			roundTrip('a<BR>b\n'),
+			captured.markdown,
+			roundTrip('a<br  >b\n'),
+		]
+	})()`, &got)
+
+	want := []string{
+		"a<br>b\n",
+		"a<br />b<br>c\n",
+		"a<BR>b\n",
+		"a<br  >b<br  >c\n",
+		"a<br  >b\n",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
