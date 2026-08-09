@@ -17,20 +17,21 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 >
 > Measured on the current build, WYSIWYG editing will:
 >
-> - **delete link reference definitions** and inline the links that used them; unused definitions are dropped outright
-> - rewrite two-space hard breaks to `\`, strip closing `##` from ATX headings, strip trailing whitespace, and reflow table padding
+> - rewrite two-space hard breaks to `\`, convert indented code blocks to fenced ones, and wrap bare URLs as `<autolinks>`
+> - decode HTML entities (`&amp;` and `&copy;` come back as `&` and `©`), strip trailing whitespace, collapse runs of blank lines, and normalize a tab after a list marker to a space
+> - reflow table padding, and shorten a closing `##` to match its heading's depth (`# H ##` → `# H #`)
 >
 > Inline HTML is **preserved** — `<b>`, `<span>`, `<kbd>`, comments and block-level `<div>` all round-trip byte-identically.
 >
 > **If the exact bytes matter — a Hugo or Jekyll site, an Obsidian vault, anything under version control — edit in Raw mode (⌘/Ctrl-R).** Raw mode preserves every construct listed above.
 >
-> **Fixed since v0.4.1:** bullet characters, ordered-list markers, setext headings, fence characters and thematic-break style are now taken from the document itself instead of being normalized. A document with mixed styles keeps its majority style.
+> **Fixed since v0.4.1:** link reference definitions are preserved, including unused ones, and the reference syntax that used them is restored rather than inlined. Bullet characters, ordered-list markers (including lists that repeat `1.` instead of counting up), setext headings, fence characters, thematic-break style and closing ATX hashes are now taken from the document itself instead of being normalized. A document with mixed styles keeps its majority style. A document that ended in a list or a footnote block no longer gains a trailing blank line. GFM footnote definitions are no longer duplicated on every save — a defect that grew the file by one copy each time.
 >
 > **Fixed in v0.4.1:** inline `<br>` is no longer deleted (in v0.4.0 it joined the words either side of it), and CRLF line endings now survive an edit instead of rewriting the whole file. Both were narrow bugs rather than the architectural limit this caution originally claimed — the correction is recorded in the v0.4.0 release notes.
 >
 > The remaining items follow from the vendored editor re-serializing the whole document. They are measured in `e2e/fidelity_test.go`, which fails if any of it changes, and the route to closing them is scoped in [docs/decisions/2026-08-08-markdown-fidelity-scope.md](docs/decisions/2026-08-08-markdown-fidelity-scope.md).
 >
-> Related: opening a document whose first block is a list currently marks it modified without any edit from you, so quitting offers to save the re-serialized text. Choose **Don't Save** unless you meant to change it.
+> **Also fixed:** opening a document whose first block is a list no longer marks it modified without an edit from you. That was the same root cause as the trailing blank line — the re-serialized text differed from the file by one newline, so the document looked changed the moment it opened, and quitting offered to save it.
 
 **Why?** Typora set the bar for distraction-free markdown editing, then went closed and paid. Dr. Markdown is the open-source answer: MIT licensed, native via the OS webview (no Electron), and built with zero Node.js anywhere — not at development time, not at build time, not at runtime. If you have Go, you can build it.
 

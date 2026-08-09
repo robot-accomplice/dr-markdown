@@ -76,24 +76,58 @@ function countOpeningFences(markdown) {
   return counts
 }
 
+// countOrderedRuns reports whether the document's ordered lists repeat one
+// number (`1.` on every item) or count up. Both are ordinary conventions —
+// repeating keeps a diff small when an item is inserted — and the serializer
+// always counted up, so every repeated-marker list came back renumbered.
+//
+// Only CONSECUTIVE item lines form a run: two separate lists that each start at
+// `1.` are not evidence of repetition, and treating them as such would renumber
+// every ordinary counting list in a document that happens to contain two lists.
+function countOrderedRuns(markdown) {
+  const counts = new Map([
+    ['repeat', 0],
+    ['increment', 0],
+  ])
+  let previous = null
+  for (const line of markdown.split('\n')) {
+    const match = line.match(/^ {0,3}(\d+)[.)][ \t]+\S/)
+    if (!match) {
+      previous = null
+      continue
+    }
+    const number = Number(match[1])
+    if (previous !== null) {
+      counts.set(number === previous ? 'repeat' : 'increment', counts.get(number === previous ? 'repeat' : 'increment') + 1)
+    }
+    previous = number
+  }
+  return counts
+}
+
 // detectMarkdownStyle returns serializer options matching the document, with
 // keys omitted where the document showed no preference.
 export function detectMarkdownStyle(markdown) {
   const options = {}
 
+  // A tab is a legal separator after a list marker, and matching only spaces
+  // meant a tab-indented document expressed no bullet preference at all — so
+  // every bullet in it was rewritten to the serializer's default `*`. The tab
+  // itself is still normalized to a space (no option expresses it); losing the
+  // marker as well turned that into a whole-file diff.
   const bullet = dominant(
     countLineStarts(markdown, [
-      { key: '-', test: /^ {0,3}- +\S/ },
-      { key: '*', test: /^ {0,3}\* +\S/ },
-      { key: '+', test: /^ {0,3}\+ +\S/ },
+      { key: '-', test: /^ {0,3}-[ \t]+\S/ },
+      { key: '*', test: /^ {0,3}\*[ \t]+\S/ },
+      { key: '+', test: /^ {0,3}\+[ \t]+\S/ },
     ]),
   )
   if (bullet) options.bullet = bullet
 
   const bulletOrdered = dominant(
     countLineStarts(markdown, [
-      { key: '.', test: /^ {0,3}\d+\. +\S/ },
-      { key: ')', test: /^ {0,3}\d+\) +\S/ },
+      { key: '.', test: /^ {0,3}\d+\.[ \t]+\S/ },
+      { key: ')', test: /^ {0,3}\d+\)[ \t]+\S/ },
     ]),
   )
   if (bulletOrdered) options.bulletOrdered = bulletOrdered
@@ -119,6 +153,21 @@ export function detectMarkdownStyle(markdown) {
   // Setext headings only exist for levels 1 and 2, so this is on or off for the
   // whole document rather than a per-heading choice.
   if (/^[^\n]+\n {0,3}(=+|-+)\s*$/m.test(markdown)) options.setext = true
+
+  // A closing hash sequence (`# Heading #`) is optional in ATX and the
+  // serializer always dropped it, so every heading in a document written that
+  // way changed on the first edit. The two tests are mutually exclusive so a
+  // closed heading does not also vote as an open one.
+  const closeAtx = dominant(
+    countLineStarts(markdown, [
+      { key: 'closed', test: /^ {0,3}#{1,6}[ \t].*[ \t]#+[ \t]*$/ },
+      { key: 'open', test: /^ {0,3}#{1,6}[ \t](?!.*[ \t]#+[ \t]*$)/ },
+    ]),
+  )
+  if (closeAtx) options.closeAtx = closeAtx === 'closed'
+
+  const ordered = dominant(countOrderedRuns(markdown))
+  if (ordered) options.incrementListMarker = ordered === 'increment'
 
   return options
 }
