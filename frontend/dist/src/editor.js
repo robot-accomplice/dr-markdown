@@ -5,6 +5,7 @@ import { collectLinkReferences, restoreLinkReferences } from './linkrefs.js'
 import { bridge } from './bridge.js'
 import { trailing } from './fidelity/trailing.js'
 import { breaks } from './fidelity/breaks.js'
+import { frontmatter } from './fidelity/frontmatter.js'
 
 // Loads the Crepe theme CSS listed in vendor/theme/manifest.txt.
 // Light theme only in this milestone; dark themes land in the polish
@@ -20,25 +21,6 @@ export async function loadTheme() {
     link.href = `vendor/theme/${f}`
     document.head.appendChild(link)
   }
-}
-
-// YAML frontmatter, only at the very start of the document.
-// Trailing blank lines are part of the captured block: the editor trims
-// leading blank lines from its body, so leaving the separator behind would
-// silently close the gap between frontmatter and the first heading.
-const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n(?:[ \t]*\r?\n)*)?/
-
-// splitFrontmatter returns [frontmatter, body]. The frontmatter is kept
-// verbatim and never shown to the editor.
-//
-// Crepe parses `---` as a thematic break and re-serializes the block as `***`
-// followed by a setext heading, so a single edit silently destroyed the title,
-// date, tags and draft status of every Hugo, Jekyll, Obsidian and Astro
-// document. Markdown on disk is this product's source of truth; bytes the
-// editor cannot represent must not pass through it.
-export function splitFrontmatter(markdown) {
-  const match = markdown.match(FRONTMATTER)
-  return match ? [match[0], markdown.slice(match[0].length)] : ['', markdown]
 }
 
 // Markdown image syntax: alt, destination, optional title.
@@ -149,8 +131,8 @@ export class WysiwygEditor {
   #linkRefs = null
   // Alt text of every image in the document as opened, keyed by destination.
   #altByURL = new Map()
-  // Frontmatter stripped from the current document, re-attached on the way out.
-  #frontmatter = ''
+  // State captured by the frontmatter preservation. See fidelity/frontmatter.js.
+  #frontmatterState = ''
   // State captured by the trailing-newline preservation. See fidelity/trailing.js.
   #trailingState = ''
   // Last serialized markdown we treated as the unedited baseline. Crepe
@@ -165,8 +147,9 @@ export class WysiwygEditor {
   }
 
   async #build(host, markdown) {
-    const [frontmatter, rawBody] = splitFrontmatter(markdown)
-    this.#frontmatter = frontmatter
+    const splitOff = frontmatter.capture(markdown)
+    this.#frontmatterState = splitOff.state
+    const rawBody = splitOff.markdown
     this.#trailingState = trailing.capture(markdown).state
     const captured = breaks.capture(rawBody)
     this.#breakState = captured.state
@@ -211,7 +194,7 @@ export class WysiwygEditor {
     const body = breaks.restore(restoreAltText(withRefs, this.#altByURL), this.#breakState)
     // Applied last, so it governs the bytes that actually leave — including the
     // definition block restoreLinkReferences appends after the body.
-    return trailing.restore(this.#frontmatter + body, this.#trailingState)
+    return trailing.restore(frontmatter.restore(body, this.#frontmatterState), this.#trailingState)
   }
 
   // Replaces the whole document by rebuilding the editor (see Global

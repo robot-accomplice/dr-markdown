@@ -119,3 +119,36 @@ func TestBreaksPreservation(t *testing.T) {
 		}
 	}
 }
+
+func TestFrontmatterPreservation(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const { frontmatter } = await import('/src/fidelity/frontmatter.js')
+		const doc = '---\ntitle: T\n---\n\n# Body\n'
+		const c = frontmatter.capture(doc)
+		const noFm = frontmatter.capture('# Body\n')
+		return [
+			c.markdown,
+			frontmatter.restore(c.markdown, c.state),
+			noFm.markdown,
+			frontmatter.restore(noFm.markdown, noFm.state),
+		]
+	})()`, &got)
+
+	want := []string{
+		"# Body\n",
+		"---\ntitle: T\n---\n\n# Body\n",
+		"# Body\n",
+		"# Body\n",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
