@@ -3,10 +3,9 @@
 State of play for whoever picks this up next. Written to be actionable without the conversation
 that produced it.
 
-## Immediate: three PRs are stacked and unmerged
+## ~~Immediate: three PRs are stacked and unmerged~~ — DONE 2026-08-09
 
-Merge **in this order**. Each is CI-green on its own, but #40 is branched off `develop` and does not
-contain #38 or #39.
+All three merged into `develop` in the stated order:
 
 | PR | Branch | What it does |
 | --- | --- | --- |
@@ -14,7 +13,15 @@ contain #38 or #39.
 | [#39](https://github.com/robot-accomplice/dr-markdown/pull/39) | `fix/stale-highlight-race` | Fixes a real render race (stale syntax highlight) |
 | [#40](https://github.com/robot-accomplice/dr-markdown/pull/40) | `fix/markdown-style-preservation` | Writes markdown back in the document's own style |
 
-`develop` and `main` are currently identical, both at **v0.4.1**. After merging the three, the next
+**The hazard this section understated:** #38 and #40 both hook `frontend/dist/src/editor.js`, so they
+**conflicted**, and GitHub reported all three `MERGEABLE` right up until #38 landed. A per-PR green
+check says nothing about a stack — `mergeable` is computed against `develop` as it is *now*.
+`git merge-tree --write-tree <a> <b>` answers it in advance without touching the working tree; use it
+before merging any stack here. The conflict itself was two import lines; the fixes compose cleanly
+(`#serialize` chains link-refs → alt-text → breaks over disjoint syntax) and `e2e/fidelity_test.go`
+passed unchanged with both present, which is the composition check doing its job.
+
+`main` is still at **v0.4.1**; `develop` is now ahead of it by the four fidelity fixes. The next
 release is a normal `develop` → `main` promotion; the mechanics are in the v0.4.1 history (bump
 `wails.json` **and** `appVersion` — a test fails on drift — then rebuild the artifact from the merge
 commit and verify with `strings` before attaching it).
@@ -44,28 +51,29 @@ is `docs/decisions/2026-08-08-markdown-fidelity-scope.md`.
 Only #5 remains, and it is the one that makes the others a recurring category rather than a finite
 list: any construct nobody thought to test is still restyled on save.
 
-## The single next question
+## ~~The single next question~~ — ANSWERED 2026-08-09: positions are available
 
-**Task #28: does the parser expose mdast source positions?**
+**Task #28: does the parser expose mdast source positions? Yes — via `remark`, not `parser`.**
 
-This decides whether source-preserving editing (patch the original text rather than re-serialize) is
-viable. It is the only thing standing between "we fix constructs as we find them" and "the class
-cannot recur."
+Probed against a live instance; full record and method in
+`docs/decisions/2026-08-08-markdown-fidelity-scope.md`.
 
-The earlier spike said no. **That conclusion has been partly disproved and must not be trusted as
-written.** What is now established from live probing:
+- `ctx.get('parser')` returns a **ProseMirror** document — `hasPosition: false`. The question named
+  the wrong slice, which is why it stayed open.
+- **`ctx.get('remark')` returns the live unified processor**, and `remark.parse(src)` yields **mdast
+  with full `position`** — `line`, `column` and `offset`, start and end, on every node down to the
+  deepest text leaf.
 
-- `crepe.editor` exists, with `config` and `ctx`
-- **Slices are addressable by string name** — this is the key that unlocks everything, because the
-  bundle exports no context keys
-- `ctx.get('editorView')` returns the ProseMirror view (the spike said it was unreachable — that was
-  true only of the DOM route)
-- `ctx.get('remarkStringifyOptions')` returns the live options object
-- `ctx.get('serializer')` returns the serializer
+The old spike's surviving finding — "no parser export, therefore no position data" — was true in its
+premise and wrong in its conclusion. The instance hands the processor over by string-addressable
+slice regardless of the export surface. **Both legs of the negative have now fallen; option (b) is no
+longer closed on evidence.**
 
-What survives of the negative: the bundle exports no parser. So probe `ctx.get('parser')` and whether
-the nodes it produces carry `position` data. **Do not treat source-preserving editing as closed until
-that is answered.**
+**Do not read that as "it works."** Source-preserving editing needs positions *and* a mapping from an
+editor transaction back to them. Only the first is established. **The next question is the mapping**,
+and it is not a small one. Two recorded limits for whoever takes it: slice names cannot be enumerated
+(string addressing only works if you already know the name), and positions are offsets into the
+*body*, so they need translating back through the frontmatter split and break sentinels.
 
 ## Hard-won facts about this codebase
 
