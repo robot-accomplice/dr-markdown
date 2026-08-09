@@ -94,3 +94,40 @@ func TestFenceOperations(t *testing.T) {
 		}
 	}
 }
+
+func TestImageTokens(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const I = await import('/src/markdown/images.js')
+		const md = '![alt](a.png)\n\n<img src="b.png" alt="B" width="200">\n'
+		const p1 = I.parseImageToken('![alt](a.png)')
+		const p2 = I.parseImageToken('<img src="b.png" alt="B" width="200">')
+		return [
+			String(I.imageTokens(md).length),
+			p1.alt + '|' + p1.path + '|' + p1.width,
+			p2.alt + '|' + p2.path + '|' + p2.width,
+			I.formatImageToken({ alt: 'x', path: 'y.png', width: '' }),
+			I.formatImageToken({ alt: 'x', path: 'y.png', width: '300' }),
+			String(I.imageTokens('no images').length),
+		]
+	})()`, &got)
+
+	want := []string{
+		"2",
+		"alt|a.png|",
+		"B|b.png|200",
+		"![x](y.png)",
+		`<img src="y.png" alt="x" width="300">`,
+		"0",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
