@@ -1,12 +1,12 @@
 // WysiwygEditor wraps the vendored Milkdown Crepe bundle.
 import { Crepe } from '../vendor/crepe.bundle.mjs'
-import { detectMarkdownStyle } from './mdstyle.js'
 import { bridge } from './bridge.js'
 import { trailing } from './fidelity/trailing.js'
 import { breaks } from './fidelity/breaks.js'
 import { frontmatter } from './fidelity/frontmatter.js'
 import { altText } from './fidelity/alttext.js'
 import { linkReferences } from './fidelity/linkrefs.js'
+import { detectSerializerOptions } from './fidelity/index.js'
 
 // Loads the Crepe theme CSS listed in vendor/theme/manifest.txt.
 // Light theme only in this milestone; dark themes land in the polish
@@ -24,33 +24,19 @@ export async function loadTheme() {
   }
 }
 
-// applyMarkdownStyle makes the serializer write the document's own style back.
+// applySerializerOptions makes the serializer write the document's own style
+// back, from whatever the registered policies detect.
 //
 // The options object must be MUTATED, not replaced. `ctx.set` swaps the slice
 // value, but the serializer captured a reference to the original object when it
 // was built, so a replacement is simply never read — which is why setting the
 // slice, before or after create, changed nothing. Assigning onto the object the
 // serializer already holds is what takes effect.
-//
-// Every key is written on every build, using the serializer's own defaults
-// where the document expressed no preference. Applying only the detected keys
-// would let a style set for one document persist into the next if the options
-// object were ever shared.
-const STYLE_DEFAULTS = {
-  bullet: '*',
-  bulletOrdered: '.',
-  rule: '*',
-  fence: '`',
-  setext: false,
-  closeAtx: false,
-  incrementListMarker: true,
-}
-
-function applyMarkdownStyle(crepe, markdown) {
+function applySerializerOptions(crepe, markdown) {
   try {
     const options = crepe.editor?.ctx?.get('remarkStringifyOptions')
     if (!options) return
-    Object.assign(options, STYLE_DEFAULTS, detectMarkdownStyle(markdown))
+    Object.assign(options, detectSerializerOptions(markdown))
   } catch (error) {
     // A style mismatch is a cosmetic diff; letting it break the editor would
     // trade a formatting nuisance for an unusable document.
@@ -118,7 +104,7 @@ export class WysiwygEditor {
       })
     })
     await crepe.create()
-    applyMarkdownStyle(crepe, body)
+    applySerializerOptions(crepe, body)
     this.#crepe = crepe
     this.#baseline = crepe.getMarkdown()
   }
