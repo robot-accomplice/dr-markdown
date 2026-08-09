@@ -103,14 +103,15 @@
     },
     {
       "id": "asset-containment-not-type-bounded",
-      "title": "Asset containment bounds the directory but not the file type",
+      "title": "Asset containment bounds the directory and the file type",
       "category": "security",
       "severity": "medium",
-      "status": "open",
-      "summary": "A document may only reference assets at or below its own directory, which is enforced. But a non-image extension falls back to application/octet-stream and its bytes are still inlined, so any file at or below the document directory is readable on render — and rendering is automatic, with no user interaction. For a markdown file opened from a Downloads folder or a repository root, that set is not small.",
+      "status": "closed",
+      "summary": "Both bounds are enforced, and unlike the other controls audited on 2026-08-09 this one was already exercised. `internal/assets/manager.go` checks the extension against an image allowlist BEFORE reading any bytes, so a non-image file is refused rather than inlined as application/octet-stream — closing the path where opening a markdown file from a Downloads folder or a repository root meant `.env`, `id_rsa` or `secrets.yaml` beside it were read and embedded, automatically and with no user interaction. Directory containment is enforced separately, with symlinks re-resolved and the check applied to the resolved path. `TestOnlyImageFilesAreInlined` asserts both halves: the named secrets are refused AND their bytes do not appear in any returned data URI, while an ordinary image beside the document still loads.",
       "mitigations": [
-        "Restrict inlining to the known image extensions and refuse everything else",
-        "Refusals already surface through the existing missing-asset render state"
+        "Inlining is restricted to known image extensions, checked before any read",
+        "Directory containment re-resolves symlinks and checks the resolved path",
+        "Pinned by TestOnlyImageFilesAreInlined, which asserts the bytes are absent rather than only that an error was returned"
       ],
       "relatedNodes": [
         "image-asset-manager"
