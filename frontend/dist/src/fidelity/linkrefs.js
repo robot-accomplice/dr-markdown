@@ -38,7 +38,7 @@ const REFERENCE_USE = /(!?)\[((?:\\.|[^[\]\\])*)\](?:\[([^\]]*)\])?/g
 
 // collectLinkReferences records the definitions and how each one is referenced,
 // so serialized inline links can be turned back into references.
-export function collectLinkReferences(markdown) {
+function collectLinkReferences(markdown) {
   const definitions = []
   const byLabel = new Map()
   for (const line of markdown.split('\n')) {
@@ -78,7 +78,7 @@ export function collectLinkReferences(markdown) {
 // Matching is by destination and consumes a queue in document order, so a link
 // the user adds later that happens to share a URL is not silently converted to
 // reference syntax — only as many occurrences as were references to begin with.
-export function restoreLinkReferences(markdown, recorded) {
+function restoreLinkReferences(markdown, recorded) {
   if (!recorded) return markdown
   const pending = new Map()
   for (const use of recorded.uses) {
@@ -107,4 +107,10 @@ export function restoreLinkReferences(markdown, recorded) {
   if (body.trim() === '') return block + '\n'
   const separator = body.endsWith('\n') ? '\n' : '\n\n'
   return body + separator + block + '\n'
+}
+
+export const linkReferences = {
+  name: 'linkReferences',
+  capture: (markdown) => ({ state: collectLinkReferences(markdown), markdown }),
+  restore: (text, state) => restoreLinkReferences(text, state),
 }
