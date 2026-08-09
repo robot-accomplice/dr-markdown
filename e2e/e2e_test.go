@@ -2605,9 +2605,12 @@ func TestExistingCodeBlockLanguageCanBeChangedFromBlockTools(t *testing.T) {
 		t.Fatalf("right-click language edit should target only the second code block: %q", md)
 	}
 
-	var hoverToolReady bool
-	evalJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-code-fence-index="0"] [data-code-language-tool]') !== null`, &hoverToolReady)
-	if !hoverToolReady {
+	// Applying a language change remounts the WYSIWYG surface asynchronously,
+	// so the shell this asserts on does not exist yet when the apply click
+	// returns. Reading the DOM straight after made the test fail about one run
+	// in three — a real race in the TEST, not in the app, and the same shape as
+	// the empty-state assertions fixed earlier.
+	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-code-fence-index="0"] [data-code-language-tool]') !== null`) {
 		t.Fatal("existing code blocks should expose a hover language tool")
 	}
 
