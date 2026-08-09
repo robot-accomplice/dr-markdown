@@ -1,12 +1,12 @@
 // WysiwygEditor wraps the vendored Milkdown Crepe bundle.
 import { Crepe } from '../vendor/crepe.bundle.mjs'
 import { detectMarkdownStyle } from './mdstyle.js'
-import { collectLinkReferences, restoreLinkReferences } from './linkrefs.js'
 import { bridge } from './bridge.js'
 import { trailing } from './fidelity/trailing.js'
 import { breaks } from './fidelity/breaks.js'
 import { frontmatter } from './fidelity/frontmatter.js'
 import { altText } from './fidelity/alttext.js'
+import { linkReferences } from './fidelity/linkrefs.js'
 
 // Loads the Crepe theme CSS listed in vendor/theme/manifest.txt.
 // Light theme only in this milestone; dark themes land in the polish
@@ -69,8 +69,8 @@ export class WysiwygEditor {
   #onChange = null
   // State captured by the <br> preservation. See fidelity/breaks.js.
   #breakState = []
-  // Link reference definitions and how each was referenced, restored on exit.
-  #linkRefs = null
+  // State captured by the link-reference preservation. See fidelity/linkrefs.js.
+  #linkRefState = null
   // State captured by the alt-text preservation. See fidelity/alttext.js.
   #altState = new Map()
   // State captured by the frontmatter preservation. See fidelity/frontmatter.js.
@@ -96,7 +96,7 @@ export class WysiwygEditor {
     const captured = breaks.capture(rawBody)
     this.#breakState = captured.state
     const body = captured.markdown
-    this.#linkRefs = collectLinkReferences(body)
+    this.#linkRefState = linkReferences.capture(body).state
     this.#altState = altText.capture(body).state
     host.replaceChildren()
     const crepe = new Crepe({
@@ -132,7 +132,7 @@ export class WysiwygEditor {
   // out only — #baseline still compares raw Crepe output, so change detection
   // is unaffected.
   #serialize(md) {
-    const withRefs = restoreLinkReferences(md, this.#linkRefs)
+    const withRefs = linkReferences.restore(md, this.#linkRefState)
     const body = breaks.restore(altText.restore(withRefs, this.#altState), this.#breakState)
     // Applied last, so it governs the bytes that actually leave — including the
     // definition block restoreLinkReferences appends after the body.
