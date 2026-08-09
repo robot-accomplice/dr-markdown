@@ -186,3 +186,35 @@ func TestAltTextPreservation(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkReferencePreservation(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const { linkReferences } = await import('/src/fidelity/linkrefs.js')
+		// 'serialized' is what the editor produces: references inlined,
+		// definitions dropped.
+		const run = (original, serialized) =>
+			linkReferences.restore(serialized, linkReferences.capture(original).state)
+		return [
+			run('See the [spec][s].\n\n[s]: https://x/spec\n', 'See the [spec](https://x/spec).\n'),
+			run('A claim[^src].\n\n[^src]: Ibid.\n', 'A claim[^src].\n\n[^src]: Ibid.\n'),
+			run('No refs here.\n', 'No refs here.\n'),
+		]
+	})()`, &got)
+
+	want := []string{
+		"See the [spec][s].\n\n[s]: https://x/spec\n",
+		"A claim[^src].\n\n[^src]: Ibid.\n",
+		"No refs here.\n",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
