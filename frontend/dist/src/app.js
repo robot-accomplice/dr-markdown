@@ -786,12 +786,50 @@ async function mountMarkdown(md) {
   }
 }
 
+// Renders are serialized and superseded renders abandon their work.
+//
+// The three passes below each await, so a render could be suspended while a
+// newer one started — and the older pass then resumed and stamped its state
+// over the newer DOM. Reproduced deterministically: two renders started back to
+// back left a one-block document with two code shells, one carrying the
+// language from the superseded render. In normal use it showed up as a stale
+// syntax highlight after changing a code block's language, which never
+// corrected itself because nothing rendered again.
+//
+// The generation check is what makes this correct, not the chaining. Chaining
+// alone would still run every queued render to completion; the check lets an
+// obsolete one stop at its next suspension point, and lets the newest win.
+let renderGeneration = 0
+let renderQueue = Promise.resolve()
+
 // Every WYSIWYG render runs the same three passes; keeping them together stops
 // a new call site from silently skipping one (imported images did exactly that).
-async function renderWysiwyg(md) {
-  await wysiwyg.setMarkdown(els.wysiwyg, md)
-  await highlightFormattedCodeBlocks(md)
-  await resolveImageAssets(els.wysiwyg)
+function renderWysiwyg(md) {
+  const generation = ++renderGeneration
+  const superseded = () => generation !== renderGeneration
+
+  renderQueue = renderQueue.then(async () => {
+    // Already obsolete before this render's turn came up: skip it entirely
+    // rather than rebuild the editor twice for a result nobody will see.
+    if (superseded()) return
+    await wysiwyg.setMarkdown(els.wysiwyg, md)
+    if (superseded()) return
+    await highlightFormattedCodeBlocks(md)
+    if (superseded()) return
+    await resolveImageAssets(els.wysiwyg)
+  })
+
+  // Serializing through one promise makes a rejection contagious: every later
+  // `.then` would skip its callback, so a single failed render would stop the
+  // surface updating for the rest of the session — silently, with the app
+  // appearing to ignore every edit. Absorb it here to keep the queue alive, and
+  // record it rather than swallow it, so the failure is recoverable after the
+  // fact instead of invisible.
+  renderQueue = renderQueue.catch((error) => {
+    console.error('render failed', error)
+    bridge.recordEvent('render.failed', { error: String(error?.message ?? error) })
+  })
+  return renderQueue
 }
 
 // Markdown resolves relative image paths against the document on disk, but the
