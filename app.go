@@ -21,6 +21,7 @@ import (
 	"dr-markdown/internal/eventlog"
 	"dr-markdown/internal/fonts"
 	"dr-markdown/internal/preferences"
+	"dr-markdown/internal/session"
 )
 
 // appVersion is the build identity carried into every recorded event, so a
@@ -45,11 +46,9 @@ var iconFreeMessageDialogPNG = []byte{
 type App struct {
 	ctx context.Context
 
-	mu   sync.Mutex
-	docs []OpenDocument
-	// unsyncedDirty covers a frontend that reported dirty before ever syncing
-	// its documents. It forces a prompt; it never names a write target.
-	unsyncedDirty bool
+	mu sync.Mutex
+	// session owns the open tabs, their dirty state and the on-disk baseline.
+	session *session.Session
 	// currentPath is the last path opened or saved. It names the window title
 	// and the Save-As default only; it is NEVER a write target, because
 	// inferring the target from ambient state is what destroyed documents.
@@ -130,6 +129,7 @@ func NewApp() *App {
 
 func newAppWithDependencies(deps appDependencies) *App {
 	return &App{
+		session:     &session.Session{},
 		events:      deps.events,
 		native:      deps.native,
 		documents:   deps.documents,
@@ -189,14 +189,8 @@ func (a *App) SaveDocument(path, content string) error {
 	a.currentPath = path
 	a.currentText = content
 	a.rememberOnDisk(path, content)
-	for i := range a.docs {
-		if a.docs[i].Path == path || (a.docs[i].Active && a.docs[i].Path == "") {
-			a.docs[i].Path = path
-			a.docs[i].Content = content
-			a.docs[i].Dirty = false
-		}
-	}
 	a.mu.Unlock()
+	a.session.AdoptPath(path, content)
 	a.recordRecent(path)
 	a.updateTitle()
 	return nil
@@ -220,12 +214,10 @@ func (a *App) SaveDocumentAs(content string) (string, error) {
 
 // OpenDocument is one editor tab as the frontend sees it. Go does not infer
 // which document is current; the frontend names it on every push.
-type OpenDocument struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-	Dirty   bool   `json:"dirty"`
-	Active  bool   `json:"active"`
-}
+// Aliased rather than redefined so the Wails binding signature and the JSON
+// wire format are byte-identical to before the session extraction — the json
+// tags are the contract with the webview.
+type OpenDocument = session.Document
 
 // SyncDocuments replaces Go's view of the open tabs.
 //
@@ -236,9 +228,7 @@ type OpenDocument struct {
 // write must now name its own target, and dirty state aggregates across tabs
 // rather than tracking only the visible one.
 func (a *App) SyncDocuments(docs []OpenDocument) {
-	a.mu.Lock()
-	a.docs = append(a.docs[:0], docs...)
-	a.mu.Unlock()
+	a.session.Sync(docs)
 	a.updateTitle()
 }
 
@@ -248,56 +238,19 @@ func (a *App) SyncDocuments(docs []OpenDocument) {
 // against the last opened path: not knowing which file is dirty must lead to
 // asking the user, never to writing a guess.
 func (a *App) SetDirty(dirty bool) {
-	a.mu.Lock()
-	a.unsyncedDirty = dirty && len(a.docs) == 0
-	for i := range a.docs {
-		if a.docs[i].Active {
-			a.docs[i].Dirty = dirty
-		}
-	}
-	a.mu.Unlock()
+	a.session.SetDirty(dirty)
 	a.updateTitle()
 }
 
 // dirtyDocuments returns a copy of every tab with unsaved changes.
-func (a *App) dirtyDocuments() []OpenDocument {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	var out []OpenDocument
-	for _, d := range a.docs {
-		if d.Dirty {
-			out = append(out, d)
-		}
-	}
-	return out
-}
+func (a *App) dirtyDocuments() []OpenDocument { return a.session.Dirty() }
 
 // activeDocument returns the focused tab, or the first, or a zero value.
-func (a *App) activeDocument() OpenDocument {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, d := range a.docs {
-		if d.Active {
-			return d
-		}
-	}
-	if len(a.docs) > 0 {
-		return a.docs[0]
-	}
-	return OpenDocument{}
-}
+func (a *App) activeDocument() OpenDocument { return a.session.Active() }
 
 // UpdateContent stores the latest markdown for the active tab (pushed
 // debounced by the frontend) so the close guard can save without a round-trip.
-func (a *App) UpdateContent(content string) {
-	a.mu.Lock()
-	for i := range a.docs {
-		if a.docs[i].Active {
-			a.docs[i].Content = content
-		}
-	}
-	a.mu.Unlock()
-}
+func (a *App) UpdateContent(content string) { a.session.UpdateActiveContent(content) }
 
 // ListFontFamilies returns installed font family names for settings controls.
 func (a *App) ListFontFamilies() []string {
@@ -497,9 +450,7 @@ func (a *App) ResolveUnsavedChanges() bool {
 // beforeClose implements the unsaved-changes guard: Save / Don't Save /
 // Cancel, matching the spec's error-handling contract.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
-	a.mu.Lock()
-	unsynced := a.unsyncedDirty && len(a.docs) == 0
-	a.mu.Unlock()
+	unsynced := a.session.HasUnsyncedDirty()
 	if len(a.dirtyDocuments()) == 0 && !unsynced {
 		return false
 	}
@@ -533,8 +484,9 @@ func (a *App) promptUnsaved() (prevent bool) {
 // the close so the remaining documents are not lost.
 func (a *App) saveCurrent() bool {
 	a.mu.Lock()
-	unsynced, content := a.unsyncedDirty && len(a.docs) == 0, a.currentText
+	content := a.currentText
 	a.mu.Unlock()
+	unsynced := a.session.HasUnsyncedDirty()
 	if unsynced {
 		// No document list, so no known target. Ask rather than guess.
 		path, err := a.SaveDocumentAs(content)
@@ -567,14 +519,8 @@ func (a *App) openPath(path string) (OpenResult, error) {
 	a.currentPath = path
 	a.currentText = content
 	a.rememberOnDisk(path, content)
-	for i := range a.docs {
-		if a.docs[i].Path == path || (a.docs[i].Active && a.docs[i].Path == "") {
-			a.docs[i].Path = path
-			a.docs[i].Content = content
-			a.docs[i].Dirty = false
-		}
-	}
 	a.mu.Unlock()
+	a.session.AdoptPath(path, content)
 	a.recordRecent(path)
 	a.updateTitle()
 	return OpenResult{Path: path, Content: content}, nil

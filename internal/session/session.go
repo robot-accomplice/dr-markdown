@@ -23,6 +23,9 @@ type Document struct {
 type Session struct {
 	mu   sync.Mutex
 	docs []Document
+	// unsyncedDirty covers a frontend that reported dirty before ever syncing
+	// its documents. It forces a prompt; it never names a write target.
+	unsyncedDirty bool
 }
 
 // Sync replaces the known tabs with what the frontend reported.
@@ -64,4 +67,70 @@ func (s *Session) Dirty() []Document {
 		}
 	}
 	return out
+}
+
+// SetDirty records the frontend's dirty state for the active tab.
+//
+// With no synced documents the flag is kept on its own rather than invented
+// against the last opened path: not knowing which file is dirty must lead to
+// asking the user, never to writing a guess.
+func (s *Session) SetDirty(dirty bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unsyncedDirty = dirty && len(s.docs) == 0
+	for i := range s.docs {
+		if s.docs[i].Active {
+			s.docs[i].Dirty = dirty
+		}
+	}
+}
+
+// HasUnsyncedDirty reports a dirty frontend that never named its documents.
+//
+// The tab count is re-checked at read time rather than trusted from when the
+// flag was set: a frontend can report dirty and only then sync its documents,
+// and once they are known the answer is no longer "we have no idea which file".
+func (s *Session) HasUnsyncedDirty() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.unsyncedDirty && len(s.docs) == 0
+}
+
+// UpdateActiveContent stores the latest markdown for the active tab, pushed
+// debounced by the frontend, so the close guard can save without a round trip.
+func (s *Session) UpdateActiveContent(content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.docs {
+		if s.docs[i].Active {
+			s.docs[i].Content = content
+		}
+	}
+}
+
+// snapshotForTest returns a copy of every tab. Test-only: production code asks
+// specific questions (Active, Dirty) rather than reading the whole list.
+func (s *Session) snapshotForTest() []Document {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Document(nil), s.docs...)
+}
+
+// AdoptPath records that a tab now lives at path with this content, and is
+// clean. It matches the tab already at that path, or the active tab that has no
+// path yet — the Save-As case.
+//
+// Save and open both need exactly this, and both used to carry their own copy
+// of the loop. Two copies of a rule about which tab a write lands on is how one
+// tab's content reached another tab's file.
+func (s *Session) AdoptPath(path, content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.docs {
+		if s.docs[i].Path == path || (s.docs[i].Active && s.docs[i].Path == "") {
+			s.docs[i].Path = path
+			s.docs[i].Content = content
+			s.docs[i].Dirty = false
+		}
+	}
 }
