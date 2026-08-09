@@ -152,3 +152,37 @@ func TestFrontmatterPreservation(t *testing.T) {
 		}
 	}
 }
+
+func TestAltTextPreservation(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const { altText } = await import('/src/fidelity/alttext.js')
+		// The editor replaces alt text with its resize ratio, so 'serialized'
+		// below is what comes back out of it.
+		const run = (original, serialized) =>
+			altText.restore(serialized, altText.capture(original).state)
+		return [
+			run('![Diagram](a.png)\n', '![1.00](a.png)\n'),
+			run('![Before](x.png)\n\n![After](x.png)\n', '![1.00](x.png)\n\n![1.00](x.png)\n'),
+			run('![3.14](pi.png)\n', '![1.00](pi.png)\n'),
+			run('![alt with [x] inside](b.png)\n', '![1.00](b.png)\n'),
+		]
+	})()`, &got)
+
+	want := []string{
+		"![Diagram](a.png)\n",
+		"![Before](x.png)\n\n![After](x.png)\n",
+		"![3.14](pi.png)\n",
+		"![alt with [x] inside](b.png)\n",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
