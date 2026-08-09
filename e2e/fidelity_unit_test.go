@@ -51,3 +51,34 @@ func TestFidelityRegistryContract(t *testing.T) {
 		t.Errorf("registry contract: %s", p)
 	}
 }
+
+// Each preservation is pure, so it can be driven directly with a table instead
+// of through a browser round trip. One boot for the whole table.
+func TestTrailingPreservation(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const { trailing } = await import('/src/fidelity/trailing.js')
+		const run = (original, serialized) => {
+			const { state } = trailing.capture(original)
+			return trailing.restore(serialized, state)
+		}
+		return [
+			run('# T\n\n- a\n', '# T\n\n- a\n\n'),
+			run('# T\n', '# T\n'),
+			run('no newline at eof', 'no newline at eof\n'),
+			run('# T\n\n\n', '# T\n'),
+		]
+	})()`, &got)
+
+	want := []string{"# T\n\n- a\n", "# T\n", "no newline at eof", "# T\n\n\n"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
