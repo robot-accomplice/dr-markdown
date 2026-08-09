@@ -149,7 +149,8 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 
 ## Known limitations
 
-- **WYSIWYG editing rewrites some markdown, and deletes link reference definitions — see the caution at the top of this file. Use Raw mode when the exact bytes matter.** Inline `<br>` deletion and CRLF rewriting were fixed in v0.4.1.
+- **WYSIWYG editing respells some markdown — see the caution at the top of this file. Use Raw mode when the exact bytes matter.** Nothing is deleted any more: inline `<br>` and CRLF were fixed in v0.4.1, and link reference definitions since. 38 of 49 surveyed CommonMark and GFM constructs now round-trip byte-identically, measured by `e2e/fidelity_survey_test.go`.
+- Saving refuses to overwrite a file that changed on disk since the app last read or wrote it, and asks before replacing it. The check re-reads the file on every save, which is part of why large documents are slow.
 - Saving replaces the file via an atomic rename, which breaks hard links to it. Extended attributes such as Finder tags are preserved, and a read-only file is refused rather than replaced.
 - Large documents are slow: roughly 4 s to open a 140 KB file and 10 s for 280 KB, with no progress indicator and no way to cancel. There is no size limit.
 - Builds are unsigned and un-notarized, so macOS Gatekeeper and Windows SmartScreen will both warn. On macOS 15 and later, approve it under System Settings → Privacy & Security → Open Anyway.
