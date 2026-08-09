@@ -8,6 +8,10 @@ import {
   tableMarkdown, containsTable, addTableRow, removeTableRow, addTableColumn,
   removeTableColumn, alignTable, deleteTable,
 } from './markdown/tables.js'
+import {
+  firstCodeFenceLanguage, firstCodeFenceDescriptor, rewriteCodeFenceLanguage,
+  containsMermaidDiagram, rewriteMermaidFenceSource, fencedLanguages,
+} from './markdown/fences.js'
 
 const BLANK_DOCUMENT = ''
 
@@ -1326,33 +1330,8 @@ function appendBlock(md, block) {
 
 
 
-function containsMermaidDiagram(md) {
-  return firstCodeFenceLanguage(md, { onlyMermaid: true }) === 'mermaid'
-}
 
-function firstCodeFenceLanguage(md, { excludeMermaid = false, onlyMermaid = false } = {}) {
-  return firstCodeFenceDescriptor(md, { excludeMermaid, onlyMermaid })?.language ?? ''
-}
 
-function firstCodeFenceDescriptor(md, { excludeMermaid = false, onlyMermaid = false } = {}) {
-  let index = -1
-  let inFence = false
-  for (const line of md.split('\n')) {
-    const match = line.match(/^```\s*([A-Za-z0-9_+#.-]*)/)
-    if (!match) continue
-    if (inFence) {
-      inFence = false
-      continue
-    }
-    inFence = true
-    index++
-    const language = normalizeLanguage(match[1] || 'text')
-    if (excludeMermaid && language === 'mermaid') continue
-    if (onlyMermaid && language !== 'mermaid') continue
-    return { index, language }
-  }
-  return null
-}
 
 async function updateCodeBlockLanguage(language) {
   await persistCurrentEditorText()
@@ -1364,28 +1343,6 @@ async function updateCodeBlockLanguage(language) {
   markEdited(doc.markdown)
 }
 
-function rewriteCodeFenceLanguage(md, fenceIndex, language) {
-  if (!Number.isInteger(fenceIndex)) return md
-  const lines = md.split('\n')
-  const normalized = normalizeLanguage(language || 'text') || 'text'
-  let currentFenceIndex = -1
-  let inFence = false
-  for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/^(```)\s*([A-Za-z0-9_+#.-]*)/)
-    if (!match) continue
-    if (inFence) {
-      inFence = false
-      continue
-    }
-    inFence = true
-    currentFenceIndex++
-    if (currentFenceIndex !== fenceIndex) continue
-    if (normalizeLanguage(match[2] || 'text') === 'mermaid') continue
-    lines[i] = `${match[1]}${normalized}`
-    break
-  }
-  return lines.join('\n')
-}
 
 
 
@@ -1852,11 +1809,6 @@ async function waitForFormattedCodeElements(expectedCount) {
   return Array.from(els.wysiwyg.querySelectorAll('pre code'))
 }
 
-function fencedLanguages(md) {
-  return md.split('\n')
-    .map((line) => line.match(/^```\s*([A-Za-z0-9_+#.-]+)/)?.[1] || '')
-    .filter(Boolean)
-}
 
 function languageFromElement(code) {
   return Array.from(code.classList).find((name) => name.startsWith('language-'))?.replace(/^language-/, '') || ''
@@ -2383,30 +2335,6 @@ async function insertSelectedDiagram() {
   closeDiagramAssistant()
 }
 
-function rewriteMermaidFenceSource(md, fenceIndex, source) {
-  if (!Number.isInteger(fenceIndex)) return md
-  const lines = md.split('\n')
-  let currentFenceIndex = -1
-  let inFence = false
-  for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/^```\s*([A-Za-z0-9_+#.-]*)/)
-    if (!match) continue
-    if (inFence) {
-      inFence = false
-      continue
-    }
-    currentFenceIndex++
-    const language = normalizeLanguage(match[1] || 'text')
-    inFence = true
-    if (currentFenceIndex !== fenceIndex || language !== 'mermaid') continue
-    let end = i + 1
-    while (end < lines.length && !/^```/.test(lines[end])) end++
-    if (end >= lines.length) return md
-    lines.splice(i + 1, end - i - 1, ...source.split('\n'))
-    return lines.join('\n')
-  }
-  return md
-}
 
 function renderDiagramAssistant() {
   const editing = Number.isInteger(editingDiagramFenceIndex)
