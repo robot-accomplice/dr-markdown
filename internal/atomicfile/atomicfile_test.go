@@ -2,7 +2,10 @@ package atomicfile
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -128,5 +131,57 @@ func TestWriteUsesTheRequestedModeForANewFile(t *testing.T) {
 	info, _ := os.Stat(path)
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("mode = %v, want 0600", got)
+	}
+}
+
+// Replacing a file by rename gives up the original inode, and with it the
+// extended attributes hanging off it. On macOS those carry Finder tags, Spotlight
+// comments and download provenance; a user who tagged a note loses the tag on
+// the first save, silently.
+func TestWritePreservesExtendedAttributes(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skipf("xattr preservation is verified on darwin; %s uses the same code path", runtime.GOOS)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.md")
+	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("xattr", "-w", "com.apple.metadata:kTestTag", "green", path).CombinedOutput(); err != nil {
+		t.Fatalf("seed xattr: %v %s", err, out)
+	}
+
+	if err := Write(path, []byte("edited"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := exec.Command("xattr", "-p", "com.apple.metadata:kTestTag", path).CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "green") {
+		t.Errorf("extended attribute was lost on save: %v %q", err, out)
+	}
+}
+
+// A file the user made read-only was still replaced, because rename needs write
+// permission on the DIRECTORY, not on the file. Read-only is the mechanism
+// people use to protect a reference document from exactly this.
+func TestWriteRefusesAReadOnlyTarget(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "protected.md")
+	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Write(path, []byte("CLOBBERED"), 0o600); err == nil {
+		t.Error("writing over a read-only file must fail rather than silently succeed")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "original" {
+		t.Errorf("read-only file was overwritten: %q", data)
 	}
 }

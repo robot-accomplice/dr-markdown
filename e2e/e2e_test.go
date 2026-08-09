@@ -69,8 +69,13 @@ func newTestBrowser(t *testing.T) (context.Context, context.CancelFunc) {
 			"coverage of the frontend, so it must not pass by being absent. "+
 			"Install Chrome, or set %s=1 to accept an unverified frontend.", skipE2EEnv)
 	}
-	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(),
-		chromedp.DefaultExecAllocatorOptions[:]...)
+	// Chrome's setuid sandbox cannot initialize on a CI runner without extra
+	// privileges — it aborts in ZygoteHostImpl::Init before any test runs. The
+	// browser here only ever loads frontend/dist from a local httptest server,
+	// so disabling the sandbox costs nothing this harness relies on.
+	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
+	opts = append(opts, chromedp.NoSandbox)
+	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	ctx, cancel := chromedp.NewContext(allocCtx)
 	return ctx, func() { cancel(); cancelAlloc() }
 }
@@ -2600,9 +2605,12 @@ func TestExistingCodeBlockLanguageCanBeChangedFromBlockTools(t *testing.T) {
 		t.Fatalf("right-click language edit should target only the second code block: %q", md)
 	}
 
-	var hoverToolReady bool
-	evalJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-code-fence-index="0"] [data-code-language-tool]') !== null`, &hoverToolReady)
-	if !hoverToolReady {
+	// Applying a language change remounts the WYSIWYG surface asynchronously,
+	// so the shell this asserts on does not exist yet when the apply click
+	// returns. Reading the DOM straight after made the test fail about one run
+	// in three — a real race in the TEST, not in the app, and the same shape as
+	// the empty-state assertions fixed earlier.
+	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-code-fence-index="0"] [data-code-language-tool]') !== null`) {
 		t.Fatal("existing code blocks should expose a hover language tool")
 	}
 
