@@ -107,7 +107,7 @@ function countOrderedRuns(markdown) {
 
 // detectMarkdownStyle returns serializer options matching the document, with
 // keys omitted where the document showed no preference.
-export function detectMarkdownStyle(markdown) {
+function detectMarkdownStyle(markdown) {
   const options = {}
 
   // A tab is a legal separator after a list marker, and matching only spaces
@@ -170,4 +170,25 @@ export function detectMarkdownStyle(markdown) {
   if (ordered) options.incrementListMarker = ordered === 'increment'
 
   return options
+}
+
+// Every key is written on every call, using the serializer's own defaults where
+// the document expressed no preference. Applying only the detected keys would
+// let a style set for one document persist into the next if the options object
+// were ever shared.
+const STYLE_DEFAULTS = {
+  bullet: '*',
+  bulletOrdered: '.',
+  rule: '*',
+  fence: '`',
+  setext: false,
+  closeAtx: false,
+  incrementListMarker: true,
+}
+
+// A SerializerPolicy, not a Preservation: it configures the serializer before
+// it runs rather than transforming its output, so it has no restore step.
+export const markdownStyle = {
+  name: 'markdownStyle',
+  detect: (markdown) => ({ ...STYLE_DEFAULTS, ...detectMarkdownStyle(markdown) }),
 }
