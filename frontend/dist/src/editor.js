@@ -1,5 +1,6 @@
 // WysiwygEditor wraps the vendored Milkdown Crepe bundle.
 import { Crepe } from '../vendor/crepe.bundle.mjs'
+import { collectLinkReferences, restoreLinkReferences } from './linkrefs.js'
 
 // Loads the Crepe theme CSS listed in vendor/theme/manifest.txt.
 // Light theme only in this milestone; dark themes land in the polish
@@ -154,6 +155,8 @@ export class WysiwygEditor {
   #onChange = null
   // The `<br>` spellings removed from the document before the editor saw them.
   #breaks = []
+  // Link reference definitions and how each was referenced, restored on exit.
+  #linkRefs = null
   // Alt text of every image in the document as opened, keyed by destination.
   #altByURL = new Map()
   // Frontmatter stripped from the current document, re-attached on the way out.
@@ -174,6 +177,7 @@ export class WysiwygEditor {
     this.#frontmatter = frontmatter
     const [body, breaks] = protectBreaks(rawBody)
     this.#breaks = breaks
+    this.#linkRefs = collectLinkReferences(body)
     this.#altByURL = collectAltText(body)
     host.replaceChildren()
     const crepe = new Crepe({
@@ -208,7 +212,8 @@ export class WysiwygEditor {
   // out only — #baseline still compares raw Crepe output, so change detection
   // is unaffected.
   #serialize(md) {
-    return this.#frontmatter + restoreBreaks(restoreAltText(md, this.#altByURL), this.#breaks)
+    const withRefs = restoreLinkReferences(md, this.#linkRefs)
+    return this.#frontmatter + restoreBreaks(restoreAltText(withRefs, this.#altByURL), this.#breaks)
   }
 
   // Replaces the whole document by rebuilding the editor (see Global
