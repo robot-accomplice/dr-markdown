@@ -723,9 +723,15 @@ function contextualCodeGroup(language) {
   return contextualGroup('code', 'Code Block', [select])
 }
 
-function startEditing(started = true) {
+// Marks the active document as started, so the placeholder gives way.
+//
+// This took a `started` parameter that was never passed anything but true, and
+// its body then read `started || doc.markdown.length > 0` — with `started`
+// always true, the right-hand side was unreachable. Dead configurability with a
+// dead branch behind it, reading as a choice the caller gets to make.
+function startEditing() {
   const doc = activeDoc()
-  if (doc) doc.started = started || doc.markdown.length > 0
+  if (doc) doc.started = true
 }
 
 function activateRibbonTab(name) {
@@ -877,7 +883,7 @@ async function toggleSplit() {
 async function setMode(mode) {
   if (mode === state.mode) return
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const md = activeDoc().markdown
   if (state.mode === 'raw') raw.close()
   els.wysiwyg.hidden = true
@@ -1041,7 +1047,7 @@ async function runCommand(command) {
 
   const editorContext = currentEditorContext()
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   doc.markdown = applyCommand(command, doc.markdown, editorContext)
   state.editorContext = {}
@@ -1060,7 +1066,7 @@ async function handleDroppedFiles(paths) {
     IMPORTABLE_IMAGE_EXTENSIONS.some((extension) => path.toLowerCase().endsWith(extension)))
   if (images.length === 0) return
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   if (!doc) return
   for (const path of images) {
@@ -1083,7 +1089,7 @@ async function handleDroppedFiles(paths) {
 
 async function insertImage() {
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   let result
   try {
@@ -1199,7 +1205,7 @@ function applyBlockStyle(style) {
 
 async function updateCodeBlockLanguage(language) {
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   const target = firstCodeFenceDescriptor(doc.markdown, { excludeMermaid: true })
   doc.markdown = rewriteCodeFenceLanguage(doc.markdown, target?.index, language)
@@ -2038,7 +2044,7 @@ function closeCodeAssistant() {
 async function insertSelectedCodeBlock() {
   const language = selectedCodeLanguage || 'text'
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   doc.markdown = Number.isInteger(editingCodeFenceIndex)
     ? rewriteCodeFenceLanguage(doc.markdown, editingCodeFenceIndex, language)
@@ -2094,7 +2100,7 @@ function closeDiagramAssistant() {
 
 async function insertSelectedDiagram() {
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   const source = currentDiagramSource()
   doc.markdown = Number.isInteger(editingDiagramFenceIndex)
@@ -2206,7 +2212,7 @@ async function pasteMarkdown() {
     markEdited(text)
     return
   }
-  startEditing(true)
+  startEditing()
   syncActiveState()
 }
 
@@ -2271,7 +2277,7 @@ function wire() {
   })
   els.btnNew.addEventListener('click', newDocument)
   els.emptyStart.addEventListener('click', () => {
-    startEditing(true)
+    startEditing()
     syncActiveState()
   })
   els.emptyPaste.addEventListener('click', pasteMarkdown)
