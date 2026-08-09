@@ -80,6 +80,33 @@
       "status": "planned",
       "priority": "medium",
       "summary": "Add Developer ID signing, notarization, checksums, update-channel policy, packaged smoke tests, and later Windows/Linux packaging evaluation."
+    },
+    {
+      "id": "fidelity-preservation-domain",
+      "kind": "chore",
+      "section": "Domain Ownership And Boundaries",
+      "title": "Give fidelity preservation a single owner",
+      "status": "planned",
+      "priority": "high",
+      "summary": "Extract frontend/dist/src/fidelity/: one module per preservation implementing capture(original)/restore(serialized, state), with a registry owning the ordering. editor.js returns to owning only the Crepe lifecycle. Adding a preservation becomes one file plus one registry line rather than a three-place edit. Behaviour-preserving: the byte-identical corpus and the 49-construct survey must stay green and unchanged."
+    },
+    {
+      "id": "pure-markdown-domain",
+      "kind": "chore",
+      "section": "Domain Ownership And Boundaries",
+      "title": "Move pure markdown logic out of the DOM adapter",
+      "status": "planned",
+      "priority": "medium",
+      "summary": "Command transforms, table operations, fence operations, image token parsing and link safety move from app.js (2835 lines, 189 top-level functions, ~10 domains) into pure string-to-string domain modules. Converts the bulk of the product's logic from browser-only verification to direct verification, without a Node toolchain. Must land as a sequence of small green extractions."
+    },
+    {
+      "id": "go-use-cases-out-of-app",
+      "kind": "chore",
+      "section": "Domain Ownership And Boundaries",
+      "title": "Separate Go use cases from the Wails binding surface",
+      "status": "planned",
+      "priority": "low",
+      "summary": "Lift open, save, resolve-unsaved and asset import out of app.go (747 lines) into use-case types, leaving App as a thin adapter. The injected ports already exist and do not change. Sequenced last deliberately: dependency inversion is already in place, so this addresses comprehension rather than correctness, and deferring it costs clarity not safety."
     }
   ]
 }
