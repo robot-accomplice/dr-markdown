@@ -42,12 +42,12 @@ func TestWysiwygRewritesTheseConstructs(t *testing.T) {
 		// still records LF here while TestLineEndingsSurviveAnEditAndSave proves
 		// a CRLF file saves as CRLF. Keeping both makes the distinction visible.
 		{"editor normalizes crlf internally", "line one\r\nline two\r\n", "line one\nline two\n"},
-		{"hyphen bullets become asterisks", "- a\n- b\n", "* a\n* b\n"},
-		{"plus bullets become asterisks", "+ a\n+ b\n", "* a\n* b\n"},
-		{"setext heading becomes atx", "Title\n=====\n", "# Title\n"},
+		// Bullets, ordered markers, setext headings, fences and thematic breaks
+		// are now PRESERVED — the serializer is configured from the document's
+		// own style. What remains here is what style options cannot express.
 		{"closing hashes are stripped", "# Heading ##\n", "# Heading\n"},
-		{"tilde fence becomes backtick fence", "~~~\ncode\n~~~\n", "```\ncode\n```\n"},
-		{"thematic break is respelled", "a\n\n---\n\nb\n", "a\n\n***\n\nb\n"},
+		{"two-space hard break becomes backslash", "a  \nb\n", "a\\\nb\n"},
+		{"trailing whitespace is stripped", "text   \n", "text\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in, err := json.Marshal(tc.in)
