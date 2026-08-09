@@ -1,12 +1,7 @@
 // WysiwygEditor wraps the vendored Milkdown Crepe bundle.
 import { Crepe } from '../vendor/crepe.bundle.mjs'
 import { bridge } from './bridge.js'
-import { trailing } from './fidelity/trailing.js'
-import { breaks } from './fidelity/breaks.js'
-import { frontmatter } from './fidelity/frontmatter.js'
-import { altText } from './fidelity/alttext.js'
-import { linkReferences } from './fidelity/linkrefs.js'
-import { detectSerializerOptions } from './fidelity/index.js'
+import { capturePreservations, restorePreservations, detectSerializerOptions } from './fidelity/index.js'
 
 // Loads the Crepe theme CSS listed in vendor/theme/manifest.txt.
 // Light theme only in this milestone; dark themes land in the polish
@@ -53,16 +48,9 @@ function applySerializerOptions(crepe, markdown) {
 export class WysiwygEditor {
   #crepe = null
   #onChange = null
-  // State captured by the <br> preservation. See fidelity/breaks.js.
-  #breakState = []
-  // State captured by the link-reference preservation. See fidelity/linkrefs.js.
-  #linkRefState = null
-  // State captured by the alt-text preservation. See fidelity/alttext.js.
-  #altState = new Map()
-  // State captured by the frontmatter preservation. See fidelity/frontmatter.js.
-  #frontmatterState = ''
-  // State captured by the trailing-newline preservation. See fidelity/trailing.js.
-  #trailingState = ''
+  // Everything the fidelity registry captured from the document as opened,
+  // keyed by preservation name. The editor does not know what is in here.
+  #states = new Map()
   // Last serialized markdown we treated as the unedited baseline. Crepe
   // fires an initial markdownUpdated when its async feature mounting
   // finishes — a normalization pass, not a user edit — so events that
@@ -75,15 +63,9 @@ export class WysiwygEditor {
   }
 
   async #build(host, markdown) {
-    const splitOff = frontmatter.capture(markdown)
-    this.#frontmatterState = splitOff.state
-    const rawBody = splitOff.markdown
-    this.#trailingState = trailing.capture(markdown).state
-    const captured = breaks.capture(rawBody)
-    this.#breakState = captured.state
+    const captured = capturePreservations(markdown)
+    this.#states = captured.states
     const body = captured.markdown
-    this.#linkRefState = linkReferences.capture(body).state
-    this.#altState = altText.capture(body).state
     host.replaceChildren()
     const crepe = new Crepe({
       root: host,
@@ -113,16 +95,11 @@ export class WysiwygEditor {
     return this.#serialize(this.#crepe.getMarkdown())
   }
 
-  // The single exit for markdown leaving the editor: re-attach the frontmatter
-  // the editor never saw, and undo the alt-slot overwrite. Applied on the way
-  // out only — #baseline still compares raw Crepe output, so change detection
-  // is unaffected.
+  // The single exit for markdown leaving the editor. Applied on the way out
+  // only — #baseline still compares raw Crepe output, so change detection is
+  // unaffected.
   #serialize(md) {
-    const withRefs = linkReferences.restore(md, this.#linkRefState)
-    const body = breaks.restore(altText.restore(withRefs, this.#altState), this.#breakState)
-    // Applied last, so it governs the bytes that actually leave — including the
-    // definition block restoreLinkReferences appends after the body.
-    return trailing.restore(frontmatter.restore(body, this.#frontmatterState), this.#trailingState)
+    return restorePreservations(md, this.#states)
   }
 
   // Replaces the whole document by rebuilding the editor (see Global

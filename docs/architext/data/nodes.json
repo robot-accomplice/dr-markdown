@@ -157,7 +157,7 @@
       "security": [
         "A Content-Security-Policy in index.html restricts script, style, image, font and connect sources; object-src, base-uri, form-action and frame-ancestors are 'none'",
         "Document links are routed to the OS browser via OpenExternalURL instead of navigating the app window",
-        "Rendered document links pass a scheme allowlist (http, https, mailto). The candidate is normalized exactly as the URL parser normalizes it — tabs, CR and LF stripped — because the check must refuse what the BROWSER navigates to, not what the raw string looks like",
+        "Rendered document links pass a scheme allowlist (http, https, mailto). The candidate is normalized exactly as the URL parser normalizes it \u2014 tabs, CR and LF stripped \u2014 because the check must refuse what the BROWSER navigates to, not what the raw string looks like",
         "Suppresses browser context menu and drag/drop navigation in the shell",
         "safeLinkHref returns the href to assign rather than a boolean, so a caller cannot validate one string and use another"
       ],
@@ -461,23 +461,17 @@
       "id": "wysiwyg-editor",
       "type": "module",
       "name": "WYSIWYG editor adapter",
-      "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown and suppresses initial normalization as a dirty edit.",
+      "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown, suppresses initial normalization as a dirty edit, and runs the fidelity registry on the way in and out. It owns the editor lifecycle only; what is done to the user's bytes is owned by the fidelity domain.",
       "responsibilities": [
         "Create and rebuild the formatted editor",
         "Emit user edits to the frontend shell",
-        "Record image alt text per destination on load and restore it on serialize",
         "Serialize markdown from Crepe",
-        "Split YAML frontmatter out before the editor sees it and re-attach it on the way out",
-        "Substitute inline <br> spellings for a sentinel the editor does not strip, and restore them in document order on serialize",
-        "Collect link reference definitions and how each was referenced, and rebuild both the reference syntax and the definition block on serialize",
-        "Detect the document's own markdown style and mutate the live remark-stringify options so the serializer writes that style back",
-        "Preserve the document's trailing newline run, so a file ending in a block does not gain a blank line and open as modified"
+        "Run the fidelity registry: capture preservations from the document on build, apply serializer policies before the serializer runs, and restore preservations on serialize"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
         "frontend/dist/src/editor.js",
-        "frontend/dist/src/linkrefs.js",
-        "frontend/dist/src/mdstyle.js",
+        "frontend/dist/src/fidelity/index.js",
         "frontend/dist/vendor/crepe.bundle.mjs"
       ],
       "runtime": "Embedded webview JavaScript",
@@ -515,7 +509,9 @@
         "TestRoundTripCorpus",
         "TestWysiwygRewritesTheseConstructs",
         "TestFidelitySurveyRewritesExactlyTheseConstructs",
-        "TestOpeningADocumentDoesNotMarkItModified"
+        "TestOpeningADocumentDoesNotMarkItModified",
+        "TestFidelityRegistryContract",
+        "TestEditorDoesNotKnowIndividualPreservations"
       ]
     },
     {
