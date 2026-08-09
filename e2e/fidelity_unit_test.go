@@ -218,3 +218,32 @@ func TestLinkReferencePreservation(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownStylePolicy(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const { markdownStyle } = await import('/src/fidelity/style.js')
+		const k = (md, key) => String(markdownStyle.detect(md)[key])
+		return [
+			k('- a\n- b\n', 'bullet'),
+			k('* a\n* b\n', 'bullet'),
+			k('# H #\n', 'closeAtx'),
+			k('# H\n', 'closeAtx'),
+			k('1. a\n1. b\n', 'incrementListMarker'),
+			k('1. a\n2. b\n', 'incrementListMarker'),
+			k('-\ta\n-\tb\n', 'bullet'),
+		]
+	})()`, &got)
+
+	want := []string{"-", "*", "true", "false", "false", "true", "-"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
