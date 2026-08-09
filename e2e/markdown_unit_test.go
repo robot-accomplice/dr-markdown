@@ -67,8 +67,8 @@ func TestFenceOperations(t *testing.T) {
 	var got []string
 	evalJS(t, ctx, `(async () => {
 		const F = await import('/src/markdown/fences.js')
-		const js = '` + "```" + `js\nconst a = 1\n` + "```" + `\n'
-		const mermaid = '` + "```" + `mermaid\ngraph TD\n` + "```" + `\n'
+		const js = '`+"```"+`js\nconst a = 1\n`+"```"+`\n'
+		const mermaid = '`+"```"+`mermaid\ngraph TD\n`+"```"+`\n'
 		return [
 			F.firstCodeFenceLanguage(js),
 			F.firstCodeFenceLanguage('no fence here'),

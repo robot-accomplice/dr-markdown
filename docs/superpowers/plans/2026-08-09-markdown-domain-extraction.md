@@ -14,7 +14,7 @@
 - **Behaviour-preserving.** This phase changes structure, not behaviour.
 - **The judging criterion:** every existing test must stay green **and unchanged** — `TestRoundTripCorpus`, `TestFidelitySurveyRewritesExactlyTheseConstructs`, `TestWysiwygRewritesTheseConstructs`, `TestOpeningADocumentDoesNotMarkItModified`, `TestFailureSurfacesRecordDurableEvents`, `TestObfuscatedSchemesAreRefusedInRenderedLinks`, and everything in `e2e/e2e_test.go`. A task that needs any of them edited to pass has changed behaviour and is wrong — stop and report rather than editing the test.
 - **Carry the comments across verbatim.** A moved function moves its comment block unchanged.
-- **Every commit runs the full gate:** `go vet ./... && ./tools/verify-vendor.sh && go test ./... -count=1`.
+- **Every commit runs the full gate:** `gofmt -l . && go vet ./... && ./tools/verify-vendor.sh && go test ./... -count=1`. CI enforces gofmt as its first step, so a gate that omits it is a subset of the real one — that is how a green local run reached a red CI on this very branch.
 - Attribution rule: no Claude/Anthropic co-author trailers or footers in commits or PRs.
 
 ## What was measured before planning
