@@ -16,7 +16,7 @@
 - **The judging criterion:** `TestRoundTripCorpus`, `TestFidelitySurveyRewritesExactlyTheseConstructs`, `TestWysiwygRewritesTheseConstructs` and `TestOpeningADocumentDoesNotMarkItModified` must stay green **and unchanged**. A task that needs any of them edited to pass has changed behaviour and is wrong — stop and report rather than editing the gate.
 - **Compensations live outside the vendored bundle**, in `frontend/dist/src/`, so `tools/vendor.sh` cannot silently revert them. Never patch `frontend/dist/vendor/`.
 - **Carry the comments across verbatim.** `editor.js` and `linkrefs.js` are ~50% comments recording facts that cost real debugging. Moving a function moves its comment block unchanged. Losing one is a regression.
-- **Every commit runs the full gate:** `go vet ./... && ./tools/verify-vendor.sh && go test ./... -count=1`.
+- **Every commit runs the full gate:** `gofmt -l . && go vet ./... && ./tools/verify-vendor.sh && go test ./... -count=1`. CI enforces gofmt as its first step, so a gate that omits it is a subset of the real one — that is how a green local run reached a red CI on this very branch.
 - Attribution rule: no Claude/Anthropic co-author trailers or footers in commits or PRs.
 
 ## Ordering is load-bearing — read this before Task 1
