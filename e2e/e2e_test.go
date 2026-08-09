@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
@@ -75,6 +76,21 @@ func newTestBrowser(t *testing.T) (context.Context, context.CancelFunc) {
 	// so disabling the sandbox costs nothing this harness relies on.
 	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
 	opts = append(opts, chromedp.NoSandbox)
+	// Give Chrome longer to report its debugging websocket than chromedp's
+	// 20s default, which is tuned for a developer machine launching one
+	// browser.
+	//
+	// This suite launches one per test — 91 of them per run — and on a
+	// two-core CI runner a launch under contention exceeded 20s twice, failing
+	// with "websocket url timeout reached" before any page work. Both failures
+	// were at connect, on commits that passed on re-run, and both followed this
+	// session adding 17 launches.
+	//
+	// The real reduction is fewer browsers: the fidelity and markdown unit
+	// tests boot a whole browser only to import() a pure module, and could
+	// share one. That is a test-structure change and is recorded rather than
+	// smuggled into a refactor PR.
+	opts = append(opts, chromedp.WSURLReadTimeout(60*time.Second))
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	ctx, cancel := chromedp.NewContext(allocCtx)
 	return ctx, func() { cancel(); cancelAlloc() }
