@@ -1085,6 +1085,7 @@ async function handleDroppedFiles(paths) {
       // Rejections (unsaved document, unreadable source) are already reported
       // natively; stop rather than half-importing the rest of the drop.
       console.warn('bridge: dropped image import rejected', error)
+      bridge.recordEvent('image.import-failed', { source: 'drop', error: String(error?.message ?? error) })
       return
     }
     if (!result?.markdown) continue
@@ -1106,6 +1107,7 @@ async function insertImage() {
     // (unsaved document, unreadable source, failed copy). Leave the document
     // untouched rather than inserting a non-portable placeholder.
     console.warn('bridge: image import rejected', error)
+    bridge.recordEvent('image.import-failed', { source: 'ribbon', error: String(error?.message ?? error) })
     return
   }
   if (!result?.markdown) return
@@ -1148,6 +1150,7 @@ async function replaceSelectedImage() {
     result = await bridge.importImage(doc.path)
   } catch (error) {
     console.warn('bridge: image replace rejected', error)
+    bridge.recordEvent('image.replace-failed', { error: String(error?.message ?? error) })
     return
   }
   if (!result?.markdownPath) return
@@ -1163,6 +1166,7 @@ async function revealSelectedImage() {
   } catch (error) {
     // The native side already reported a missing or unreachable asset.
     console.warn('bridge: image reveal rejected', error)
+    bridge.recordEvent('image.reveal-failed', { error: String(error?.message ?? error) })
   }
 }
 
@@ -1531,6 +1535,7 @@ async function loadNativePreferences() {
     // Preferences are an enhancement; the editor is the product. A store the
     // app cannot read must never stop it starting (issue #17).
     console.warn('preferences load failed; starting with defaults', error)
+    bridge.recordEvent('preferences.load-failed', { error: String(error?.message ?? error) })
     return
   }
   mergeNativePreferences(prefs)
@@ -1629,7 +1634,12 @@ function saveSettings() {
   applyRuntimeSettings()
   refreshRawOptionState()
   const pending = bridge.savePreferences(preferencesEnvelope())
-  if (pending?.catch) pending.catch((err) => console.warn('preferences save failed', err))
+  if (pending?.catch) {
+    pending.catch((err) => {
+      console.warn('preferences save failed', err)
+      bridge.recordEvent('preferences.save-failed', { error: String(err?.message ?? err) })
+    })
+  }
   closeSettings()
 }
 
@@ -2152,6 +2162,30 @@ function safeLinkHref(href) {
 
 // handleDocumentLinkClick sends document links to the user's browser.
 //
+// Refusing a link is an autonomous security decision taken against untrusted
+// document content, with no user interaction, and it used to leave no trace at
+// all — not even a console line. A document probing for a `javascript:` URL
+// against bindings that expose arbitrary file read and write is precisely the
+// event a maintainer needs after the fact.
+//
+// Recorded once per distinct href rather than per render, because the same
+// refused link is rendered again and again. Measured, rather than assumed:
+// typing does NOT rebuild the preview anchors (10 simulated edits produced one
+// record), but every switch back into split mode does — five round trips
+// produced six. Recording unconditionally would let a document the app has
+// already judged hostile flood a trimmed log and evict every other event in it,
+// turning an audit record into a way to erase one. The cap bounds the same
+// attack carried out with many distinct hrefs instead of one repeated href.
+const REFUSED_LINK_RECORD_CAP = 32
+const refusedLinks = new Set()
+
+function recordRefusedLink(href) {
+  const key = String(href ?? '')
+  if (refusedLinks.has(key) || refusedLinks.size >= REFUSED_LINK_RECORD_CAP) return
+  refusedLinks.add(key)
+  bridge.recordEvent('link.refused', { href: key })
+}
+
 // The href was already filtered by safeLinkHref when the anchor was built, but
 // it is re-checked here rather than trusted: this handler is bound to the whole
 // document, so it must be safe for any anchor that reaches it, not only the
@@ -2159,11 +2193,19 @@ function safeLinkHref(href) {
 function handleDocumentLinkClick(event) {
   const anchor = event.target.closest?.('a[href]')
   if (!anchor) return
-  const safe = safeLinkHref(anchor.getAttribute('href'))
+  const raw = anchor.getAttribute('href')
+  const safe = safeLinkHref(raw)
   event.preventDefault()
-  if (safe === null) return
+  if (safe === null) {
+    // This handler is bound document-wide, so it must be safe for any anchor
+    // that reaches it — including one this module never built, which therefore
+    // never passed through the render-time check above.
+    recordRefusedLink(raw)
+    return
+  }
   bridge.openExternalURL(safe)?.catch?.((error) => {
     console.warn('bridge: refused to open link', error)
+    bridge.recordEvent('link.open-failed', { error: String(error?.message ?? error) })
   })
 }
 
@@ -2217,7 +2259,10 @@ function inlineMarkdownNode(token) {
     // ordinary action in a markdown viewer.
     const safe = safeLinkHref(link[2])
     if (safe !== null) anchor.href = safe
-    else anchor.dataset.blockedHref = 'true'
+    else {
+      anchor.dataset.blockedHref = 'true'
+      recordRefusedLink(link[2])
+    }
     return anchor
   }
   return document.createTextNode(token)
@@ -2786,4 +2831,5 @@ async function boot() {
 // diagnosable failure rather than an unhandled rejection and a blank window.
 boot().catch((error) => {
   console.error('boot failed', error)
+  bridge.recordEvent('boot.failed', { error: String(error?.message ?? error) })
 })
