@@ -3,6 +3,7 @@ import { Crepe } from '../vendor/crepe.bundle.mjs'
 import { detectMarkdownStyle } from './mdstyle.js'
 import { collectLinkReferences, restoreLinkReferences } from './linkrefs.js'
 import { bridge } from './bridge.js'
+import { trailing } from './fidelity/trailing.js'
 
 // Loads the Crepe theme CSS listed in vendor/theme/manifest.txt.
 // Light theme only in this milestone; dark themes land in the polish
@@ -203,13 +204,8 @@ export class WysiwygEditor {
   #altByURL = new Map()
   // Frontmatter stripped from the current document, re-attached on the way out.
   #frontmatter = ''
-  // The document's own trailing newline run, restored on the way out. The
-  // serializer emits a blank line after a document that ends in a block — a
-  // list, a footnote block — so every such file gained a line on first edit.
-  // Trailing blank lines are not content the editor can hold, so the original
-  // shape is the only faithful answer; this includes a file that ended with no
-  // newline at all, which is equally the author's choice to keep.
-  #trailing = ''
+  // State captured by the trailing-newline preservation. See fidelity/trailing.js.
+  #trailingState = ''
   // Last serialized markdown we treated as the unedited baseline. Crepe
   // fires an initial markdownUpdated when its async feature mounting
   // finishes — a normalization pass, not a user edit — so events that
@@ -224,7 +220,7 @@ export class WysiwygEditor {
   async #build(host, markdown) {
     const [frontmatter, rawBody] = splitFrontmatter(markdown)
     this.#frontmatter = frontmatter
-    this.#trailing = markdown.match(/\n*$/)[0]
+    this.#trailingState = trailing.capture(markdown).state
     const [body, breaks] = protectBreaks(rawBody)
     this.#breaks = breaks
     this.#linkRefs = collectLinkReferences(body)
@@ -267,7 +263,7 @@ export class WysiwygEditor {
     const body = restoreBreaks(restoreAltText(withRefs, this.#altByURL), this.#breaks)
     // Applied last, so it governs the bytes that actually leave — including the
     // definition block restoreLinkReferences appends after the body.
-    return this.#frontmatter + body.replace(/\n*$/, this.#trailing)
+    return trailing.restore(this.#frontmatter + body, this.#trailingState)
   }
 
   // Replaces the whole document by rebuilding the editor (see Global
