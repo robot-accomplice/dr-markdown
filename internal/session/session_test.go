@@ -105,3 +105,46 @@ func TestUpdateActiveContentTargetsOnlyTheActiveTab(t *testing.T) {
 		}
 	}
 }
+
+// The baseline is what the app last READ FROM or WROTE TO a file. Comparing
+// against what was first opened instead would make every second save look like
+// an external edit, and a prompt users learn to click through protects nothing.
+func TestBaselineTracksTheLastReadOrWrite(t *testing.T) {
+	var s Session
+	if _, known := s.BaselineFor("/a.md"); known {
+		t.Error("a path the app has never touched must have no baseline")
+	}
+	s.RememberOnDisk("/a.md", "first")
+	if got, known := s.BaselineFor("/a.md"); !known || got != "first" {
+		t.Errorf("BaselineFor = %q, %v; want first, true", got, known)
+	}
+	s.RememberOnDisk("/a.md", "second")
+	if got, _ := s.BaselineFor("/a.md"); got != "second" {
+		t.Errorf("BaselineFor = %q; a later write must replace the baseline", got)
+	}
+}
+
+// Baselines are per path. One file's save must not silence another's conflict.
+func TestBaselinesAreIndependentPerPath(t *testing.T) {
+	var s Session
+	s.RememberOnDisk("/a.md", "A")
+	s.RememberOnDisk("/b.md", "B")
+	if got, _ := s.BaselineFor("/a.md"); got != "A" {
+		t.Errorf("/a.md baseline = %q, want A", got)
+	}
+	if _, known := s.BaselineFor("/c.md"); known {
+		t.Error("an untouched path must still have no baseline")
+	}
+}
+
+// A file whose content is legitimately empty must be distinguishable from one
+// the app has no belief about: the first is a comparison it can make, the
+// second is a reason not to interrupt the user.
+func TestAnEmptyBaselineIsStillAKnownBaseline(t *testing.T) {
+	var s Session
+	s.RememberOnDisk("/empty.md", "")
+	got, known := s.BaselineFor("/empty.md")
+	if !known || got != "" {
+		t.Errorf("BaselineFor = %q, %v; an empty file is known, not unknown", got, known)
+	}
+}

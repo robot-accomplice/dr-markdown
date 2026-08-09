@@ -54,10 +54,6 @@ type App struct {
 	// inferring the target from ambient state is what destroyed documents.
 	currentPath string
 	currentText string
-	// onDisk records, per path, the bytes the app last read from or wrote to
-	// that file. It is the baseline the staleness check compares against; it is
-	// never a write target.
-	onDisk      map[string]string
 	native      nativePort
 	documents   documentPort
 	fonts       fontPort
@@ -188,8 +184,8 @@ func (a *App) SaveDocument(path, content string) error {
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
-	a.rememberOnDisk(path, content)
 	a.mu.Unlock()
+	a.session.RememberOnDisk(path, content)
 	a.session.AdoptPath(path, content)
 	a.recordRecent(path)
 	a.updateTitle()
@@ -362,15 +358,6 @@ func (a *App) OpenExternalURL(raw string) error {
 	return a.native.OpenExternalURL(a.ctx, cleaned)
 }
 
-// rememberOnDisk records the bytes now believed to be on disk at path.
-// Callers must hold a.mu.
-func (a *App) rememberOnDisk(path, content string) {
-	if a.onDisk == nil {
-		a.onDisk = map[string]string{}
-	}
-	a.onDisk[path] = content
-}
-
 // confirmNoExternalChange refuses a save that would overwrite a change the app
 // never saw, unless the user explicitly chooses to overwrite.
 //
@@ -383,9 +370,7 @@ func (a *App) rememberOnDisk(path, content string) {
 // interruption; so is one that cannot be re-read, because failing to verify is
 // not evidence of a conflict and must not block the user from saving their work.
 func (a *App) confirmNoExternalChange(path string) error {
-	a.mu.Lock()
-	expected, known := a.onDisk[path]
-	a.mu.Unlock()
+	expected, known := a.session.BaselineFor(path)
 	if !known {
 		return nil
 	}
@@ -518,8 +503,8 @@ func (a *App) openPath(path string) (OpenResult, error) {
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
-	a.rememberOnDisk(path, content)
 	a.mu.Unlock()
+	a.session.RememberOnDisk(path, content)
 	a.session.AdoptPath(path, content)
 	a.recordRecent(path)
 	a.updateTitle()

@@ -26,6 +26,10 @@ type Session struct {
 	// unsyncedDirty covers a frontend that reported dirty before ever syncing
 	// its documents. It forces a prompt; it never names a write target.
 	unsyncedDirty bool
+	// onDisk records, per path, the bytes this app last read from or wrote to
+	// that file. It is the baseline the staleness check compares against; it is
+	// never a write target.
+	onDisk map[string]string
 }
 
 // Sync replaces the known tabs with what the frontend reported.
@@ -133,4 +137,28 @@ func (s *Session) AdoptPath(path, content string) {
 			s.docs[i].Dirty = false
 		}
 	}
+}
+
+// RememberOnDisk records what this app last read from or wrote to a file.
+func (s *Session) RememberOnDisk(path, content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.onDisk == nil {
+		s.onDisk = map[string]string{}
+	}
+	s.onDisk[path] = content
+}
+
+// BaselineFor returns what the app believes is on disk at path, and whether it
+// has any belief at all.
+//
+// The second return is not decoration. A path the app has never touched must be
+// distinguishable from one it believes is empty: the first is a comparison it
+// cannot make, and failing to verify is not evidence of a conflict — it must
+// not block the user from saving their work.
+func (s *Session) BaselineFor(path string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	content, known := s.onDisk[path]
+	return content, known
 }
