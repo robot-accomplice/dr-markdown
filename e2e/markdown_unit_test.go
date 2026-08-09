@@ -1,6 +1,9 @@
 package e2e
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -241,5 +244,21 @@ func TestCommandTransforms(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// Phase 1's clean-code audit found startEditing taking a boolean that is never
+// false, defaulting to true, with nine call sites passing true redundantly.
+// Dead configurability reads as a decision the caller gets to make.
+func TestStartEditingTakesNoFlag(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("..", "frontend", "dist", "src", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(source), "startEditing(true)") {
+		t.Error("startEditing is still called with a redundant true argument")
+	}
+	if strings.Contains(string(source), "function startEditing(started") {
+		t.Error("startEditing still takes a parameter that is never false")
 	}
 }

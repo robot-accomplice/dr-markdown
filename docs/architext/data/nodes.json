@@ -121,13 +121,20 @@
         "Push dirty state and content updates through the bridge",
         "Resolve rendered image sources through the asset bridge on every render surface",
         "Target image-local controls at the selected image block",
-        "Filter dropped files to importable image extensions"
+        "Filter dropped files to importable image extensions",
+        "Delegate document transforms to the markdown domain modules rather than implementing them: tables, fenced code, image tokens, link safety, line endings and commands"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
         "frontend/dist/index.html",
         "frontend/dist/src/app.js",
-        "frontend/dist/src/app.css"
+        "frontend/dist/src/app.css",
+        "frontend/dist/src/markdown/tables.js",
+        "frontend/dist/src/markdown/fences.js",
+        "frontend/dist/src/markdown/images.js",
+        "frontend/dist/src/markdown/links.js",
+        "frontend/dist/src/markdown/text.js",
+        "frontend/dist/src/markdown/commands.js"
       ],
       "runtime": "Embedded webview JavaScript",
       "interfaces": [
