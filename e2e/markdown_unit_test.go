@@ -54,3 +54,43 @@ func TestTableOperations(t *testing.T) {
 		}
 	}
 }
+
+func TestFenceOperations(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const F = await import('/src/markdown/fences.js')
+		const js = '` + "```" + `js\nconst a = 1\n` + "```" + `\n'
+		const mermaid = '` + "```" + `mermaid\ngraph TD\n` + "```" + `\n'
+		return [
+			F.firstCodeFenceLanguage(js),
+			F.firstCodeFenceLanguage('no fence here'),
+			String(F.containsMermaidDiagram(mermaid)),
+			String(F.containsMermaidDiagram(js)),
+			F.fencedLanguages(js + mermaid).join(','),
+			F.rewriteCodeFenceLanguage(js, 0, 'python'),
+		]
+	})()`, &got)
+
+	// `js` normalizes to `javascript`: a fence's info string and the
+	// highlighter's language id have to agree, or the block renders
+	// unhighlighted. fencedLanguages reads the raw info string, which is why it
+	// still reports `js` while firstCodeFenceLanguage reports `javascript`.
+	want := []string{
+		"javascript",
+		"",
+		"true",
+		"false",
+		"js,mermaid",
+		"```python\nconst a = 1\n```\n",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}

@@ -225,11 +225,11 @@ the command dispatcher can reach them with the cursor anywhere."
 - Test: `e2e/markdown_unit_test.go`
 
 **Interfaces:**
-- Consumes: nothing.
+- Consumes: `normalizeLanguage` from `../highlighter.js`.
 - Produces:
   - `firstCodeFenceDescriptor(md, opts?: { excludeMermaid?: boolean, onlyMermaid?: boolean }) -> { language: string, ... } | null`
   - `firstCodeFenceLanguage(md, opts?) -> string`
-  - `rewriteCodeFenceLanguage(md, language) -> string`
+  - `rewriteCodeFenceLanguage(md, fenceIndex: number, language: string) -> string` — a non-integer `fenceIndex` is a no-op
   - `containsMermaidDiagram(md) -> boolean`
   - `rewriteMermaidFenceSource(md, source) -> string`
   - `fencedLanguages(md) -> string[]`
