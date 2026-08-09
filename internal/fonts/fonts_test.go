@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -49,7 +50,15 @@ func TestListFamiliesReturnsSortedUniqueFontFamilies(t *testing.T) {
 
 func TestListFamiliesIncludesUserFontDirectory(t *testing.T) {
 	home := t.TempDir()
-	userFonts := filepath.Join(home, "Library", "Fonts")
+	// Build the directory the CURRENT platform actually looks in, rather than
+	// hardcoding macOS's. The literal "Library/Fonts" made this test pass only
+	// on the machine it was written on: production code has been correctly
+	// platform-aware since the cross-platform pass, but the test pinned the
+	// author's OS and went red the first time CI ran it on Linux.
+	userFonts := userFontDir(runtime.GOOS, home)
+	if userFonts == "" {
+		t.Skipf("%s has no per-user font directory; system dirs cover it", runtime.GOOS)
+	}
 	if err := os.MkdirAll(userFonts, 0o755); err != nil {
 		t.Fatal(err)
 	}

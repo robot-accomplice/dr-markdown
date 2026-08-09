@@ -1,12 +1,12 @@
 {
   "id": "initial-architext-buildout",
-  "version": "0.4.0",
-  "name": "M8 image asset management (GA)",
+  "version": "0.4.1",
+  "name": "Patch: ABORT backlog and fidelity fixes",
   "status": "complete",
   "posture": "at-risk",
-  "summary": "Ship M8 image asset management as the 0.4.0 GA release: portable asset copying, inlined rendering and export, a visible missing-asset state, drag/drop import and image-local controls. Four ABORT rounds drove out the security and data-destruction defects recorded here — obfuscated link schemes reaching the Go bindings, document links replacing the app window, broken image references and destroyed alt text, frontmatter loss, cross-document overwrite and a correctness gate that could not fail. All five red-team stations still returned NO-GO; the maintainer accepted the residual risk and authorised GA with disclosure as the mitigation, because the remaining blocker is the vendored editor rewriting markdown it cannot represent, which follows from its parse-and-re-serialize model rather than from a defect that can be patched. That behaviour is measured in e2e/fidelity_test.go and led by a caution in the README, alternative editing engines are under evaluation, and the full decision record is docs/releases/v0.4.0-abort.md.",
+  "summary": "Ship 0.4.1: a patch release closing the open items the v0.4.0 ABORT review recorded, and two of the five fidelity problems it accepted. Continuous integration now runs the gates that were hand-run — it found a Linux-only defect on its first run — and the vendored bundles carry verified digests. Asset loading is bounded by file type as well as directory, so files beside a document are no longer readable on render; saving refuses to clobber a change made on disk, preserves extended attributes and refuses a read-only target; and a bounded event trail with build identity means a reported failure can be root-caused. Inline <br> is no longer deleted and CRLF line endings survive an edit. The accepted GA blocker remains open and is now scoped from measurement rather than from review findings: it is five problems, not one, and inline HTML was never the cause. See docs/decisions/2026-08-08-markdown-fidelity-scope.md.",
   "targetWindow": "Current milestone",
-  "lastUpdated": "2026-08-08T00:00:00.000Z",
+  "lastUpdated": "2026-08-09T00:00:00.000Z",
   "updateSource": "Source-backed maintenance pass",
   "scope": {
     "required": [
@@ -672,6 +672,116 @@
         "dependsOn": [],
         "evidence": [
           "README.md"
+        ]
+      },
+      {
+        "id": "ci-pipeline",
+        "title": "Continuous integration runs the gates that were hand-run",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Every gate was hand-run, and the cost was measurable: the v0.4.0 release artifact was two rounds stale and contained none of the security fixes it was meant to ship, and the architecture data drifted from the code for four commits. CI now runs gofmt, go vet, the full suite and a frontend syntax check on every push, with the e2e opt-out deliberately unset because CI is exactly where a silent skip must never apply. It found a real defect on its first run: a font test hardcoded macOS's per-user directory and had only ever passed on the author's machine.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "'.github/workflows/ci.yml'",
+          "TestListFamiliesIncludesUserFontDirectory"
+        ]
+      },
+      {
+        "id": "vendor-integrity",
+        "title": "Vendored bundles carry verified digests",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "tools/vendor.sh fetches roughly 6 MB of third-party JavaScript over the network and recorded no integrity information; the Crepe bundle is patched in place after download, so the committed artifact matches no upstream artifact and its provenance could not be re-established. Digests for all 26 files are recorded and verified by a script that never touches the network. The patch step also had no else branch, so an upstream shape change would skip it silently and the editor would never mount; it now fails loudly.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "tools/verify-vendor.sh",
+          "tools/vendor-digests.txt"
+        ]
+      },
+      {
+        "id": "asset-type-containment",
+        "title": "Asset loading is bounded by file type as well as directory",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Containment bounded the directory but not the file type: any extension fell back to application/octet-stream and its bytes were inlined as a data URI, so .env, id_rsa and secrets.yaml beside a document were readable — and rendering resolves every image reference automatically with no user interaction. Loading now refuses anything that is not a known image type, before reading the bytes, and the importer refuses the same set so it cannot write a reference the renderer will not display.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestOnlyImageFilesAreInlined"
+        ]
+      },
+      {
+        "id": "write-staleness-guard",
+        "title": "Saving no longer clobbers a change made on disk",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Nothing compared the file on disk against what the app last saw, so a git pull, a sync client or a second window was replaced with no error and no prompt. Raised as a blocking finding in ABORT Round 1 and carried across three rounds without justification. Saving now compares against what the app last read or wrote — not what it first opened, which would make every second save look stale — and prompts on a real conflict while leaving ordinary saves uninterrupted.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestSaveRefusesToClobberAChangeMadeOnDisk",
+          "TestOrdinarySavesAreNeverInterrupted"
+        ]
+      },
+      {
+        "id": "save-metadata-preservation",
+        "title": "Saving preserves extended attributes and refuses read-only targets",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Replacing a file by rename gives up the original inode, and extended attributes hang off the inode: a user who tagged a note in Finder lost the tag on the first save. Attributes are now carried onto the replacement, best effort so a filesystem without xattr support cannot fail a save. A read-only file was still replaced because rename needs directory permission rather than file permission; that now fails. Hard links remain broken by rename, deliberately, because the alternative is the non-atomic write the package exists to prevent.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestWritePreservesExtendedAttributes",
+          "TestWriteRefusesAReadOnlyTarget"
+        ]
+      },
+      {
+        "id": "recorded-state-trail",
+        "title": "Failures leave a trail that can be root-caused",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Nothing survived a session: frontend diagnostics were console warnings with no devtools in a production build, and Go errors surfaced only as a modal that vanished when dismissed. A reported failure could not be tied to a build or reproduced. Bounded structured records now sit beside the preference store, wired into open, save, save failure and the conflict path, with a binding so frontend diagnostics join the same trail. Recording can never fail the caller, trimming keeps the newest entries, and values are JSON-encoded so an untrusted document path cannot forge a record.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestRecordsAreReadableAndCarryTheBuild",
+          "TestAppVersionMatchesWailsConfig"
+        ]
+      },
+      {
+        "id": "inline-break-preserved",
+        "title": "Inline <br> is no longer deleted",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "The vendored editor writes <br /> to mark an empty paragraph and strips that exact set of spellings when parsing so its own marker round-trips; genuine <br> was collateral, removed and joining the words either side. The match is case-sensitive, which is why <BR> always survived — and that asymmetry proved this was never a general HTML failure, since <b>, <span>, <kbd>, comments and block <div> all round-trip byte-identically. Break tags are swapped for a spelling outside the stripped set and restored in document order, using a sentinel the same length as the longest spelling it replaces so table column padding is unaffected.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestRoundTripCorpus",
+          "TestWysiwygRewritesTheseConstructs"
+        ]
+      },
+      {
+        "id": "line-endings-preserved",
+        "title": "CRLF line endings survive an edit",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Line endings are a property of the file, not the editing surface, and both surfaces destroyed them: the WYSIWYG editor re-serializes with LF and a textarea normalizes CRLF per the HTML spec, so a Windows-authored file came back whole-file changed after a one-word edit. Normalizing on the way in and restoring on the way out fixes both surfaces at one seam and keeps dirty tracking in a single representation.",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-shell",
+        "dependsOn": [],
+        "evidence": [
+          "TestLineEndingsSurviveAnEditAndSave"
         ]
       }
     ],

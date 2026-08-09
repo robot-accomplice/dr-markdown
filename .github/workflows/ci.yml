@@ -1,0 +1,82 @@
+# Continuous integration.
+#
+# Every gate in this project was hand-run until now. An adversarial review found
+# the consequences: the release artifact in build/ was two rounds stale and
+# contained none of the security fixes it was supposed to ship, and the
+# architecture data had drifted from the code for four commits. Neither needed a
+# reviewer to catch — both are mechanical checks nobody had wired to anything.
+#
+# The rule this file follows: a gate that cannot fail is worse than no gate,
+# because it reports success. Nothing here is allowed to skip silently.
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The e2e package is the ONLY coverage of the frontend, and newTestBrowser
+      # fails rather than skips when no browser is found. Assert the binary is
+      # here before running anything, so a runner image change surfaces as a
+      # clear failure instead of a confusing one deep in the suite.
+      - name: Verify Chrome is available
+        run: |
+          if ! command -v google-chrome >/dev/null 2>&1; then
+            echo "::error::No google-chrome on PATH. The e2e suite is the only coverage of the"
+            echo "::error::frontend and must not pass by being absent. Install Chrome in this job."
+            exit 1
+          fi
+          google-chrome --version
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # DRMD_SKIP_E2E is deliberately NOT set. It exists so a human can opt out
+      # on a machine without a browser; CI is exactly where that opt-out must
+      # never apply.
+      - name: go test
+        run: go test ./... -count=1
+
+      - name: Check frontend syntax
+        run: |
+          for f in frontend/dist/src/*.js; do
+            node --check "$f" || exit 1
+          done
+
+      # Vendored bundles are ~6 MB of third-party JavaScript fetched over the
+      # network by tools/vendor.sh. Verifying the committed bytes against the
+      # recorded digests is what makes a silent substitution or a corrupted
+      # refresh visible.
+      - name: Verify vendored bundle integrity
+        run: ./tools/verify-vendor.sh
+
+  # NOT RUN HERE, and why: `architext validate` needs the Architext CLI, which is
+  # distributed as a binary outside this repository and is not on the runner.
+  # Installing it in CI would add a toolchain dependency to a project whose
+  # defining constraint is not having one. It stays a maintainer-run gate,
+  # documented in CONTRIBUTING, and this comment exists so that omission is a
+  # recorded decision rather than something that quietly fell off the list.

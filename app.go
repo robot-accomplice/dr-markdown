@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	runtime2 "runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,9 +18,15 @@ import (
 
 	imageassets "dr-markdown/internal/assets"
 	"dr-markdown/internal/document"
+	"dr-markdown/internal/eventlog"
 	"dr-markdown/internal/fonts"
 	"dr-markdown/internal/preferences"
 )
+
+// appVersion is the build identity carried into every recorded event, so a
+// user's bug report can be tied to what actually ran. Kept in step with
+// wails.json by TestAppVersionMatchesWailsConfig.
+const appVersion = "0.4.1"
 
 var iconFreeMessageDialogPNG = []byte{
 	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -48,11 +55,16 @@ type App struct {
 	// inferring the target from ambient state is what destroyed documents.
 	currentPath string
 	currentText string
+	// onDisk records, per path, the bytes the app last read from or wrote to
+	// that file. It is the baseline the staleness check compares against; it is
+	// never a write target.
+	onDisk      map[string]string
 	native      nativePort
 	documents   documentPort
 	fonts       fontPort
 	preferences preferencePort
 	images      imageAssetPort
+	events      *eventlog.Log
 }
 
 type appDependencies struct {
@@ -61,6 +73,7 @@ type appDependencies struct {
 	fonts       fontPort
 	preferences preferencePort
 	images      imageAssetPort
+	events      *eventlog.Log
 }
 
 type nativePort interface {
@@ -68,6 +81,7 @@ type nativePort interface {
 	SaveMarkdownFile(context.Context, string) (string, error)
 	SelectImageFile(context.Context) (string, error)
 	RevealPath(context.Context, string) error
+	ConfirmOverwriteChanged(context.Context, string) (string, error)
 	OpenExternalURL(context.Context, string) error
 	SubscribeFileDrop(context.Context)
 	ShowError(context.Context, string, string)
@@ -100,7 +114,12 @@ func NewApp() *App {
 	if err != nil {
 		store = preferences.NewStore(filepath.Join(os.TempDir(), "Dr. Markdown"), time.Now)
 	}
+	logDir, err := os.UserConfigDir()
+	if err != nil {
+		logDir = os.TempDir()
+	}
 	return newAppWithDependencies(appDependencies{
+		events:      eventlog.New(filepath.Join(logDir, "Dr. Markdown"), appVersion, time.Now),
 		native:      wailsNative{},
 		documents:   documentAdapter{},
 		fonts:       fontAdapter{},
@@ -111,6 +130,7 @@ func NewApp() *App {
 
 func newAppWithDependencies(deps appDependencies) *App {
 	return &App{
+		events:      deps.events,
 		native:      deps.native,
 		documents:   deps.documents,
 		fonts:       deps.fonts,
@@ -147,17 +167,28 @@ func (a *App) OpenDocument() (OpenResult, error) {
 }
 
 // SaveDocument writes content to path atomically. path must be non-empty.
+//
+// Before overwriting, it checks that the file on disk still holds the bytes the
+// app last saw there. Nothing did that before, so a change made by anything else
+// — a git pull, a sync client, a second window — was replaced with no error and
+// no prompt.
 func (a *App) SaveDocument(path, content string) error {
 	if path == "" {
 		return fmt.Errorf("SaveDocument: empty path")
 	}
+	if err := a.confirmNoExternalChange(path); err != nil {
+		return err
+	}
 	if err := a.documents.WriteMarkdown(path, content); err != nil {
+		a.events.Record("document.save.failed", map[string]string{"path": path, "error": err.Error()})
 		a.native.ShowError(a.ctx, "Save Failed", err.Error())
 		return err
 	}
+	a.events.Record("document.saved", map[string]string{"path": path, "bytes": strconv.Itoa(len(content))})
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
+	a.rememberOnDisk(path, content)
 	for i := range a.docs {
 		if a.docs[i].Path == path || (a.docs[i].Active && a.docs[i].Path == "") {
 			a.docs[i].Path = path
@@ -378,6 +409,61 @@ func (a *App) OpenExternalURL(raw string) error {
 	return a.native.OpenExternalURL(a.ctx, cleaned)
 }
 
+// rememberOnDisk records the bytes now believed to be on disk at path.
+// Callers must hold a.mu.
+func (a *App) rememberOnDisk(path, content string) {
+	if a.onDisk == nil {
+		a.onDisk = map[string]string{}
+	}
+	a.onDisk[path] = content
+}
+
+// confirmNoExternalChange refuses a save that would overwrite a change the app
+// never saw, unless the user explicitly chooses to overwrite.
+//
+// It compares against what the app last READ OR WROTE, not against what it
+// first opened — otherwise every second save to the same file would look like
+// an external edit and the prompt would become noise the user learns to click
+// through, which is worse than no prompt at all.
+//
+// A path the app has never touched has no baseline and is saved without
+// interruption; so is one that cannot be re-read, because failing to verify is
+// not evidence of a conflict and must not block the user from saving their work.
+func (a *App) confirmNoExternalChange(path string) error {
+	a.mu.Lock()
+	expected, known := a.onDisk[path]
+	a.mu.Unlock()
+	if !known {
+		return nil
+	}
+	current, err := a.documents.ReadMarkdown(path)
+	if err != nil || current == expected {
+		return nil
+	}
+	choice, err := a.native.ConfirmOverwriteChanged(a.ctx, path)
+	if err != nil {
+		return err
+	}
+	a.events.Record("document.conflict", map[string]string{"path": path, "choice": choice})
+	if choice != "Overwrite" {
+		return fmt.Errorf("save canceled: %s changed on disk since it was opened", filepath.Base(path))
+	}
+	return nil
+}
+
+// RecordClientEvent lets the frontend put a diagnostic into the same trail as
+// the Go side. Frontend failures were console warnings, and a production build
+// has no devtools, so nothing the webview reported ever reached anyone.
+//
+// Fields are recorded as data, never interpreted. The webview parses untrusted
+// document content, so anything arriving here is untrusted too.
+func (a *App) RecordClientEvent(event string, fields map[string]string) {
+	if event == "" {
+		return
+	}
+	a.events.Record("client."+event, fields)
+}
+
 func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 	loaded, err := a.images.LoadForDocument(documentPath, markdownPath)
 	if err != nil {
@@ -472,12 +558,15 @@ func (a *App) saveCurrent() bool {
 func (a *App) openPath(path string) (OpenResult, error) {
 	content, err := a.documents.ReadMarkdown(path)
 	if err != nil {
+		a.events.Record("document.open.failed", map[string]string{"path": path, "error": err.Error()})
 		a.native.ShowError(a.ctx, "Open Failed", err.Error())
 		return OpenResult{}, err
 	}
+	a.events.Record("document.opened", map[string]string{"path": path, "bytes": strconv.Itoa(len(content))})
 	a.mu.Lock()
 	a.currentPath = path
 	a.currentText = content
+	a.rememberOnDisk(path, content)
 	for i := range a.docs {
 		if a.docs[i].Path == path || (a.docs[i].Active && a.docs[i].Path == "") {
 			a.docs[i].Path = path
@@ -587,6 +676,18 @@ func revealCommand(goos, path string) (string, []string) {
 	default:
 		return "", nil
 	}
+}
+
+func (wailsNative) ConfirmOverwriteChanged(ctx context.Context, path string) (string, error) {
+	return runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         "File Changed on Disk",
+		Message:       filepath.Base(path) + " has been modified by another program since you opened it.\n\nSaving now replaces those changes with your version.",
+		Buttons:       []string{"Overwrite", "Cancel"},
+		DefaultButton: "Cancel",
+		CancelButton:  "Cancel",
+		Icon:          iconFreeMessageDialogPNG,
+	})
 }
 
 func (wailsNative) OpenExternalURL(ctx context.Context, url string) error {

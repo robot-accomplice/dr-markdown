@@ -314,3 +314,37 @@ func TestPercentEncodingCannotSmuggleTraversalPastContainment(t *testing.T) {
 		t.Error("the file outside the document directory was read")
 	}
 }
+
+// Containment bounded the DIRECTORY but not the file TYPE: any extension fell
+// back to application/octet-stream and its bytes were inlined anyway. Rendering
+// is automatic and needs no user interaction, so opening a markdown file from a
+// Downloads folder or a repository root turned "view this document" into "read
+// the interesting files next to it". This product opens ARBITRARY markdown, so
+// the document choosing the path is untrusted input.
+func TestOnlyImageFilesAreInlined(t *testing.T) {
+	root := t.TempDir()
+	docPath := filepath.Join(root, "notes.md")
+	secret := "AWS_SECRET_ACCESS_KEY=hunter2"
+
+	for _, name := range []string{".env", "secrets.yaml", "id_rsa", "config.json", "notes.md"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(secret), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := LoadForDocument(docPath, name)
+		if err == nil {
+			t.Errorf("%s: a non-image file was accepted", name)
+		}
+		if strings.Contains(loaded.DataURI, base64.StdEncoding.EncodeToString([]byte(secret))) {
+			t.Errorf("%s: file contents were inlined into the document", name)
+		}
+	}
+
+	// A real image beside the document must still load.
+	if err := os.WriteFile(filepath.Join(root, "photo.png"), []byte("png-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadForDocument(docPath, "photo.png")
+	if err != nil || !loaded.Exists {
+		t.Errorf("an ordinary image must still load: err=%v exists=%v", err, loaded.Exists)
+	}
+}
