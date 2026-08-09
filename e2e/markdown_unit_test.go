@@ -201,3 +201,45 @@ func TestDocumentTextConventions(t *testing.T) {
 		}
 	}
 }
+
+func TestCommandTransforms(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const C = await import('/src/markdown/commands.js')
+		const sel = (cmd, md, selection) => C.applyCommand(cmd, md, { selectionText: selection })
+		const blk = (cmd, md, block) => C.applyCommand(cmd, md, { blockText: block })
+		return [
+			sel('bold', 'make this bold\n', 'this'),
+			sel('italic', 'make this italic\n', 'this'),
+			blk('h1', 'a heading\n', 'a heading'),
+			blk('quote', 'a line\n', 'a line'),
+			blk('bullet-list', 'an item\n', 'an item'),
+			C.appendBlock('# T', 'new block'),
+			C.appendBlock('', 'first block'),
+			C.replaceFirstSelection('aXbXc', 'X', (s) => s.toUpperCase()),
+			C.rewriteLastMatchingLine('- a\n- b\n', /^- /, (l) => l + '!'),
+		]
+	})()`, &got)
+
+	want := []string{
+		"make **this** bold\n",
+		"make *this* italic\n",
+		"# a heading\n",
+		"> a line\n",
+		"- an item\n",
+		"# T\n\nnew block\n",
+		"first block\n",
+		"aXbXc",
+		"- a\n- b!\n",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
