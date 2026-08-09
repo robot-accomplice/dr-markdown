@@ -13,6 +13,8 @@ import {
   containsMermaidDiagram, rewriteMermaidFenceSource, fencedLanguages,
 } from './markdown/fences.js'
 import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
+import { safeLinkHref } from './markdown/links.js'
+import { CRLF, detectLineEnding, toEditorText, toFileText, titleForPath } from './markdown/text.js'
 
 const BLANK_DOCUMENT = ''
 
@@ -271,7 +273,7 @@ function createDoc({ path = '', markdown = BLANK_DOCUMENT, savedText = markdown 
   return {
     id,
     path,
-    title: titleForPath(path, id),
+    title: titleForPath(path),
     markdown,
     savedText,
     dirty: markdown !== savedText,
@@ -283,10 +285,6 @@ function activeDoc() {
   return state.docs.find((doc) => doc.id === state.activeDocId)
 }
 
-function titleForPath(path, fallback) {
-  if (!path) return fallback === 'doc-1' ? 'Untitled.md' : 'Untitled.md'
-  return path.split(/[\\/]/).pop() || path
-}
 
 function getMarkdown() {
   if (state.mode === 'split') return els.splitSource.value
@@ -383,7 +381,7 @@ function refreshRecentFiles() {
     row.dataset.recentFile = recent.path
     row.title = recent.path
     row.innerHTML = `<strong></strong><span></span>`
-    row.querySelector('strong').textContent = recent.title || titleForPath(recent.path, '')
+    row.querySelector('strong').textContent = recent.title || titleForPath(recent.path)
     row.querySelector('span').textContent = recent.path
     row.addEventListener('click', () => openRecentDocument(recent.path))
     list.append(row)
@@ -918,28 +916,9 @@ async function newDocument() {
   pushDirtyState()
 }
 
-// Line endings are a property of the FILE, not of the editing surface. Both
-// surfaces destroy them: the WYSIWYG editor re-serializes with LF, and a
-// textarea normalizes CRLF to LF on input per the HTML spec. So a
-// Windows-authored file came back whole-file changed after a one-word edit —
-// the loudest possible diff for anyone keeping notes in version control.
-//
-// Normalizing on the way in and restoring on the way out fixes both surfaces at
-// one seam, and keeps every in-memory comparison (dirty tracking, savedText)
-// working in a single representation instead of two.
-const CRLF = '\r\n'
 
-function detectLineEnding(text) {
-  return text.includes(CRLF) ? CRLF : '\n'
-}
 
-function toEditorText(text) {
-  return text.replace(/\r\n/g, '\n')
-}
 
-function toFileText(text, lineEnding) {
-  return lineEnding === CRLF ? text.replace(/\n/g, CRLF) : text
-}
 
 async function openDocument() {
   if (state.dirty) {
@@ -952,7 +931,7 @@ async function openDocument() {
   if (!res || (!res.path && !res.content)) return
   const doc = activeDoc()
   doc.path = res.path
-  doc.title = titleForPath(res.path, doc.id)
+  doc.title = titleForPath(res.path)
   doc.lineEnding = detectLineEnding(res.content)
   doc.markdown = toEditorText(res.content)
   doc.savedText = doc.markdown
@@ -975,7 +954,7 @@ async function openRecentDocument(path) {
   if (!res || (!res.path && !res.content)) return
   const doc = activeDoc()
   doc.path = res.path
-  doc.title = titleForPath(res.path, doc.id)
+  doc.title = titleForPath(res.path)
   doc.lineEnding = detectLineEnding(res.content)
   doc.markdown = toEditorText(res.content)
   doc.savedText = doc.markdown
@@ -1009,7 +988,7 @@ async function saveAs() {
   if (!path) return
   cancelPendingPush()
   doc.path = path
-  doc.title = titleForPath(path, doc.id)
+  doc.title = titleForPath(path)
   doc.savedText = doc.markdown
   syncActiveState()
   bridge.setDirty(false)
@@ -1443,7 +1422,7 @@ function normalizeRecents(recents) {
     .filter((recent) => recent && typeof recent.path === 'string' && recent.path.trim() !== '')
     .map((recent) => ({
       path: recent.path,
-      title: recent.title || titleForPath(recent.path, ''),
+      title: recent.title || titleForPath(recent.path),
       lastOpenedAt: recent.lastOpenedAt || '',
     }))
 }
@@ -1955,39 +1934,8 @@ const IMAGE_WIDTH_PRESETS = [
 
 
 
-// Schemes a document may link to. Anything else — javascript:, data:, file:,
-// vbscript:, or a scheme invented later — is refused rather than filtered,
-// because a denylist of dangerous schemes is a list you can always add to.
-const SAFE_LINK_SCHEMES = ['http:', 'https:', 'mailto:']
 
-// The URL parser removes every ASCII tab, LF and CR from a URL, and ignores
-// leading and trailing C0 controls and spaces, BEFORE it parses the scheme. Any
-// check that reads the raw string is therefore checking a different string than
-// the one the browser navigates to: `jav<TAB>ascript:` carries no scheme by a
-// regex's reading and `javascript:` by the parser's. That is how the previous
-// check — which looked for a scheme pattern and treated its absence as "this is
-// a relative link" — passed four separate spellings of javascript: through.
-function normalizeHref(href) {
-  return String(href).replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '')
-}
 
-// safeLinkHref returns the href to assign, or null to refuse. Returning the
-// normalized value rather than a boolean is the point: the caller cannot
-// validate one string and then assign another, which is the whole defect class
-// above rather than one instance of it.
-//
-// Every candidate is resolved against a base, so there is no "looks relative"
-// branch to slip past — a genuine relative link resolves to the base's https:
-// and is allowed on the same rule as everything else.
-function safeLinkHref(href) {
-  const value = normalizeHref(href)
-  try {
-    const resolved = new URL(value, 'https://example.invalid')
-    return SAFE_LINK_SCHEMES.includes(resolved.protocol) ? value : null
-  } catch {
-    return null
-  }
-}
 
 // handleDocumentLinkClick sends document links to the user's browser.
 //

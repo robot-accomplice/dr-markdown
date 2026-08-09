@@ -131,3 +131,73 @@ func TestImageTokens(t *testing.T) {
 		}
 	}
 }
+
+// These are the obfuscation cases from TestObfuscatedSchemesAreRefusedInRenderedLinks,
+// asserted against the function directly. That test stays exactly as it is — it
+// proves the check is WIRED IN, which this one cannot.
+func TestLinkSafety(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const L = await import('/src/markdown/links.js')
+		const r = (h) => String(L.safeLinkHref(h))
+		return [
+			r('https://example.com/page'),
+			r('mailto:a@b.c'),
+			r('notes/other.md'),
+			r('javascript:alert(1)'),
+			r('jav\tascript:alert(1)'),
+			r('JAV\tASCRIPT:alert(1)'),
+			r('\x01javascript:alert(1)'),
+			r('data:text/html,<b>x</b>'),
+			r('vbscript:msgbox(1)'),
+			r('file:///etc/passwd'),
+		]
+	})()`, &got)
+
+	want := []string{
+		"https://example.com/page", "mailto:a@b.c", "notes/other.md",
+		"null", "null", "null", "null", "null", "null", "null",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestDocumentTextConventions(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+		const X = await import('/src/markdown/text.js')
+		return [
+			JSON.stringify(X.detectLineEnding('a\r\nb')),
+			JSON.stringify(X.detectLineEnding('a\nb')),
+			JSON.stringify(X.toEditorText('a\r\nb')),
+			JSON.stringify(X.toFileText('a\nb', '\r\n')),
+			JSON.stringify(X.toFileText('a\nb', '\n')),
+			X.titleForPath('/tmp/notes/todo.md'),
+			X.titleForPath('C:\\docs\\todo.md'),
+			X.titleForPath(''),
+		]
+	})()`, &got)
+
+	want := []string{
+		`"\r\n"`, `"\n"`, `"a\nb"`, `"a\r\nb"`, `"a\nb"`,
+		"todo.md", "todo.md", "Untitled.md",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}
