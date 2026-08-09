@@ -12,6 +12,7 @@ import {
   firstCodeFenceLanguage, firstCodeFenceDescriptor, rewriteCodeFenceLanguage,
   containsMermaidDiagram, rewriteMermaidFenceSource, fencedLanguages,
 } from './markdown/fences.js'
+import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
 
 const BLANK_DOCUMENT = ''
 
@@ -1939,7 +1940,6 @@ function inlineMarkdownNodes(text) {
 // syntax. Clearing the width returns the image to the portable form, so the
 // HTML form only ever appears where it carries information markdown cannot.
 
-const IMAGE_TOKEN_SOURCE = /!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\)|<img\b[^>]*>/.source
 
 // Preset widths in CSS pixels; "Original" clears the width entirely.
 const IMAGE_WIDTH_PRESETS = [
@@ -1950,52 +1950,10 @@ const IMAGE_WIDTH_PRESETS = [
   ['800', 'Extra large (800)'],
 ]
 
-function imageTokens(md) {
-  const tokens = []
-  const pattern = new RegExp(IMAGE_TOKEN_SOURCE, 'g')
-  let match = pattern.exec(md)
-  while (match) {
-    tokens.push({ text: match[0], start: match.index, end: match.index + match[0].length })
-    match = pattern.exec(md)
-  }
-  return tokens
-}
 
-function parseImageToken(text) {
-  if (text.startsWith('![')) {
-    const parsed = text.match(/^!\[([^\]]*)\]\(([^)\s]+)/)
-    return { alt: parsed?.[1] ?? '', path: parsed?.[2] ?? '', width: '' }
-  }
-  return {
-    alt: htmlImageAttribute(text, 'alt'),
-    path: htmlImageAttribute(text, 'src'),
-    width: htmlImageAttribute(text, 'width'),
-  }
-}
 
-function formatImageToken({ alt, path, width }) {
-  if (!width) return `![${alt}](${path})`
-  return `<img src="${path}" alt="${alt}" width="${width}">`
-}
 
-function selectedImageToken(md, imageIndex) {
-  return imageTokens(md)[Number.isInteger(imageIndex) ? imageIndex : 0] ?? null
-}
 
-// rewriteImage replaces exactly the selected image. transform returning null
-// deletes it, dropping the line when the image was the whole line.
-function rewriteImage(md, imageIndex, transform) {
-  const target = selectedImageToken(md, imageIndex)
-  if (!target) return md
-  const next = transform(parseImageToken(target.text))
-  const before = md.slice(0, target.start)
-  const after = md.slice(target.end)
-  if (next === null) {
-    const emptyLine = /(^|\n)$/.test(before) && /^(\n|$)/.test(after)
-    return emptyLine ? before + after.replace(/^\n/, '') : before + after
-  }
-  return before + formatImageToken(next) + after
-}
 
 // Schemes a document may link to. Anything else — javascript:, data:, file:,
 // vbscript:, or a scheme invented later — is refused rather than filtered,
@@ -2080,10 +2038,6 @@ function handleDocumentLinkClick(event) {
   })
 }
 
-function htmlImageAttribute(tag, name) {
-  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i'))
-  return match?.[1] ?? ''
-}
 
 function inlineMarkdownNode(token) {
   if (token.startsWith('![')) {
