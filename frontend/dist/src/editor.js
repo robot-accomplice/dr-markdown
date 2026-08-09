@@ -2,6 +2,7 @@
 import { Crepe } from '../vendor/crepe.bundle.mjs'
 import { detectMarkdownStyle } from './mdstyle.js'
 import { collectLinkReferences, restoreLinkReferences } from './linkrefs.js'
+import { bridge } from './bridge.js'
 
 // Loads the Crepe theme CSS listed in vendor/theme/manifest.txt.
 // Light theme only in this milestone; dark themes land in the polish
@@ -181,7 +182,13 @@ function applyMarkdownStyle(crepe, markdown) {
   } catch (error) {
     // A style mismatch is a cosmetic diff; letting it break the editor would
     // trade a formatting nuisance for an unusable document.
+    //
+    // The catch is right; logging only to console was not. This exact site
+    // swallowed a ReferenceError for two rounds of debugging, because a
+    // production build has no devtools to read it in. Contain the failure,
+    // but never make it invisible.
     console.warn('editor: could not apply document markdown style', error)
+    bridge.recordEvent('editor.style-failed', { error: String(error?.message ?? error) })
   }
 }
 

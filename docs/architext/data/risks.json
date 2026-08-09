@@ -115,16 +115,17 @@
     },
     {
       "id": "no-recorded-state-for-rca",
-      "title": "No logging, crash record or error trail reaches the maintainer",
+      "title": "No crash record reaches the maintainer; the error trail now does",
       "category": "operational",
-      "severity": "high",
+      "severity": "medium",
       "status": "open",
-      "summary": "PARTIALLY mitigated, and left open because the gap is coverage rather than machinery. A structured event trail now exists and is persisted: `internal/eventlog` is constructed in `app.go` against the user log directory and stamped with `appVersion`, and the frontend can reach it through `bridge.recordEvent`. What is missing is use — the frontend calls it at exactly ONE site (`render.failed` in app.js), so most failure surfaces still produce nothing durable, and a `console.warn` in a production build with no devtools remains invisible. A bug reported against a build can now name that build, but most paths still cannot be reproduced from recorded state, which this project's own rules require of any new failure surface.",
+      "summary": "Closed for the frontend. `internal/eventlog` persists a structured trail stamped with `appVersion`, reachable from the webview through `bridge.recordEvent`, and every frontend failure surface now records into it rather than only warning to a console no production build can display: boot failure, preferences load and save, image import (ribbon and drop), replace and reveal, render failure, editor style application — the site that once hid a ReferenceError for two rounds of debugging — plus refused link schemes. A refusal is recorded once per distinct href, capped, because the log is trimmed and the refused href is attacker-controlled: recording on every render would let a document the app has already judged hostile evict the rest of the trail. Residual: Go-side errors still surface mainly as an ephemeral native dialog, and no crash handler exists, so a hard crash still leaves nothing behind.",
       "mitigations": [
         "Version identity ships in the bundle so a report can name the build",
         "internal/eventlog persists a structured, version-stamped trail beside the user log directory",
-        "bridge.recordEvent exposes it to the frontend",
-        "Remaining work: route diagnostics through recordEvent at every failure surface rather than console.warn — one call site is not coverage"
+        "Every frontend failure surface records through bridge.recordEvent, pinned by TestFailureSurfacesRecordDurableEvents",
+        "Refused links are recorded once per distinct href and capped, so the audit trail cannot be flooded by the content it is auditing",
+        "Residual, recorded not dropped: Go-side error reporting and crash capture are still dialog-only"
       ],
       "relatedNodes": [
         "wails-go-api",
