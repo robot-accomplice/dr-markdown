@@ -467,11 +467,17 @@
         "Emit user edits to the frontend shell",
         "Record image alt text per destination on load and restore it on serialize",
         "Serialize markdown from Crepe",
-        "Split YAML frontmatter out before the editor sees it and re-attach it on the way out"
+        "Split YAML frontmatter out before the editor sees it and re-attach it on the way out",
+        "Substitute inline <br> spellings for a sentinel the editor does not strip, and restore them in document order on serialize",
+        "Collect link reference definitions and how each was referenced, and rebuild both the reference syntax and the definition block on serialize",
+        "Detect the document's own markdown style and mutate the live remark-stringify options so the serializer writes that style back",
+        "Preserve the document's trailing newline run, so a file ending in a block does not gain a blank line and open as modified"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
         "frontend/dist/src/editor.js",
+        "frontend/dist/src/linkrefs.js",
+        "frontend/dist/src/mdstyle.js",
         "frontend/dist/vendor/crepe.bundle.mjs"
       ],
       "runtime": "Embedded webview JavaScript",
@@ -507,7 +513,9 @@
       "verification": [
         "TestRawModeEditsPreserveEveryOtherByte",
         "TestRoundTripCorpus",
-        "TestWysiwygRewritesTheseConstructs"
+        "TestWysiwygRewritesTheseConstructs",
+        "TestFidelitySurveyRewritesExactlyTheseConstructs",
+        "TestOpeningADocumentDoesNotMarkItModified"
       ]
     },
     {

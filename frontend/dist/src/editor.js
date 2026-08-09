@@ -163,7 +163,15 @@ function restoreBreaks(markdown, originals) {
 // where the document expressed no preference. Applying only the detected keys
 // would let a style set for one document persist into the next if the options
 // object were ever shared.
-const STYLE_DEFAULTS = { bullet: '*', bulletOrdered: '.', rule: '*', fence: '`', setext: false }
+const STYLE_DEFAULTS = {
+  bullet: '*',
+  bulletOrdered: '.',
+  rule: '*',
+  fence: '`',
+  setext: false,
+  closeAtx: false,
+  incrementListMarker: true,
+}
 
 function applyMarkdownStyle(crepe, markdown) {
   try {
@@ -188,6 +196,13 @@ export class WysiwygEditor {
   #altByURL = new Map()
   // Frontmatter stripped from the current document, re-attached on the way out.
   #frontmatter = ''
+  // The document's own trailing newline run, restored on the way out. The
+  // serializer emits a blank line after a document that ends in a block — a
+  // list, a footnote block — so every such file gained a line on first edit.
+  // Trailing blank lines are not content the editor can hold, so the original
+  // shape is the only faithful answer; this includes a file that ended with no
+  // newline at all, which is equally the author's choice to keep.
+  #trailing = ''
   // Last serialized markdown we treated as the unedited baseline. Crepe
   // fires an initial markdownUpdated when its async feature mounting
   // finishes — a normalization pass, not a user edit — so events that
@@ -202,6 +217,7 @@ export class WysiwygEditor {
   async #build(host, markdown) {
     const [frontmatter, rawBody] = splitFrontmatter(markdown)
     this.#frontmatter = frontmatter
+    this.#trailing = markdown.match(/\n*$/)[0]
     const [body, breaks] = protectBreaks(rawBody)
     this.#breaks = breaks
     this.#linkRefs = collectLinkReferences(body)
@@ -241,7 +257,10 @@ export class WysiwygEditor {
   // is unaffected.
   #serialize(md) {
     const withRefs = restoreLinkReferences(md, this.#linkRefs)
-    return this.#frontmatter + restoreBreaks(restoreAltText(withRefs, this.#altByURL), this.#breaks)
+    const body = restoreBreaks(restoreAltText(withRefs, this.#altByURL), this.#breaks)
+    // Applied last, so it governs the bytes that actually leave — including the
+    // definition block restoreLinkReferences appends after the body.
+    return this.#frontmatter + body.replace(/\n*$/, this.#trailing)
   }
 
   // Replaces the whole document by rebuilding the editor (see Global
