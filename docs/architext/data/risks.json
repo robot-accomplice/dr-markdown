@@ -119,10 +119,12 @@
       "category": "operational",
       "severity": "high",
       "status": "open",
-      "summary": "Frontend diagnostics are console warnings with no devtools in a production build; Go errors surface only as an ephemeral modal carrying the error string. Nothing is persisted. A bug reported by a user cannot be tied to a build or reproduced from recorded state, which this project's own rules require of any new failure surface.",
+      "summary": "PARTIALLY mitigated, and left open because the gap is coverage rather than machinery. A structured event trail now exists and is persisted: `internal/eventlog` is constructed in `app.go` against the user log directory and stamped with `appVersion`, and the frontend can reach it through `bridge.recordEvent`. What is missing is use — the frontend calls it at exactly ONE site (`render.failed` in app.js), so most failure surfaces still produce nothing durable, and a `console.warn` in a production build with no devtools remains invisible. A bug reported against a build can now name that build, but most paths still cannot be reproduced from recorded state, which this project's own rules require of any new failure surface.",
       "mitigations": [
-        "Version identity now ships in the bundle so a report can at least name the build",
-        "Add a structured event trail persisted beside the preference store"
+        "Version identity ships in the bundle so a report can name the build",
+        "internal/eventlog persists a structured, version-stamped trail beside the user log directory",
+        "bridge.recordEvent exposes it to the frontend",
+        "Remaining work: route diagnostics through recordEvent at every failure surface rather than console.warn — one call site is not coverage"
       ],
       "relatedNodes": [
         "wails-go-api",
@@ -132,14 +134,15 @@
     },
     {
       "id": "no-ci-enforcement",
-      "title": "Every release gate is hand-run and nothing enforces them",
+      "title": "Release gates are enforced in CI, except the Architext validator",
       "category": "operational",
       "severity": "medium",
-      "status": "open",
-      "summary": "There is no CI configuration in the repository. Tests, vet, Architext validation, screenshot regeneration, vendoring and packaging are all run by hand, so forgetting any one of them is silent — and the release artifact was in fact found two rounds stale during ABORT Round 4.",
+      "status": "closed",
+      "summary": "Largely closed. `.github/workflows/ci.yml` runs on push and pull request to `main` and `develop`, enforcing gofmt, `go vet`, the full `go test ./...` including the browser e2e suite, a `node --check` syntax pass over the frontend sources, and vendored-bundle integrity. It also asserts Chrome is present, so the frontend suite cannot pass by being absent, and deliberately never sets DRMD_SKIP_E2E. Residual: `architext validate` is NOT in CI, and the workflow records why — the Architext CLI is a binary distributed outside this repository, and installing it would add a toolchain dependency to a project whose defining constraint is having none. It stays a maintainer-run gate, which means Architext data staleness is still caught by review rather than by machine. Screenshot regeneration and packaging also remain hand-run.",
       "mitigations": [
-        "Disclosed in the ABORT artifact",
-        "Add a workflow running go test, go vet and architext validate on push"
+        "CI enforces gofmt, vet, the full test suite, frontend syntax and vendor integrity on every push and PR to main and develop",
+        "The workflow fails when no Chrome is present rather than skipping the only frontend coverage",
+        "Residual, accepted with reason: architext validate, screenshot regeneration and packaging stay maintainer-run"
       ],
       "relatedNodes": [
         "vendored-editor-assets"
@@ -148,13 +151,15 @@
     },
     {
       "id": "vendored-bundles-unverified",
-      "title": "Vendored editor bundles carry no integrity record",
+      "title": "Vendored editor bundles are digest-verified, but against ourselves",
       "category": "security",
       "severity": "medium",
-      "status": "open",
-      "summary": "tools/vendor.sh fetches several megabytes of third-party JavaScript over the network and records no checksum; NOTICE.md records package and version but no hash, and the committed bundle is patched in place so it matches no upstream artifact. Provenance cannot be re-established later.",
+      "status": "closed",
+      "summary": "The committed bundles now carry recorded SHA-256 digests in `tools/vendor-digests.txt`, verified by `tools/verify-vendor.sh` on every CI run and refusing an empty digest file rather than reporting success over zero checks — so a substituted, corrupted or half-refreshed bundle is visible. Residual, and it is the honest limit of this control: the digests are of OUR committed bytes, taken after `tools/vendor.sh` patches the bundle in place, so they detect drift from the reviewed artifact but do not establish upstream provenance. Tying a bundle back to a published upstream artifact would need the digest recorded at fetch time, before patching.",
       "mitigations": [
-        "Record a SHA-256 per bundle in NOTICE.md and verify it in vendor.sh before writing"
+        "tools/vendor-digests.txt records a SHA-256 per vendored file",
+        "tools/verify-vendor.sh runs in CI, never touches the network, and fails on an empty digest file",
+        "Residual, accepted with reason: digests attest the reviewed committed bytes, not upstream provenance"
       ],
       "relatedNodes": [
         "vendored-editor-assets"
