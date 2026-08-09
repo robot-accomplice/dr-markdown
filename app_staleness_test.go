@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -134,5 +135,29 @@ func TestSavingToAnUntouchedPathDoesNotPrompt(t *testing.T) {
 	}
 	if native.overwriteAsked {
 		t.Error("prompted about a path the app has no baseline for")
+	}
+}
+
+// The session owns the tabs, the unsynced-dirty flag and the on-disk baseline.
+// If App declares them too, two copies of that state exist and the invariants
+// are enforced in two places — the condition this phase removed.
+//
+// Checked by reflection, not by reading app.go. Two source-text versions of
+// this test were written first and NEITHER could fail: the first matched
+// "docs []OpenDocument" inside SyncDocuments' parameter list, and the second,
+// tab-prefixed to mean "struct field", missed the field entirely because gofmt
+// aligns struct members and the real text is "docs    []OpenDocument". A guard
+// on source text is at the mercy of the formatter; a guard on the type is not.
+func TestAppDoesNotDuplicateSessionState(t *testing.T) {
+	owned := map[string]string{
+		"docs":          "the open tabs",
+		"unsyncedDirty": "the unsynced-dirty flag",
+		"onDisk":        "the on-disk baseline",
+	}
+	typ := reflect.TypeOf(App{})
+	for i := 0; i < typ.NumField(); i++ {
+		if what, isOwned := owned[typ.Field(i).Name]; isOwned {
+			t.Errorf("App still declares %q (%s); internal/session owns it now", typ.Field(i).Name, what)
+		}
 	}
 }
