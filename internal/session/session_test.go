@@ -59,3 +59,49 @@ func TestSyncCopiesTheCallersSlice(t *testing.T) {
 		t.Error("mutating the caller's slice after Sync changed the session's view")
 	}
 }
+
+// A frontend that reports dirty before it has ever synced its tabs must force a
+// prompt without naming a file. Not knowing WHICH document is dirty has to lead
+// to asking the user, never to writing a guess.
+func TestDirtyWithNoSyncedTabsForcesAPromptWithoutNamingAFile(t *testing.T) {
+	var s Session
+	s.SetDirty(true)
+	if !s.HasUnsyncedDirty() {
+		t.Error("dirty reported before any sync must be remembered")
+	}
+	if len(s.Dirty()) != 0 {
+		t.Error("it must not invent a dirty document")
+	}
+	if got := s.Active(); got.Path != "" {
+		t.Errorf("it must not name a file, got %q", got.Path)
+	}
+}
+
+// Once tabs exist, the flag belongs to the active tab and the standalone flag
+// must clear — otherwise a stale unsynced flag outlives the condition.
+func TestDirtyWithSyncedTabsMarksTheActiveTab(t *testing.T) {
+	var s Session
+	s.Sync([]Document{{Path: "/a.md"}, {Path: "/b.md", Active: true}})
+	s.SetDirty(true)
+	if s.HasUnsyncedDirty() {
+		t.Error("the unsynced flag must not be set once tabs are known")
+	}
+	dirty := s.Dirty()
+	if len(dirty) != 1 || dirty[0].Path != "/b.md" {
+		t.Errorf("Dirty() = %+v, want only /b.md", dirty)
+	}
+}
+
+func TestUpdateActiveContentTargetsOnlyTheActiveTab(t *testing.T) {
+	var s Session
+	s.Sync([]Document{{Path: "/a.md", Content: "A"}, {Path: "/b.md", Content: "B", Active: true}})
+	s.UpdateActiveContent("edited")
+	if got := s.Active(); got.Content != "edited" {
+		t.Errorf("active content = %q, want edited", got.Content)
+	}
+	for _, d := range s.snapshotForTest() {
+		if d.Path == "/a.md" && d.Content != "A" {
+			t.Errorf("the inactive tab's content was overwritten: %q", d.Content)
+		}
+	}
+}
