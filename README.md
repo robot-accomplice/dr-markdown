@@ -25,7 +25,7 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 >
 > **If the exact bytes matter — a Hugo or Jekyll site, an Obsidian vault, anything under version control — edit in Raw mode (⌘/Ctrl-R).** Raw mode preserves every construct listed above.
 >
-> **Fixed since v0.4.0**, and shipping in the next release: inline `<br>` is no longer deleted (it used to join the words either side of it), and CRLF line endings now survive an edit instead of rewriting the whole file. Both were narrow bugs rather than the architectural limit this caution originally claimed — the correction is recorded in the v0.4.0 release notes.
+> **Fixed in v0.4.1:** inline `<br>` is no longer deleted (in v0.4.0 it joined the words either side of it), and CRLF line endings now survive an edit instead of rewriting the whole file. Both were narrow bugs rather than the architectural limit this caution originally claimed — the correction is recorded in the v0.4.0 release notes.
 >
 > The remaining items follow from the vendored editor re-serializing the whole document. They are measured in `e2e/fidelity_test.go`, which fails if any of it changes, and the route to closing them is scoped in [docs/decisions/2026-08-08-markdown-fidelity-scope.md](docs/decisions/2026-08-08-markdown-fidelity-scope.md).
 >
@@ -147,9 +147,8 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 
 ## Known limitations
 
-- **WYSIWYG editing rewrites some markdown, and deletes link reference definitions — see the caution at the top of this file. Use Raw mode when the exact bytes matter.** Inline `<br>` deletion and CRLF rewriting are fixed since v0.4.0.
-- There is no check that a file changed on disk since you opened it. If another program (a `git pull`, a sync client, a second window) writes the file while it is open, saving overwrites those changes without warning.
-- Saving replaces the file via an atomic rename, which breaks hard links to it and drops extended attributes such as Finder tags. A read-only file can still be replaced this way, because the rename needs permission on the directory rather than the file.
+- **WYSIWYG editing rewrites some markdown, and deletes link reference definitions — see the caution at the top of this file. Use Raw mode when the exact bytes matter.** Inline `<br>` deletion and CRLF rewriting were fixed in v0.4.1.
+- Saving replaces the file via an atomic rename, which breaks hard links to it. Extended attributes such as Finder tags are preserved, and a read-only file is refused rather than replaced.
 - Large documents are slow: roughly 4 s to open a 140 KB file and 10 s for 280 KB, with no progress indicator and no way to cancel. There is no size limit.
 - Builds are unsigned and un-notarized, so macOS Gatekeeper and Windows SmartScreen will both warn. On macOS 15 and later, approve it under System Settings → Privacy & Security → Open Anyway.
 - Code-block hover/right-click language editing targets rendered fenced blocks; deeper cursor-aware block editing is still future work.
