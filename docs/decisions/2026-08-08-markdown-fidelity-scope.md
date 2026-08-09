@@ -202,3 +202,43 @@ parser. Neither is worth planning around today.
 1. Link reference definitions (the remaining item that *deletes* content) — 1–2 weeks.
 2. Serializer style options with per-document detection — days.
 3. Re-run the fidelity gate and retire the README caution item by item as each closes.
+
+---
+
+## Spike correction — 2026-08-09
+
+The spike above recorded a **preliminary no** for source-preserving editing and explicitly listed what
+it had not established: whether the `Crepe` instance exposes `.editor`/`.ctx`. That probe was left
+unfinished, with a note that someone should finish it before treating option (b) as closed.
+
+**It is finished, and the answer changes the picture.** From a live instance:
+
+- `crepe.editor` exists, with `config` (a function) and `ctx`.
+- `ctx.get('remarkStringifyOptions')` returns the live options object.
+- **`ctx.get('editorView')` returns the ProseMirror view.** The spike's second finding — "the view is
+  not reachable" — was true only of the DOM route. It is reachable through the context.
+- `ctx.get('serializer')` returns the serializer.
+
+Slices are addressable **by string name**, which is what makes this work without the bundle exporting
+any context keys.
+
+So the negative rested on one leg, not two. What survives is the first finding: the bundle exports no
+parser, so mdast **source positions** are still not obviously available, and those are the input
+source-preserving editing needs. That remains the open question, and it is now the *only* one.
+
+**Someone should probe `ctx.get('parser')` and whether the nodes it produces carry `position` data
+before option (b) is called closed.** I have not done that. Recording the correction rather than
+leaving a conclusion standing on a finding I have since disproved.
+
+### A working lesson from this, worth keeping
+
+Configuring the serializer took three failed attempts because `ctx.set` **replaces** the slice while
+the serializer holds a reference to the original options object — so a replacement is never read.
+Mutating the object the serializer already holds is what takes effect. Any future work against this
+context should assume the same: prefer mutating live objects over swapping slices, and verify the
+effect rather than the call.
+
+The third attempt failed for a different reason entirely — a missing import — and a `try/catch`
+written to keep a cosmetic failure from breaking the editor swallowed the `ReferenceError` for two
+rounds of debugging. The catch was right; logging only to `console.warn` in a build with no devtools
+was not.
