@@ -19,7 +19,15 @@
 
 // A definition line: `[label]: destination "optional title"`, up to three
 // leading spaces per CommonMark.
-const DEFINITION = /^ {0,3}\[([^\]]+)\]:[ \t]*(\S+)(?:[ \t]+("[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/
+//
+// The `(?!\^)` excludes GFM footnote definitions. `[^src]: https://…` matches
+// the shape of a link reference definition exactly, so it was collected as one
+// — and since the editor ALSO preserves footnotes natively, restoration
+// appended a second copy of a definition that had never been lost. Worse, the
+// appended copy was itself collected on the next pass, so the document grew by
+// one definition per save without bound. This dialect is GFM, where `[^label]:`
+// is a footnote and never a link reference, so the two cannot be confused here.
+const DEFINITION = /^ {0,3}\[(?!\^)([^\]]+)\]:[ \t]*(\S+)(?:[ \t]+("[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/
 
 // Inline link or image in serialized output: `[text](dest)` / `![alt](dest)`.
 const INLINE_LINK = /(!?)\[((?:\\.|[^[\]\\])*)\]\(([^()\s]*)((?:\s+(?:"[^"]*"|'[^']*'))?)\)/g
