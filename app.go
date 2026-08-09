@@ -26,7 +26,7 @@ import (
 // appVersion is the build identity carried into every recorded event, so a
 // user's bug report can be tied to what actually ran. Kept in step with
 // wails.json by TestAppVersionMatchesWailsConfig.
-const appVersion = "0.4.0"
+const appVersion = "0.4.1"
 
 var iconFreeMessageDialogPNG = []byte{
 	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
