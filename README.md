@@ -18,12 +18,13 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 > Measured on the current build, WYSIWYG editing will:
 >
 > - **delete link reference definitions** and inline the links that used them; unused definitions are dropped outright
-> - rewrite two-space hard breaks to `\`, `-`/`+` bullets to `*`, setext headings to ATX, indented code to fenced, `~~~` fences to ```` ``` ````, and `---` breaks to `***`
-> - strip closing `##` from ATX headings, strip trailing whitespace, and reflow table padding
+> - rewrite two-space hard breaks to `\`, strip closing `##` from ATX headings, strip trailing whitespace, and reflow table padding
 >
 > Inline HTML is **preserved** — `<b>`, `<span>`, `<kbd>`, comments and block-level `<div>` all round-trip byte-identically.
 >
 > **If the exact bytes matter — a Hugo or Jekyll site, an Obsidian vault, anything under version control — edit in Raw mode (⌘/Ctrl-R).** Raw mode preserves every construct listed above.
+>
+> **Fixed since v0.4.1:** bullet characters, ordered-list markers, setext headings, fence characters and thematic-break style are now taken from the document itself instead of being normalized. A document with mixed styles keeps its majority style.
 >
 > **Fixed in v0.4.1:** inline `<br>` is no longer deleted (in v0.4.0 it joined the words either side of it), and CRLF line endings now survive an edit instead of rewriting the whole file. Both were narrow bugs rather than the architectural limit this caution originally claimed — the correction is recorded in the v0.4.0 release notes.
 >
