@@ -49,7 +49,7 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 - Persistent settings for document font, code font, ligatures, editor width, default mode, and format-on-save
 - Recent markdown documents on the start screen, backed by native preference storage
 - Print and PDF export through the native print dialog path
-- Native open/save dialogs, and Recent Files on the start screen
+- Native open/save dialogs, Recent Files on the start screen, and `.md` files open from Finder — double-click, drag onto the Dock icon, or Open With
 - Atomic saves for documents *and* preferences — a crashed write never leaves you a truncated file, and an unreadable preference store is quarantined and replaced with defaults rather than stopping the app from starting
 - Dirty tracking with an unsaved-changes close guard and an open-over-dirty guard
 - A round-trip corpus (markdown → WYSIWYG → markdown) driven by chromedp, comparing the editor's own serialized output against the fixture — verified to fail when the serializer is broken
@@ -171,10 +171,6 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 - Saving replaces the file via an atomic rename, which breaks hard links to it. Extended attributes such as Finder tags are preserved, and a read-only file is refused rather than replaced.
 - Large documents are slow: roughly 4 s to open a 140 KB file and 10 s for 280 KB, with no progress indicator and no way to cancel. There is no size limit.
 - Builds are unsigned and un-notarized, so macOS Gatekeeper and Windows SmartScreen will both warn. On macOS 15 and later, approve it under System Settings → Privacy & Security → Open Anyway.
-- **Double-clicking a `.md` file in Finder launches the app but does not open the file.** The bundle
-  advertises the association, so macOS routes the file to it — and nothing consumes the launch
-  argument, so you get an empty document. Use **Open** or **Recent Files** inside the app.
-  ([#53](https://github.com/robot-accomplice/dr-markdown/issues/53))
 - **Windows and Linux are unbuilt.** The code is platform-aware and CI runs the full test suite on
   Linux, but only `tools/build-macos.sh` exists, so no Windows or Linux artifact is produced.
 - **A crash leaves no record.** There is no panic handler, so the one failure hardest to describe is
