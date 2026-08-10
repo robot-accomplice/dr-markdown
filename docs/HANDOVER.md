@@ -54,15 +54,24 @@ record is written.
 
 ## The things that are actually open
 
-1. **The app has no macOS menu bar at all** —
-   [#57](https://github.com/robot-accomplice/dr-markdown/issues/57). No App, Edit, View or Window
-   menu. `main.go` passes no `Menu`, and in Wails v2.13.0 a nil menu means `SetApplicationMenu` is
-   never called, while `DefaultMacMenu()` — which would supply App + Edit — is commented out in that
-   version. **Established from source; not driven.** What is unverified is whether a user notices:
-   `Cmd+C`/`Cmd+V` are probably handled by WKWebView, but **`Cmd+Q` has no other provider** and most
-   likely does not quit. This is a subsystem (Go menu construction, dispatch into the frontend,
-   checkmark state) and the chromedp harness cannot verify it, because a native menu does not exist in
-   a browser view.
+1. **The app has no File or View menu** —
+   [#57](https://github.com/robot-accomplice/dr-markdown/issues/57). Rev 3 of this document said the
+   app had **no menu bar at all** and that `Cmd+Q` most likely did not quit. Both are false, and the
+   correction came from driving the installed v0.5.1 DMG on 2026-08-10.
+   The app **does** have `Dr. Markdown`, `Edit` and `Window` menus, and the app menu contains
+   **`Quit Dr. Markdown ⌘Q`**, which was used to quit it. Every source fact behind the old claim was
+   correct — `main.go` passes no `Menu`, and Wails v2.13.0 does leave `DefaultMacMenu()` commented
+   out — and the conclusion was still wrong, because **AppKit supplies a default menu bar itself when
+   an application sets none**. The old note even said "established from source; not driven", which was
+   the warning that should have been acted on.
+   What is genuinely missing is **File** (New, Open, Save, Save As), **View** (where the ribbon design
+   work wanted an item), and About/Settings in the app menu. That is smaller than building a menu bar:
+   it is adding this app's own commands on top of a default that already handles the system ones.
+   Still a subsystem — Go menu construction, dispatch into the frontend, checkmark state — and the
+   chromedp harness still cannot verify it, because a native menu does not exist in a browser view.
+   **The lesson generalises past menus: this is the second time in one day that reasoning about a
+   platform's behaviour from this repository's own source produced a confident false conclusion.**
+   The other was `recover()` (open item 2). Drive the packaged app.
 2. **A panicking bound call never settles its frontend promise.** This replaces the old item, which
    said there was no crash handler and that a panic left nothing behind. `recover()` appearing
    nowhere in this repo was a true grep and a false conclusion: Wails recovers panics inside
@@ -109,7 +118,7 @@ explicit labels (`Code block` → `Code`), and whether the shortcut-table change
 two lines that add one hotkey.
 
 The View-menu item the maintainer asked for is **not** in that spec — see open item 1. There is no
-menu to add it to.
+View menu to add it to, though there is a menu bar to add one to.
 
 ## The architecture, after three refactor phases
 
