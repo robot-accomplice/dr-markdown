@@ -1,108 +1,158 @@
-# Handover — 2026-08-10 (rev 3)
+# Handover — 2026-08-10 (rev 4)
 
 State of play for whoever picks this up next. Written to be actionable without the conversation that
-produced it. Supersedes the 2026-08-09 handover entirely; that one described a `main` at v0.4.1 and
-three unmerged PRs, none of which is true now.
+produced it.
 
-Rev 3 corrects a claim rev 2 got wrong rather than merely stale: it said there was no crash handler
-and that a panic left nothing behind. The first half was true of this repo and the second was false
-of the running program, because the recovery lives in Wails. Open item 2 now records what actually
-happens. **The general lesson is worth more than the correction: a grep over your own source cannot
-settle a question about your framework's behaviour.**
+Rev 4 covers a long day: v0.5.1 shipped, two documented claims were found false and corrected, the
+host boundary's Go half landed, and the direction for replacing Wails was designed and scoped. Two of
+those corrections matter more than the work, and both are recorded below under the same heading,
+because they are the same mistake in three costumes.
 
 ## Where things stand
 
-**v0.5.0 is released, and `develop` has already moved past it.** `main` is at the v0.5.0 tag and the
-[release](https://github.com/robot-accomplice/dr-markdown/releases/tag/v0.5.0) carries two macOS
-DMGs — universal (Intel + Apple Silicon) and arm64-only. Unsigned, un-notarized.
+**v0.5.1 is released.** `main` is at the v0.5.1 tag; the
+[release](https://github.com/robot-accomplice/dr-markdown/releases/tag/v0.5.1) carries two macOS DMGs,
+universal and arm64, both unsigned and un-notarized. It closed #53 (Finder file-open) and added the
+panic trail. ABORT Round 6 record: `docs/releases/v0.5.1-abort.md`, five of five GO after one NO-GO
+that was fixed rather than argued down.
 
-It was the first release to clear the ABORT gate: **five of five GO**, after four consecutive rounds
-of five of five NO-GO. The record is `docs/releases/v0.5.0-abort.md` and it is worth reading before
-the next release, because it names four residuals that were shipped deliberately.
+**`develop` is two commits ahead of `main` and carries an unreleased fix.** The code block chrome
+(PR #67) — the language label and Copy button were mispositioned in the shipped 0.5.1 DMGs. Cosmetic,
+so it may not justify a release cycle on its own; that is a judgement call, not an oversight.
 
-## What v0.5.0 was for
+**Two PRs are open and they overlap.**
 
-A data-corruption defect. A GFM footnote definition matched the shape of a link reference definition,
-so it was collected as one and re-appended on serialize while the editor also preserved it natively —
-and the appended copy was collected again on the next pass. **Files grew by one definition per save,
-without bound.** It shipped in 0.4.1 and survived review.
+- [#68](https://github.com/robot-accomplice/dr-markdown/pull/68) `design/host-boundary` — spec, plan,
+  roadmap. CLEAN.
+- [#69](https://github.com/robot-accomplice/dr-markdown/pull/69) `refactor/host-boundary` — Stage 1
+  of the boundary. CLEAN, CI passed.
 
-It was found by a 49-construct survey, not by the round-trip corpus and not by reading the code. That
-is the most transferable fact in this document: **the corpus only ever contains what somebody already
-suspected.**
+**#69 was branched from #68, so it contains #68's commits.** Merge #68 first and #69 follows cleanly,
+or merge #69 and close #68 as subsumed. Do not merge them in the other order expecting two separate
+diffs.
 
-## Waiting to ship: v0.5.1
+## The three corrections, and why they are one mistake
 
-**`release/v0.5.1` is cut and carries two user-facing fixes that are not released.** v0.5.0 on `main`
-still has both defects. Versions are bumped in `wails.json` and `app.go`, and the Release Truth
-record is written.
+Three claims this project had recorded as fact turned out false on the same day. Each had **true
+premises, valid reasoning, and a false conclusion**, which is why each survived review — a reviewer
+checks the facts, finds them correct, and passes.
 
-- **Finder file-open is fixed** — [#53](https://github.com/robot-accomplice/dr-markdown/issues/53),
-  PR #56. `main.go` now sets `mac.Options.OnFileOpen`. Two arrival paths, because there are two
-  situations: at launch the file reaches Go before the webview exists, so `App` holds it and the
-  frontend asks through `FrontendReady`; while running, Go emits `file:open` and the frontend listens.
-  Verified on the installed `.app` for both paths.
-- **Panics are recorded and shown** — PR #59. `App.reportPanic` writes operation, message, stack and
-  build version into the event trail, shows a dialog naming the operation, then re-panics. It must
-  not recover: the guard runs during unwinding, so swallowing would return the method's zero values
-  and tell the frontend a failed save succeeded. Installed on all 18 bound methods and on `startup`,
-  `beforeClose` and `openFileFromOS`. There is no seam to install it centrally — Wails binds by
-  reflection and `ErrorFormatter` is bypassed, because a panic unwinds past the line that calls it —
-  so **coverage is enforced by two source-parsing gates** that fail when a method arrives unguarded.
-- Cutting v0.5.1 is the mechanics at the end of this document, unchanged. `main` is already merged
-  into the release branch, so the promotion PR should not sit `BEHIND`.
+1. **"`recover()` appears nowhere, so a panic kills the app."** True grep. Wails recovers panics in
+   bound-method dispatch, so the process always survived. What it does instead is worse and
+   undocumented: `ProcessMessage` returns an empty result, `darwin/frontend.go` passes it to
+   `Frontend.Callback`, the runtime's `Callback` throws on `JSON.parse("")` before reaching the
+   pending callback, and no call timeout is ever armed. **The frontend's `await` never settles.**
+   Tracked as [#61](https://github.com/robot-accomplice/dr-markdown/issues/61).
+2. **"`main.go` passes no `Menu`, so there is no menu bar."** Both source facts true.
+   **AppKit supplies a default menu bar when an app sets none** — `Dr. Markdown`, `Edit`, `Window`,
+   including `Quit ⌘Q`, which was used to quit the app. #57 is retitled to what is actually missing:
+   File and View menus.
+3. **"`.code-block-header { padding: 0 12px }` is in app.css, so it applies."** It was in the file and
+   in the browser, and computed to `0px`. `.milkdown *` in the vendored reset ties it at specificity
+   (0,1,0), and the theme is appended at runtime by `loadTheme()` while app.css loads in `<head>` — so
+   the vendored rule is later and wins. Fixed in PR #67.
+
+**The lesson, and it is the most transferable thing in this document: when the question is what the
+RUNNING system does, and the answer depends on a framework, an OS or a browser, your own source is
+not admissible evidence.** Read the dependency's source, or drive the built artifact. A note reading
+"established from source; not driven" is the finding, not a caveat — that exact phrase was in rev 2
+of this file, about the menu bar.
+
+## Replacing Wails — the direction, designed and scoped
+
+Approved 2026-08-10, raised to **high priority**. Spec:
+`docs/superpowers/specs/2026-08-10-host-boundary-design.md`. Plan:
+`docs/superpowers/plans/2026-08-10-host-boundary.md`.
+
+**Phase 0 does not choose a host.** It draws the boundary that makes the choice reversible and its
+cost measurable. Stage 1 (the Go half) is done and is PR #69:
+
+| file | lines |
+| --- | --- |
+| `host.go` — the port, names no host | 45 |
+| `host_wails.go` — **the only Go file naming Wails** | 171 |
+| `main.go` — imports only `embed` | 25 |
+| **total** | **241** |
+
+**241 lines is what this app costs to move.** For contrast, Wails' own per-platform desktop layer is
+26,911 lines (darwin 5,116, windows 18,196, linux 3,545) — but that is what it costs to *write* a
+host at Wails' feature level, including a tray, custom chrome and a dev server this app never uses.
+
+The candidates, with what was actually verified about each:
+
+- **A — Wails v3.** Checked against source at `v3.0.0-beta.6`: bindings generated by static analysis
+  rather than reflection, plus `options.PanicHandler` and typed `CallError` rejection covered by
+  `bindings_panic_internal_test.go`, whose comment describes the same defect class as #61. Risk:
+  beta.0 shipped 2026-08-02 and beta.6 on 2026-08-09 — seven prereleases in eight days.
+- **B — own the host.** `webview/webview_go` is **disqualified**: last pushed 2024-08-31, two years
+  stale. `crgimenes/glaze` is CGo-free with a native menu bar but is six months old at 132 stars.
+  Hand-rolled cgo is what Wails does. **Windows dominates the cost at 3.5× macOS** because WebView2 is
+  COM interop.
+- **C — macOS-native shell now.** Wails' macOS layer is 5,116 lines and this app needs a subset.
+- **D — direct rendering, no webview.** See below.
+- **Recorded non-options:** Tauri (Rust core, so Go becomes a sidecar and every `nativePort` call
+  becomes IPC) and Electron (excluded by the no-Node rule).
+
+**Stage 2 of phase 0 is deliberately held** — the generated bridge, `transport.js`, the JS event
+channel. Under D there is no JavaScript at all, so that work would be wasted. Everything in Stage 1 is
+an OS concern and survives any answer.
+
+## Option D and the serialization finding
+
+D would delete a great deal: **5.9 MB** of vendored JS (Crepe 2.7 MB, Mermaid 2.6 MB), our **6,804
+lines** of frontend, `verify-vendor.sh`, the CSP and allowlists, and a browser engine in-process. It is
+also the only option that closes the re-serialization class.
+
+**A correction that must not be re-derived:** the motivating intuition was that the app hosts a TCP
+server. **It does not.** No `net.Listen`, `http.Serve` or `ListenAndServe` anywhere in Wails'
+`internal/` outside tests; macOS serves assets over `wails://` through a `WKURLSchemeHandler`
+in-process; the dev server is behind `//go:build dev`. Frontend calls are `WailsInvoke` across the
+webview boundary, not a socket.
+
+**D is blocked on foundations that do not exist.** There is no mature Go rich-text editing engine
+(Gio's rich text API is "recently started work"; Fyne's is display-oriented), and no viable native
+Mermaid renderer — `zkrebbekx/go-mermaid` looks perfect in a search result and has **2 stars, created
+2026-06-13**, while `dreampuf/mermaid.go` drives headless Chrome, which is the browser you were
+removing.
+
+So the agreed next project is the piece that is valuable under **every** option: **move the markdown
+model into Go.** And there is a finding that changes its shape, established just before this handover:
+
+> **Go must parse, but must never re-render whole documents.**
+>
+> `yuin/goldmark` (4,935 stars, healthy) is a fine parser. But every AST→markdown renderer has the
+> same property ProseMirror has. `pgavlin/goldmark`'s own docs say it plainly: *"The output may not be
+> textually identical to the source that produced the AST, but the structure should match."* Adopting
+> one would **move the GA blocker from JavaScript into Go and make it look like progress**, because
+> the tests that catch respelling live in `e2e/` and measure the editor's output.
+>
+> The correct shape: Go parses and locates every construct by **byte range**, patches the ranges an
+> edit touched, and serializes **only newly inserted fragments**. Never regenerate the document.
+> Byte preservation is not a layer on top of consolidation — it is the only correct shape *for*
+> consolidation.
+
+The remaining unproven assumption is mapping an editor transaction back to a source range. It is
+reachable via `ctx.get('remark')` (proved 2026-08-09) but the mapping itself has never been
+demonstrated. **That is the one risk in the whole direction, and it is isolated to one step.**
 
 ## The things that are actually open
 
-1. **The app has no File or View menu** —
-   [#57](https://github.com/robot-accomplice/dr-markdown/issues/57). Rev 3 of this document said the
-   app had **no menu bar at all** and that `Cmd+Q` most likely did not quit. Both are false, and the
-   correction came from driving the installed v0.5.1 DMG on 2026-08-10.
-   The app **does** have `Dr. Markdown`, `Edit` and `Window` menus, and the app menu contains
-   **`Quit Dr. Markdown ⌘Q`**, which was used to quit it. Every source fact behind the old claim was
-   correct — `main.go` passes no `Menu`, and Wails v2.13.0 does leave `DefaultMacMenu()` commented
-   out — and the conclusion was still wrong, because **AppKit supplies a default menu bar itself when
-   an application sets none**. The old note even said "established from source; not driven", which was
-   the warning that should have been acted on.
-   What is genuinely missing is **File** (New, Open, Save, Save As), **View** (where the ribbon design
-   work wanted an item), and About/Settings in the app menu. That is smaller than building a menu bar:
-   it is adding this app's own commands on top of a default that already handles the system ones.
-   Still a subsystem — Go menu construction, dispatch into the frontend, checkmark state — and the
-   chromedp harness still cannot verify it, because a native menu does not exist in a browser view.
-   **The lesson generalises past menus: this is the second time in one day that reasoning about a
-   platform's behaviour from this repository's own source produced a confident false conclusion.**
-   The other was `recover()` (open item 2). Drive the packaged app.
-2. **A panicking bound call never settles its frontend promise.** This replaces the old item, which
-   said there was no crash handler and that a panic left nothing behind. `recover()` appearing
-   nowhere in this repo was a true grep and a false conclusion: Wails recovers panics inside
-   bound-method dispatch, so the process always survived one. It then returns an empty result,
-   `darwin/frontend.go` hands that empty string to `Frontend.Callback`, and the runtime's `Callback`
-   throws on `JSON.parse("")` before it reaches the pending callback — whose timeout is never armed,
-   because Wails arms one only when a caller passes a positive timeout. **The `await` never settles
-   and that operation is dead until restart.** As of 0.5.1 the panic is recorded and a dialog names
-   the operation, which is the only report the user can get; the hang itself is a Wails defect that
-   re-panicking preserves rather than fixes. Closing it means `DisablePanicRecovery` (a dead process
-   instead of a dead call) or a frontend call timeout (changes every binding). Tracked as
-   [#61](https://github.com/robot-accomplice/dr-markdown/issues/61); the `wails-exit-path` roadmap
-   item would close it as a side effect. The narrower window that remains genuinely unrecorded — a
-   panic inside `NewApp` or `wails.Run`, before the trail exists — is
-   [#62](https://github.com/robot-accomplice/dr-markdown/issues/62).
-3. **Windows and Linux are unbuilt.** Only `tools/build-macos.sh` exists, and it builds
-   `darwin/arm64` by default or `darwin/universal` with `--universal`. CI runs the full suite on Linux
-   but produces no artifact. A release build matrix is real work — native runners, per-platform
-   packaging — not a flag.
-4. **The re-serialization class**, accepted since v0.4.0. 38 of 49 surveyed constructs round-trip
-   byte-identically and **nothing is deleted any more**, but a construct nobody has surveyed is still
-   respelled.
+Issues #57, #61, #62 and #63 are described above under the corrections and the D section. These are
+the ones with no other home:
 
-5. **Getting off Wails is now a roadmap item** — `wails-exit-path` in
-   `docs/architext/data/roadmap.json`, priority medium, added 2026-08-10. Scoped from the source
-   rather than from impression: Wails is imported by exactly two files, and every `runtime.*` call in
-   `app.go` sits inside the `wailsNative` adapter, so **all 11 native operations are already behind
-   `nativePort`** — the domain-ownership refactor bought most of a portability layer as a side
-   effect. What is still coupled is `main.go`'s `wails.Run` bootstrap, the reflection binding, and
-   `tools/build-macos.sh` delegating packaging to `wails build`. Two open items above are host
-   limitations rather than app defects, and an exit closes both.
+1. **Windows and Linux are unbuilt.** Only `tools/build-macos.sh` exists; it builds `darwin/arm64` by
+   default or `darwin/universal` with `--universal`. CI runs the full suite on Linux but produces no
+   artifact. A release build matrix means native runners and per-platform packaging — real work under
+   any host, and wasted if the host changes, which is why it is not being done now.
+2. **The re-serialization class**, accepted since v0.4.0 and still the standing GA blocker. 38 of 49
+   surveyed constructs round-trip byte-identically and **nothing is deleted any more**, but a
+   construct nobody has surveyed is still respelled. Confirmed live on 2026-08-10 by driving the
+   packaged app: a real edit and save rewrote `| --- | --- |` to `| - | - |`. That is *known* —
+   `e2e/fidelity_survey_test.go:120` records `"table": true, // delimiter row padding recomputed from
+   content` — so the both-directions gate stayed green, which is the mechanism working. **The markdown
+   model project above is what closes this class.**
+3. **A cosmetic fix is shipped-but-unreleased.** The code block chrome fix (PR #67) is on `develop`;
+   the published 0.5.1 DMGs carry the defect.
 
 ## In flight: ribbon presentation
 
@@ -117,8 +167,9 @@ Two questions were put to the maintainer and are unanswered: whether the Insert 
 explicit labels (`Code block` → `Code`), and whether the shortcut-table change is wanted or just the
 two lines that add one hotkey.
 
-The View-menu item the maintainer asked for is **not** in that spec — see open item 1. There is no
-View menu to add it to, though there is a menu bar to add one to.
+The View-menu item the maintainer asked for is **not** in that spec. There is no View menu to add it
+to — though, contrary to what rev 2 and rev 3 of this document said, there *is* a menu bar to add one
+to. See correction 2 above and [#57](https://github.com/robot-accomplice/dr-markdown/issues/57).
 
 ## The architecture, after three refactor phases
 
@@ -132,6 +183,12 @@ throughout, which was the stated judging criterion.
 | `frontend/dist/src/markdown/` | pure `string -> string` document logic, six modules | 360 lines inside `app.js` |
 | `internal/session` | tabs, dirty state, on-disk baseline | loose fields on the Wails binding surface |
 | `frontend/dist/src/editor.js` | the Crepe lifecycle, and nothing else — **118 lines**, from 286 | that plus five preservations |
+| `host.go` + `host_wails.go` (2026-08-10, PR #69) | the window, assets, lifecycle and native ops behind `hostPort`; **the only Go file naming Wails** | `wails.Run` options and `wailsNative` inside `main.go` and `app.go` |
+
+**`app.go` no longer imports Wails.** `NewApp` takes a `nativePort`, and `main.go` constructs
+`wailsHost` without naming the framework. `TestOnlyTheHostFilesNameWails` keeps it that way and was
+proven red against a real violation before being trusted — it also caught *itself* on its first run,
+because the file contained the literal string it searched for.
 
 **Two ports, not one, and the distinction matters.** A `Preservation` runs *after* the serializer and
 puts captured bytes back. A `SerializerPolicy` runs *before* it and returns options. Forcing markdown
