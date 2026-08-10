@@ -1,8 +1,14 @@
-# Handover — 2026-08-10 (rev 2)
+# Handover — 2026-08-10 (rev 3)
 
 State of play for whoever picks this up next. Written to be actionable without the conversation that
 produced it. Supersedes the 2026-08-09 handover entirely; that one described a `main` at v0.4.1 and
 three unmerged PRs, none of which is true now.
+
+Rev 3 corrects a claim rev 2 got wrong rather than merely stale: it said there was no crash handler
+and that a panic left nothing behind. The first half was true of this repo and the second was false
+of the running program, because the recovery lives in Wails. Open item 2 now records what actually
+happens. **The general lesson is worth more than the correction: a grep over your own source cannot
+settle a question about your framework's behaviour.**
 
 ## Where things stand
 
@@ -27,15 +33,24 @@ suspected.**
 
 ## Waiting to ship: v0.5.1
 
-**`develop` is two commits ahead of `main` and carries a user-facing fix that is not released.**
-v0.5.0 on `main` still has the defect.
+**`release/v0.5.1` is cut and carries two user-facing fixes that are not released.** v0.5.0 on `main`
+still has both defects. Versions are bumped in `wails.json` and `app.go`, and the Release Truth
+record is written.
 
 - **Finder file-open is fixed** — [#53](https://github.com/robot-accomplice/dr-markdown/issues/53),
   PR #56. `main.go` now sets `mac.Options.OnFileOpen`. Two arrival paths, because there are two
   situations: at launch the file reaches Go before the webview exists, so `App` holds it and the
   frontend asks through `FrontendReady`; while running, Go emits `file:open` and the frontend listens.
   Verified on the installed `.app` for both paths.
-- Cutting v0.5.1 is the mechanics at the end of this document, unchanged.
+- **Panics are recorded and shown** — PR #59. `App.reportPanic` writes operation, message, stack and
+  build version into the event trail, shows a dialog naming the operation, then re-panics. It must
+  not recover: the guard runs during unwinding, so swallowing would return the method's zero values
+  and tell the frontend a failed save succeeded. Installed on all 18 bound methods and on `startup`,
+  `beforeClose` and `openFileFromOS`. There is no seam to install it centrally — Wails binds by
+  reflection and `ErrorFormatter` is bypassed, because a panic unwinds past the line that calls it —
+  so **coverage is enforced by two source-parsing gates** that fail when a method arrives unguarded.
+- Cutting v0.5.1 is the mechanics at the end of this document, unchanged. `main` is already merged
+  into the release branch, so the promotion PR should not sit `BEHIND`.
 
 ## The things that are actually open
 
@@ -48,9 +63,21 @@ v0.5.0 on `main` still has the defect.
    likely does not quit. This is a subsystem (Go menu construction, dispatch into the frontend,
    checkmark state) and the chromedp harness cannot verify it, because a native menu does not exist in
    a browser view.
-2. **No crash handler.** `recover()` appears nowhere. Every non-crash failure now lands in a
-   version-stamped event trail beside the preference store; a panic still leaves nothing. Small fix,
-   deliberately not made on a frozen release candidate.
+2. **A panicking bound call never settles its frontend promise.** This replaces the old item, which
+   said there was no crash handler and that a panic left nothing behind. `recover()` appearing
+   nowhere in this repo was a true grep and a false conclusion: Wails recovers panics inside
+   bound-method dispatch, so the process always survived one. It then returns an empty result,
+   `darwin/frontend.go` hands that empty string to `Frontend.Callback`, and the runtime's `Callback`
+   throws on `JSON.parse("")` before it reaches the pending callback — whose timeout is never armed,
+   because Wails arms one only when a caller passes a positive timeout. **The `await` never settles
+   and that operation is dead until restart.** As of 0.5.1 the panic is recorded and a dialog names
+   the operation, which is the only report the user can get; the hang itself is a Wails defect that
+   re-panicking preserves rather than fixes. Closing it means `DisablePanicRecovery` (a dead process
+   instead of a dead call) or a frontend call timeout (changes every binding). Tracked as
+   [#61](https://github.com/robot-accomplice/dr-markdown/issues/61); the `wails-exit-path` roadmap
+   item would close it as a side effect. The narrower window that remains genuinely unrecorded — a
+   panic inside `NewApp` or `wails.Run`, before the trail exists — is
+   [#62](https://github.com/robot-accomplice/dr-markdown/issues/62).
 3. **Windows and Linux are unbuilt.** Only `tools/build-macos.sh` exists, and it builds
    `darwin/arm64` by default or `darwin/universal` with `--universal`. CI runs the full suite on Linux
    but produces no artifact. A release build matrix is real work — native runners, per-platform
@@ -58,6 +85,15 @@ v0.5.0 on `main` still has the defect.
 4. **The re-serialization class**, accepted since v0.4.0. 38 of 49 surveyed constructs round-trip
    byte-identically and **nothing is deleted any more**, but a construct nobody has surveyed is still
    respelled.
+
+5. **Getting off Wails is now a roadmap item** — `wails-exit-path` in
+   `docs/architext/data/roadmap.json`, priority medium, added 2026-08-10. Scoped from the source
+   rather than from impression: Wails is imported by exactly two files, and every `runtime.*` call in
+   `app.go` sits inside the `wailsNative` adapter, so **all 11 native operations are already behind
+   `nativePort`** — the domain-ownership refactor bought most of a portability layer as a side
+   effect. What is still coupled is `main.go`'s `wails.Run` bootstrap, the reflection binding, and
+   `tools/build-macos.sh` delegating packaging to `wails build`. Two open items above are host
+   limitations rather than app defects, and an exit closes both.
 
 ## In flight: ribbon presentation
 
