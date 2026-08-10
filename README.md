@@ -13,6 +13,12 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell — AppKit
 
 As of v0.6.0 the running application has **no third-party dependency at all.** The window, the webview, the asset scheme, the menu bar and every native dialog are written against the system frameworks. `go.mod` carries chromedp for the tests and two `golang.org/x` modules; nothing else ships.
 
+## What this is for
+
+**WYSIWYG is the defining purpose of this editor.** Everything in Formatted mode must be editable in
+place. If a construct renders but cannot be edited there, that is a defect — not a design choice.
+Recorded as a project rule in `docs/architext/data/rules.json`.
+
 > ## ⚠️ Caution: WYSIWYG editing rewrites your file
 >
 > **Editing a document in the WYSIWYG surface does not preserve your markdown byte-for-byte.** The surface parses markdown into ProseMirror's document model and re-serializes the whole document on save, so anything the model cannot represent is rewritten — and because an edit replaces the entire buffer, **one keystroke can change lines you never touched.**

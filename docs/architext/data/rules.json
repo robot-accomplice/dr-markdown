@@ -1,6 +1,25 @@
 {
   "rules": [
     {
+      "id": "wysiwyg-is-the-purpose",
+      "title": "WYSIWYG is the defining purpose of this editor",
+      "summary": "Everything in Formatted mode must be editable in place. If a construct renders but cannot be edited there, that is a defect, not a design choice \u2014 regardless of what any inventory, spec or prior note says about that construct.",
+      "category": "Design",
+      "criticality": "critical",
+      "order": 1,
+      "source": "maintainer",
+      "rationale": "Stated by the maintainer on 2026-08-10: \"EVERYTHING should be editable in formatted mode, it's a WYSIWYG markdown editor\", and \"WYSIWYG ... is the whole reason this app exists\". It was recorded as a rule because the opposite had already been inferred twice from documentation: the 2026-08-06 screen inventory promises block-local LANGUAGE editing for rendered code blocks, and that was read as licence for the body to be read-only. It is not. The consequence is concrete \u2014 code blocks have been uneditable since syntax highlighting was added (#77), because the app replaces the editor's own node with static chrome, and that shipped in v0.5.1. A release is blocked on it: \"we cannot ship another broken release on basic editing functionality\".",
+      "appliesTo": [
+        "any change to the Formatted editing surface",
+        "any decoration or post-processing applied to editor DOM",
+        "release readiness"
+      ],
+      "protection": {
+        "edit": true,
+        "delete": true
+      }
+    },
+    {
       "id": "replace-starter-data",
       "title": "Replace starter data",
       "summary": "Replace neutral starter data with source-backed architecture, release, and project rules before treating Architext as current.",
