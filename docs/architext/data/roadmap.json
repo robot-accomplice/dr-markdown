@@ -107,6 +107,15 @@
       "status": "planned",
       "priority": "low",
       "summary": "Lift open, save, resolve-unsaved and asset import out of app.go (747 lines) into use-case types, leaving App as a thin adapter. The injected ports already exist and do not change. Sequenced last deliberately: dependency inversion is already in place, so this addresses comprehension rather than correctness, and deferring it costs clarity not safety."
+    },
+    {
+      "id": "wails-exit-path",
+      "kind": "chore",
+      "section": "Host Portability And Exit Path",
+      "title": "An exit path from Wails",
+      "status": "planned",
+      "priority": "medium",
+      "summary": "Reduce the app to a host-swappable shell and choose a replacement. Wails is imported by only two files and every native operation already sits behind nativePort in the wailsNative adapter, so the remaining coupling is main.go's wails.Run bootstrap, the reflection binding that turns Bind: []interface{}{app} into a window.go.main.App surface bridge.js calls by name string, and tools/build-macos.sh delegating DMG packaging to wails build. Two open defects are host limitations rather than app defects: no application menu (#57) and a panicking bound call whose frontend promise never settles. The vendored Milkdown Crepe frontend needs a webview, and the no-Node-toolchain rule excludes Electron, so candidates are webview hosts."
     }
   ]
 }

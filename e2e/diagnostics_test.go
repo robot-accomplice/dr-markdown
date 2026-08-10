@@ -142,3 +142,37 @@ func TestFailureSurfacesRecordDurableEvents(t *testing.T) {
 		}
 	})
 }
+
+// macOS routes a double-clicked .md file to the app, and for a long time
+// nothing consumed it: the app opened an empty document and the file the user
+// clicked was silently gone (#53). At launch the file arrives BEFORE the
+// webview exists, so the frontend has to ask for it rather than be told.
+func TestFrontendOpensAFileHandedToItAtLaunch(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+
+	bootAppWithNativeStub(t, ctx, url, `globalThis.go = { main: { App: {
+		LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
+		FrontendReady: async () => ['/tmp/handed-over.md'],
+		OpenRecentDocument: async (p) => ({ path: p, content: '# Handed over\n\nfrom Finder\n' }),
+		SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
+	} } };`)
+
+	var got string
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			const doc = window.__app.state.docs.find((d) => d.id === window.__app.state.activeDocId)
+			if (doc && doc.path) return JSON.stringify({ path: doc.path, markdown: window.__app.getEditorMarkdown() })
+			await new Promise((r) => setTimeout(r, 20))
+		}
+		return 'NEVER OPENED'
+	})()`, &got)
+
+	if !strings.Contains(got, "/tmp/handed-over.md") {
+		t.Errorf("a file handed over at launch was not opened: %s", got)
+	}
+	if !strings.Contains(got, "Handed over") {
+		t.Errorf("the document opened but its content is wrong: %s", got)
+	}
+}

@@ -2447,6 +2447,44 @@ async function boot() {
     debugReplaceRaw: (text) => raw.replaceAll(text),
     debugSimulateEdit: (md) => markEdited(md),
   }
+
+  await consumeFilesHandedOverAtLaunch()
+}
+
+// Files macOS handed us, opened once the editor can accept them.
+//
+// Two arrival paths, because there are two situations. At LAUNCH the file
+// reaches Go before this webview exists, so it is held and we ask for it here.
+// While the app is already RUNNING there is nothing to wait for, so Go emits
+// `file:open` and we listen. Before this, neither was consumed: the bundle
+// advertised the association through CFBundleDocumentTypes, macOS routed the
+// file in, and the user got an empty document with no hint their file had gone
+// (#53).
+//
+// Failures are contained: a file that will not open must not take the editor
+// down with it, and it must not do so silently either.
+async function openFileFromOS(path) {
+  try {
+    await openRecentDocument(path)
+  } catch (error) {
+    console.warn('bridge: file handed over by the OS could not be opened', error)
+    bridge.recordEvent('os-file.open-failed', { error: String(error?.message ?? error) })
+  }
+}
+
+async function consumeFilesHandedOverAtLaunch() {
+  let pending = []
+  try {
+    pending = (await bridge.frontendReady()) ?? []
+  } catch (error) {
+    console.warn('bridge: could not ask for files handed over at launch', error)
+    bridge.recordEvent('os-file.handover-failed', { error: String(error?.message ?? error) })
+    return
+  }
+  for (const path of pending) await openFileFromOS(path)
+  globalThis.runtime?.EventsOn?.('file:open', (path) => {
+    if (path) openFileFromOS(path)
+  })
 }
 
 // The recurrence gate for issue #17: catching only the preferences call would

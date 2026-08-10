@@ -121,17 +121,20 @@
     },
     {
       "id": "no-recorded-state-for-rca",
-      "title": "No crash record reaches the maintainer; the error trail now does",
+      "title": "Panics are recorded now; the call that panicked still never returns",
       "category": "operational",
-      "severity": "medium",
+      "severity": "low",
       "status": "open",
-      "summary": "Closed for the frontend. `internal/eventlog` persists a structured trail stamped with `appVersion`, reachable from the webview through `bridge.recordEvent`, and every frontend failure surface now records into it rather than only warning to a console no production build can display: boot failure, preferences load and save, image import (ribbon and drop), replace and reveal, render failure, editor style application \u2014 the site that once hid a ReferenceError for two rounds of debugging \u2014 plus refused link schemes. A refusal is recorded once per distinct href, capped, because the log is trimmed and the refused href is attacker-controlled: recording on every render would let a document the app has already judged hostile evict the rest of the trail. Residual: Go-side errors still surface mainly as an ephemeral native dialog, and no crash handler exists, so a hard crash still leaves nothing behind.",
+      "summary": "Closed for the frontend. `internal/eventlog` persists a structured trail stamped with `appVersion`, reachable from the webview through `bridge.recordEvent`, and every frontend failure surface now records into it rather than only warning to a console no production build can display: boot failure, preferences load and save, image import (ribbon and drop), replace and reveal, render failure, editor style application \u2014 the site that once hid a ReferenceError for two rounds of debugging \u2014 plus refused link schemes. A refusal is recorded once per distinct href, capped, because the log is trimmed and the refused href is attacker-controlled: recording on every render would let a document the app has already judged hostile evict the rest of the trail. Closed for panics too, as of 0.5.1. `App.reportPanic` records operation, message, stack and build version, shows a native dialog naming the operation, and then re-panics; `TestEveryBoundMethodReportsItsPanics` and `TestLifecycleCallbacksReportTheirPanics` pin it onto all 18 bound methods and onto startup, beforeClose and openFileFromOS. Re-panicking rather than recovering is deliberate: the guard runs during unwinding, so swallowing the panic would return the method's zero values and hand the frontend a nil error for a save that never touched the disk. Residual, and the reason this stays open: re-panicking preserves a Wails defect rather than fixing it. `dispatcher.ProcessMessage` recovers the panic and returns an empty result, `darwin/frontend.go` passes that empty string to `Frontend.Callback`, and the runtime's `Callback` throws on `JSON.parse(\"\")` before it reaches the pending callback — whose timeout is unarmed, because Wails only arms one when a caller passes a positive timeout. The frontend's promise therefore never settles and that operation is dead until restart. The dialog is the only channel that reports it, which is why the policy is record-and-be-loud rather than record-only. Still uncovered: a panic raised before the App and its log exist, in NewApp or inside wails.Run — deferred because there is no constructed trail to write to and no window to show a dialog on.",
       "mitigations": [
         "Version identity ships in the bundle so a report can name the build",
         "internal/eventlog persists a structured, version-stamped trail beside the user log directory",
         "Every frontend failure surface records through bridge.recordEvent, pinned by TestFailureSurfacesRecordDurableEvents",
         "Refused links are recorded once per distinct href and capped, so the audit trail cannot be flooded by the content it is auditing",
-        "Residual, recorded not dropped: Go-side error reporting and crash capture are still dialog-only"
+        "Panics record operation, message, stack and build version through App.reportPanic, then re-panic rather than swallow, so a failed call cannot be reported to the frontend as a success",
+        "Coverage is pinned by source-parsing gates rather than by discipline: TestEveryBoundMethodReportsItsPanics and TestLifecycleCallbacksReportTheirPanics fail when a new method arrives unguarded",
+        "Residual, recorded not dropped: a panicking bound call never settles its frontend promise, because Wails discards the callback message; the native dialog is the only report the user gets",
+        "Residual, recorded not dropped: a panic before the App exists (NewApp, wails.Run) has no trail to write to"
       ],
       "relatedNodes": [
         "wails-go-api",
@@ -175,15 +178,16 @@
     },
     {
       "id": "file-association-does-not-open-the-file",
-      "title": "Opening a .md file from Finder launches the app but does not open the file",
+      "title": "Files opened from Finder reach the editor",
       "category": "technical",
-      "severity": "high",
-      "status": "open",
-      "summary": "The app bundle declares CFBundleDocumentTypes for net.daringfireball.markdown, so macOS associates .md files and launches the app when one is double-clicked \u2014 but nothing in main.go or app.go consumes a launch-time file argument or the macOS open-documents Apple Event, so the file is silently ignored and the user gets an empty untitled document. Found on 2026-08-10 by installing the v0.5.0 DMG to /Applications and opening a document with it: the process launched and stayed alive, but no document.opened event was recorded and no entry was added to recents. Double-clicking a markdown file is the most natural way to reach a markdown editor, and the app advertises that it handles them, so the failure is silent and reads as the app losing the document. Predates v0.5.0 \u2014 no launch-argument handling has ever existed \u2014 and was missed by four ABORT rounds because none of them installed the app. Tracked as GitHub issue 53.",
+      "severity": "medium",
+      "status": "closed",
+      "summary": "Closed 2026-08-10. The bundle had always declared CFBundleDocumentTypes, so macOS routed a double-clicked .md file to the app, but nothing consumed it and the user got an empty document with no hint their file had gone. main.go now sets mac.Options.OnFileOpen. Two arrival paths, because there are two situations: at LAUNCH the file reaches Go before the webview exists, so App holds it and the frontend asks for it through FrontendReady; while the app is RUNNING there is nothing to wait for, so Go emits the file:open event and the frontend listens. Verified on the installed .app for both paths \u2014 a launch-time file and a second file opened while running each recorded document.opened and appeared in recents. Predated v0.5.0 and was missed by four ABORT rounds because none of them installed the app.",
       "mitigations": [
-        "Consume the launch-time file argument and the macOS open-documents event, routing both through the existing openPath",
-        "Until then, correct the README: the association is advertised under Available today but the behaviour does not exist",
-        "In-app Open and Recent Files both work, so there is a path to every document the failure affects"
+        "mac.Options.OnFileOpen routes the macOS open-documents event into App.openFileFromOS",
+        "A file arriving before the frontend is ready is held rather than emitted into a webview that cannot receive it, and delivered when FrontendReady is called",
+        "FrontendReady clears what it returns, so a reload does not reopen a document the user already closed",
+        "A file that will not open is contained and recorded as os-file.open-failed rather than taking the editor down or failing silently"
       ],
       "relatedNodes": [
         "wails-go-api",
