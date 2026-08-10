@@ -4,7 +4,14 @@ State of play for whoever picks this up next. Written to be actionable without t
 produced it.
 
 Rev 5 covers one long day with one large outcome and one blocked release: **Wails is gone from the
-running application**, and **v0.6.0 cannot ship** because code blocks are not editable.
+running application**, and **v0.6.0 could not ship** because code blocks were not editable.
+
+> **Amended 2026-08-10 (rev 5.1).** The blocker is fixed by
+> [#79](https://github.com/robot-accomplice/dr-markdown/pull/79). Two of the three "measurements"
+> recorded below under the release blocker were **false**, and both pointed away from the cause —
+> they are corrected in place rather than removed, because a later session trusting this file is the
+> whole point of it. The proposed direction (write a ProseMirror NodeView) was also wrong and was not
+> needed. See that section for what the cause actually was.
 
 ## The rule that governs everything below
 
@@ -24,25 +31,29 @@ not.
 
 ## Start here
 
-**Read [#77](https://github.com/robot-accomplice/dr-markdown/issues/77) and start there.** Everything
-else on this page is either finished or waiting on it.
+**The blocker is fixed.** [#77](https://github.com/robot-accomplice/dr-markdown/issues/77) is
+resolved by [#79](https://github.com/robot-accomplice/dr-markdown/pull/79) on `fix/code-blocks-editable`,
+which is open against `develop` with CI green. Start by merging that, then this PR (#74), then finish
+the release ceremony below.
 
-The release ceremony is deliberately halted at 3 of 7. Finishing it would mean writing a Release
-Truth record asserting a readiness that is not true.
+The ceremony was halted at 3 of 7 while the blocker stood, because finishing it would have meant
+writing a Release Truth record asserting a readiness that was not true.
 
-## The release blocker
+## The release blocker — FIXED, see [#79](https://github.com/robot-accomplice/dr-markdown/pull/79)
 
-**Insert → Code produces a block you cannot type into.**
+**Insert → Code produced a block you could not type into.**
 
 > we cannot ship another broken release on basic editing functionality
 
-This is **pre-existing** — it ships in v0.5.1 today and has since syntax highlighting was added. It is
+This was **pre-existing** — it shipped in v0.5.1 and had since syntax highlighting was added. It was
 not a consequence of the host replacement.
 
-### Root cause, measured
+### What this section blamed, and why that was the symptom rather than the cause
 
-`highlightFormattedCodeBlocks()` runs against `els.wysiwyg` — the LIVE editor — and for every code
-block does two destructive things:
+`highlightFormattedCodeBlocks()` ran against `els.wysiwyg` — the LIVE editor — and for every code
+block did two destructive things. That pass is now deleted, and it *was* wrong. But it was
+compensation for a block that was already dead, not the reason the block was dead: the real cause is
+below, and it is one undefined value in the vendored bundle.
 
 ```js
 // app.js:1652
@@ -59,36 +70,48 @@ function wrapCodeBlock(code, language = '', fenceIndex = null) {
 }
 ```
 
-### Three measurements, each of which killed a proposed fix
+### RESOLVED 2026-08-10 by [#79](https://github.com/robot-accomplice/dr-markdown/pull/79). Two of these measurements were WRONG.
 
-Recorded because each was believed before it was checked:
+**This section recorded three measurements as fact. Two were false, and both pointed away from the
+cause.** Corrected in place rather than deleted, because the whole value of this file is that a later
+session trusts it, and because the error has a repeatable shape: a true observation carrying a false
+conclusion.
 
-1. **The vendored bundle is not missing anything.** `Crepe.Feature.CodeMirror` exists and is
-   `"code-mirror"`; only `Latex` is disabled in `editor.js`.
-2. **No CodeMirror is mounted anyway.** With the app's `replaceWith` suppressed: `cm-editor: 0`,
-   `cm-content: 0`, `pre: 1`. So editor syntax highlighting never came from that feature — it comes
-   from the app calling Highlight.js and rewriting `innerHTML`.
-3. **The native node is a plain `<pre>` inside `div.ProseMirror[contenteditable]`**, so it is very
-   likely editable already, just unhighlighted.
+1. **CORRECT — the vendored bundle is not missing anything.** `Crepe.Feature.CodeMirror` exists and
+   is `"code-mirror"`; only `Latex` is disabled in `editor.js`.
+2. **WRONG — "no CodeMirror is mounted anyway", concluded as "that feature never did this job".**
+   The counts were right. The conclusion was not: it never mounts because it **throws**.
+   `initializeCodeMirror()` raises `TypeError: Cannot read properties of undefined (reading
+   'extension')` out of `EditorState.create`.
+3. **WRONG — "a plain `<pre>` inside ProseMirror's contenteditable, so very likely editable
+   already."** It is `pre.milkdown-code-block-placeholder` inside
+   `div.milkdown-code-block[contenteditable="false"]`. It was never editable by anything, and the
+   word "likely" is doing all the work in that sentence — it was never checked by typing.
 
-### Why both obvious fixes are wrong
+**The cause.** esm.sh resolves the bare specifier `codemirror` inside the Crepe bundle to
+**CodeMirror 5** — `defineMode`/`defineMIME`/`registerHelper`, no `basicSetup`, which is a v6 export.
+Crepe builds `[keymap, fme.basicSetup, …]`, so entry two is `undefined`. `@milkdown/crepe` declares
+`codemirror: ^6.0.1`, so this is an esm.sh bug, not a Crepe bug.
 
-- **Stop decorating inside the editor** (chrome only on preview/print) — rejected by the maintainer:
-  it makes Formatted mode stop looking like the output, which violates the rule at the top of this
-  page.
-- **Wrap instead of replace** — also wrong, and this is the non-obvious part. Both operations mutate
-  ProseMirror's DOM from outside, and ProseMirror reconciles that DOM. Replacing is almost certainly
-  what the original author landed on *because* it is the only way to make an external mutation stick.
+**Why it was permanent and silent.** The throw happens inside the `IntersectionObserver` callback
+that upgrades a block, *after* the node view sets `initialized = true`. Nothing retries, and the
+exception reaches nobody. A guard set before the work turns one crash into a permanent state.
 
-### The direction
+**The fix was to drop that entry** in `tools/vendor.sh`. **No NodeView was needed** — the direction
+below was wrong. The upstream node view already renders a searchable language picker, a copy button
+and a preview toggle, and once it mounts it does the whole job, highlighting included. The app's
+in-editor pass was deleted rather than rewritten, and mermaid moved onto the same node view's preview
+hook, which made diagrams editable in place for the first time.
 
-A **ProseMirror NodeView for `code_block`** that owns the whole block: the header (language + Copy),
-the editable content ProseMirror manages, and highlighting applied inside its own render rather than
-by overwriting the document. Chrome visible AND editable, one system owning the DOM.
+**Refuted, so nobody spends the day on them again:** supplying `extensions` via `featureConfigs` does
+not displace the broken default (Crepe concatenates); the separately vendored `codemirror.bundle.mjs`
+cannot supply it either (second copy of `@codemirror/state`, rejected outright) and has been deleted;
+and the fetch cannot be fixed with `?deps=`/`?alias=` because the es2022 path is prebuilt.
 
-**Check first, because it may be much cheaper:** why `code-mirror` mounts nothing. If that feature
-can be made to work it provides editing and highlighting together, and the app's job shrinks to
-attaching a header.
+**The lesson this cost.** Every code-block test asserted *presence* — a label, a Copy button, a
+highlighted span — and every one passed for the entire time the block underneath was inert, because
+**none of them ever typed**. The gate that finally caught it sends real keystrokes and requires them
+in the document's markdown.
 
 ## What merged into `develop` today
 
@@ -174,10 +197,16 @@ rewritten, screenshots regenerated, `architext validate` passes.
 
 ## Issues opened today
 
-- [#77](https://github.com/robot-accomplice/dr-markdown/issues/77) — code blocks not editable. **The blocker.**
+- [#77](https://github.com/robot-accomplice/dr-markdown/issues/77) — code blocks not editable. **Was
+  the blocker; fixed by [#79](https://github.com/robot-accomplice/dr-markdown/pull/79).**
 - [#75](https://github.com/robot-accomplice/dr-markdown/issues/75) — the block-edit `+` menu appears to
-  do nothing. Probably the same cause as #77: it inserts a block that renders as an empty box you
-  cannot type into.
+  do nothing. Guessed at the time to be the same cause as #77 — "it inserts a block that renders as
+  an empty box you cannot type into". **Recheck against #79 rather than closing on that guess**: an
+  inserted code block is now editable immediately, so if the `+` menu still does nothing the cause is
+  something else and the guess was never evidence.
+- [#78](https://github.com/robot-accomplice/dr-markdown/issues/78) — opened 2026-08-10 with #79: the
+  editor's own language picker writes a language's DISPLAY name into the fence (` ```Python `), where
+  every other route in this app writes ` ```python `.
 - [#76](https://github.com/robot-accomplice/dr-markdown/issues/76) — block-edit menu highlight colour
   is off-theme. Note an app rule on an editor-injected element loses a specificity tie to
   `.milkdown *`; scope to (0,2,0).
