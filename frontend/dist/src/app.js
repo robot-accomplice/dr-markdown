@@ -2206,7 +2206,23 @@ function currentDiagramSource() {
 }
 
 async function pasteMarkdown() {
-  const text = await navigator.clipboard?.readText?.()
+  // The optional chaining guards clipboard ABSENCE. It does not guard refusal,
+  // and refusal is the common case: macOS denies a clipboard read that has no
+  // user gesture behind it, and the read then REJECTS. That rejection escaped
+  // this function, so the button did nothing at all — no paste, and not even
+  // the empty-clipboard fallback below.
+  //
+  // Invisible to the suite because the clipboard is stubbed there, so the real
+  // path had never run. Found by walking the UI in a native host.
+  let text
+  try {
+    text = await navigator.clipboard?.readText?.()
+  } catch (error) {
+    // Contained, but never silent. A user who clicks Paste and sees nothing
+    // has no way to tell a denied clipboard from a broken button.
+    bridge.recordEvent('clipboard.read-refused', { error: String(error?.message ?? error) })
+  }
+
   if (text) {
     await setMarkdown(text)
     markEdited(text)
