@@ -4,6 +4,15 @@ import { RawEditor } from './rawmode.js'
 import { bridge } from './bridge.js'
 import { escapeHtml, highlightCode, highlightMarkdownSource, normalizeLanguage } from './highlighter.js'
 import { renderMermaidDiagram } from './mermaid-renderer.js'
+import { containsTable } from './markdown/tables.js'
+import {
+  firstCodeFenceLanguage, firstCodeFenceDescriptor, rewriteCodeFenceLanguage,
+  containsMermaidDiagram, rewriteMermaidFenceSource, fencedLanguages,
+} from './markdown/fences.js'
+import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
+import { safeLinkHref } from './markdown/links.js'
+import { detectLineEnding, toEditorText, toFileText, titleForPath } from './markdown/text.js'
+import { applyCommand, appendBlock } from './markdown/commands.js'
 
 const BLANK_DOCUMENT = ''
 
@@ -262,7 +271,7 @@ function createDoc({ path = '', markdown = BLANK_DOCUMENT, savedText = markdown 
   return {
     id,
     path,
-    title: titleForPath(path, id),
+    title: titleForPath(path),
     markdown,
     savedText,
     dirty: markdown !== savedText,
@@ -274,10 +283,6 @@ function activeDoc() {
   return state.docs.find((doc) => doc.id === state.activeDocId)
 }
 
-function titleForPath(path, fallback) {
-  if (!path) return fallback === 'doc-1' ? 'Untitled.md' : 'Untitled.md'
-  return path.split(/[\\/]/).pop() || path
-}
 
 function getMarkdown() {
   if (state.mode === 'split') return els.splitSource.value
@@ -374,7 +379,7 @@ function refreshRecentFiles() {
     row.dataset.recentFile = recent.path
     row.title = recent.path
     row.innerHTML = `<strong></strong><span></span>`
-    row.querySelector('strong').textContent = recent.title || titleForPath(recent.path, '')
+    row.querySelector('strong').textContent = recent.title || titleForPath(recent.path)
     row.querySelector('span').textContent = recent.path
     row.addEventListener('click', () => openRecentDocument(recent.path))
     list.append(row)
@@ -718,9 +723,15 @@ function contextualCodeGroup(language) {
   return contextualGroup('code', 'Code Block', [select])
 }
 
-function startEditing(started = true) {
+// Marks the active document as started, so the placeholder gives way.
+//
+// This took a `started` parameter that was never passed anything but true, and
+// its body then read `started || doc.markdown.length > 0` — with `started`
+// always true, the right-hand side was unreachable. Dead configurability with a
+// dead branch behind it, reading as a choice the caller gets to make.
+function startEditing() {
   const doc = activeDoc()
-  if (doc) doc.started = started || doc.markdown.length > 0
+  if (doc) doc.started = true
 }
 
 function activateRibbonTab(name) {
@@ -786,12 +797,50 @@ async function mountMarkdown(md) {
   }
 }
 
+// Renders are serialized and superseded renders abandon their work.
+//
+// The three passes below each await, so a render could be suspended while a
+// newer one started — and the older pass then resumed and stamped its state
+// over the newer DOM. Reproduced deterministically: two renders started back to
+// back left a one-block document with two code shells, one carrying the
+// language from the superseded render. In normal use it showed up as a stale
+// syntax highlight after changing a code block's language, which never
+// corrected itself because nothing rendered again.
+//
+// The generation check is what makes this correct, not the chaining. Chaining
+// alone would still run every queued render to completion; the check lets an
+// obsolete one stop at its next suspension point, and lets the newest win.
+let renderGeneration = 0
+let renderQueue = Promise.resolve()
+
 // Every WYSIWYG render runs the same three passes; keeping them together stops
 // a new call site from silently skipping one (imported images did exactly that).
-async function renderWysiwyg(md) {
-  await wysiwyg.setMarkdown(els.wysiwyg, md)
-  await highlightFormattedCodeBlocks(md)
-  await resolveImageAssets(els.wysiwyg)
+function renderWysiwyg(md) {
+  const generation = ++renderGeneration
+  const superseded = () => generation !== renderGeneration
+
+  renderQueue = renderQueue.then(async () => {
+    // Already obsolete before this render's turn came up: skip it entirely
+    // rather than rebuild the editor twice for a result nobody will see.
+    if (superseded()) return
+    await wysiwyg.setMarkdown(els.wysiwyg, md)
+    if (superseded()) return
+    await highlightFormattedCodeBlocks(md)
+    if (superseded()) return
+    await resolveImageAssets(els.wysiwyg)
+  })
+
+  // Serializing through one promise makes a rejection contagious: every later
+  // `.then` would skip its callback, so a single failed render would stop the
+  // surface updating for the rest of the session — silently, with the app
+  // appearing to ignore every edit. Absorb it here to keep the queue alive, and
+  // record it rather than swallow it, so the failure is recoverable after the
+  // fact instead of invisible.
+  renderQueue = renderQueue.catch((error) => {
+    console.error('render failed', error)
+    bridge.recordEvent('render.failed', { error: String(error?.message ?? error) })
+  })
+  return renderQueue
 }
 
 // Markdown resolves relative image paths against the document on disk, but the
@@ -834,7 +883,7 @@ async function toggleSplit() {
 async function setMode(mode) {
   if (mode === state.mode) return
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const md = activeDoc().markdown
   if (state.mode === 'raw') raw.close()
   els.wysiwyg.hidden = true
@@ -871,28 +920,9 @@ async function newDocument() {
   pushDirtyState()
 }
 
-// Line endings are a property of the FILE, not of the editing surface. Both
-// surfaces destroy them: the WYSIWYG editor re-serializes with LF, and a
-// textarea normalizes CRLF to LF on input per the HTML spec. So a
-// Windows-authored file came back whole-file changed after a one-word edit —
-// the loudest possible diff for anyone keeping notes in version control.
-//
-// Normalizing on the way in and restoring on the way out fixes both surfaces at
-// one seam, and keeps every in-memory comparison (dirty tracking, savedText)
-// working in a single representation instead of two.
-const CRLF = '\r\n'
 
-function detectLineEnding(text) {
-  return text.includes(CRLF) ? CRLF : '\n'
-}
 
-function toEditorText(text) {
-  return text.replace(/\r\n/g, '\n')
-}
 
-function toFileText(text, lineEnding) {
-  return lineEnding === CRLF ? text.replace(/\n/g, CRLF) : text
-}
 
 async function openDocument() {
   if (state.dirty) {
@@ -905,7 +935,7 @@ async function openDocument() {
   if (!res || (!res.path && !res.content)) return
   const doc = activeDoc()
   doc.path = res.path
-  doc.title = titleForPath(res.path, doc.id)
+  doc.title = titleForPath(res.path)
   doc.lineEnding = detectLineEnding(res.content)
   doc.markdown = toEditorText(res.content)
   doc.savedText = doc.markdown
@@ -928,7 +958,7 @@ async function openRecentDocument(path) {
   if (!res || (!res.path && !res.content)) return
   const doc = activeDoc()
   doc.path = res.path
-  doc.title = titleForPath(res.path, doc.id)
+  doc.title = titleForPath(res.path)
   doc.lineEnding = detectLineEnding(res.content)
   doc.markdown = toEditorText(res.content)
   doc.savedText = doc.markdown
@@ -962,7 +992,7 @@ async function saveAs() {
   if (!path) return
   cancelPendingPush()
   doc.path = path
-  doc.title = titleForPath(path, doc.id)
+  doc.title = titleForPath(path)
   doc.savedText = doc.markdown
   syncActiveState()
   bridge.setDirty(false)
@@ -1017,7 +1047,7 @@ async function runCommand(command) {
 
   const editorContext = currentEditorContext()
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   doc.markdown = applyCommand(command, doc.markdown, editorContext)
   state.editorContext = {}
@@ -1036,7 +1066,7 @@ async function handleDroppedFiles(paths) {
     IMPORTABLE_IMAGE_EXTENSIONS.some((extension) => path.toLowerCase().endsWith(extension)))
   if (images.length === 0) return
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   if (!doc) return
   for (const path of images) {
@@ -1047,6 +1077,7 @@ async function handleDroppedFiles(paths) {
       // Rejections (unsaved document, unreadable source) are already reported
       // natively; stop rather than half-importing the rest of the drop.
       console.warn('bridge: dropped image import rejected', error)
+      bridge.recordEvent('image.import-failed', { source: 'drop', error: String(error?.message ?? error) })
       return
     }
     if (!result?.markdown) continue
@@ -1058,7 +1089,7 @@ async function handleDroppedFiles(paths) {
 
 async function insertImage() {
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   let result
   try {
@@ -1068,6 +1099,7 @@ async function insertImage() {
     // (unsaved document, unreadable source, failed copy). Leave the document
     // untouched rather than inserting a non-portable placeholder.
     console.warn('bridge: image import rejected', error)
+    bridge.recordEvent('image.import-failed', { source: 'ribbon', error: String(error?.message ?? error) })
     return
   }
   if (!result?.markdown) return
@@ -1110,6 +1142,7 @@ async function replaceSelectedImage() {
     result = await bridge.importImage(doc.path)
   } catch (error) {
     console.warn('bridge: image replace rejected', error)
+    bridge.recordEvent('image.replace-failed', { error: String(error?.message ?? error) })
     return
   }
   if (!result?.markdownPath) return
@@ -1125,52 +1158,10 @@ async function revealSelectedImage() {
   } catch (error) {
     // The native side already reported a missing or unreachable asset.
     console.warn('bridge: image reveal rejected', error)
+    bridge.recordEvent('image.reveal-failed', { error: String(error?.message ?? error) })
   }
 }
 
-function applyCommand(command, md, editorContext = {}) {
-  const selected = editorContext.selectionText?.trim()
-  if (selected) return applySelectionCommand(command, md, selected)
-  const currentBlock = editorContext.blockText?.trim()
-  if (currentBlock) return applyCurrentBlockCommand(command, md, currentBlock)
-
-  const transforms = {
-    bold: (text) => appendBlock(text, '**bold text**'),
-    italic: (text) => appendBlock(text, '*italic text*'),
-    strike: (text) => appendBlock(text, '~~strikethrough text~~'),
-    'inline-code': (text) => appendBlock(text, '`code`'),
-    highlight: (text) => appendBlock(text, '<mark>highlighted text</mark>'),
-    link: (text) => appendBlock(text, '[link text](https://example.com)'),
-    math: (text) => appendBlock(text, '$$\nE = mc^2\n$$'),
-    'bullet-list': (text) => appendBlock(text, '- List item'),
-    'numbered-list': (text) => appendBlock(text, '1. List item'),
-    'task-list': (text) => appendBlock(text, '- [ ] Task item'),
-    normal: (text) => text,
-    h1: (text) => appendBlock(text, '# Heading 1'),
-    h2: (text) => appendBlock(text, '## Heading 2'),
-    h3: (text) => appendBlock(text, '### Heading 3'),
-    h4: (text) => appendBlock(text, '#### Heading 4'),
-    h5: (text) => appendBlock(text, '##### Heading 5'),
-    h6: (text) => appendBlock(text, '###### Heading 6'),
-    quote: (text) => appendBlock(text, '> Quote'),
-    indent: (text) => indentLastListItem(text),
-    outdent: (text) => outdentLastListItem(text),
-    table: (text) => appendBlock(text, tableMarkdown(3, 3)),
-    'code-block': (text) => appendBlock(text, '```text\ncode\n```'),
-    mermaid: (text) => appendBlock(text, '```mermaid\ngraph TD\n  A[Start] --> B[Finish]\n```'),
-    hr: (text) => appendBlock(text, '---'),
-    'table-add-row': (text) => addTableRow(text, editorContext.tableIndex),
-    'table-remove-row': (text) => removeTableRow(text, editorContext.tableIndex),
-    'table-add-column': (text) => addTableColumn(text, editorContext.tableIndex),
-    'table-remove-column': (text) => removeTableColumn(text, editorContext.tableIndex),
-    'table-align-left': (text) => alignTable(text, 'left', editorContext.tableIndex),
-    'table-align-center': (text) => alignTable(text, 'center', editorContext.tableIndex),
-    'table-align-right': (text) => alignTable(text, 'right', editorContext.tableIndex),
-    'table-delete': (text) => deleteTable(text, editorContext.tableIndex),
-    'image-delete': (text) => rewriteImage(text, editorContext.imageIndex, () => null),
-  }
-  return transforms[command]?.(md) ?? md
-}
 
 function currentEditorContext() {
   const selection = window.getSelection()
@@ -1193,138 +1184,28 @@ function nearestEditorBlockText(node) {
   return block?.textContent ?? element?.textContent ?? ''
 }
 
-function applySelectionCommand(command, md, selected) {
-  const inlineTransforms = {
-    bold: (text) => `**${text}**`,
-    italic: (text) => `*${text}*`,
-    strike: (text) => `~~${text}~~`,
-    'inline-code': (text) => `\`${text}\``,
-    highlight: (text) => `<mark>${text}</mark>`,
-    link: (text) => `[${text}](https://example.com)`,
-  }
-  if (inlineTransforms[command]) return replaceFirstSelection(md, selected, inlineTransforms[command])
 
-  const headingLevel = command.match(/^h([1-6])$/)?.[1]
-  if (headingLevel) return formatLineContainingSelection(md, selected, Number(headingLevel))
-  if (command === 'normal') return formatLineContainingSelection(md, selected, 0)
-  if (command === 'quote') return quoteLineContainingSelection(md, selected)
-  if (command === 'code-block') return codeBlockContainingSelection(md, selected)
-  if (command === 'bullet-list') return listLineContainingSelection(md, selected, '-')
-  if (command === 'numbered-list') return listLineContainingSelection(md, selected, '1.')
-  if (command === 'task-list') return listLineContainingSelection(md, selected, '- [ ]')
 
-  return applyCommand(command, md, {})
-}
 
-function applyCurrentBlockCommand(command, md, currentBlock) {
-  const headingLevel = command.match(/^h([1-6])$/)?.[1]
-  if (headingLevel) return formatLineContainingSelection(md, currentBlock, Number(headingLevel))
-  if (command === 'normal') return formatLineContainingSelection(md, currentBlock, 0)
-  if (command === 'quote') return quoteLineContainingSelection(md, currentBlock)
-  if (command === 'code-block') return codeBlockContainingSelection(md, currentBlock)
-  if (command === 'bullet-list') return listLineContainingSelection(md, currentBlock, '-')
-  if (command === 'numbered-list') return listLineContainingSelection(md, currentBlock, '1.')
-  if (command === 'task-list') return listLineContainingSelection(md, currentBlock, '- [ ]')
-  return applyCommand(command, md, {})
-}
 
-function replaceFirstSelection(md, selected, transform) {
-  const index = md.indexOf(selected)
-  if (index === -1) return md
-  return `${md.slice(0, index)}${transform(selected)}${md.slice(index + selected.length)}`
-}
 
-function formatLineContainingSelection(md, selected, level) {
-  return rewriteLineContainingSelection(md, selected, (line) => {
-    const text = line.replace(/^(\s*>+\s*)?#{1,6}\s+/, '').replace(/^(\s*>+\s*)/, '')
-    return level === 0 ? text : `${'#'.repeat(level)} ${text}`
-  })
-}
 
-function quoteLineContainingSelection(md, selected) {
-  return rewriteLineContainingSelection(md, selected, (line) => {
-    const text = line.replace(/^>\s*/, '')
-    return `> ${text}`
-  })
-}
 
-function listLineContainingSelection(md, selected, marker) {
-  return rewriteLineContainingSelection(md, selected, (line) => {
-    const text = line.replace(/^\s*(?:[-*+]|\d+\.|- \[[ xX]\])\s+/, '')
-    return `${marker} ${text}`
-  })
-}
-
-function codeBlockContainingSelection(md, selected) {
-  return rewriteLineContainingSelection(md, selected, (line) => `\`\`\`text\n${line}\n\`\`\``)
-}
-
-function rewriteLineContainingSelection(md, selected, transform) {
-  const index = md.indexOf(selected)
-  if (index === -1) return md
-  const lineStart = md.lastIndexOf('\n', index - 1) + 1
-  const nextBreak = md.indexOf('\n', index)
-  const lineEnd = nextBreak === -1 ? md.length : nextBreak
-  return `${md.slice(0, lineStart)}${transform(md.slice(lineStart, lineEnd))}${md.slice(lineEnd)}`
-}
 
 function applyBlockStyle(style) {
   runCommand(style)
 }
 
-function appendBlock(md, block) {
-  const trimmed = md.replace(/\s+$/, '')
-  return `${trimmed}${trimmed ? '\n\n' : ''}${block}\n`
-}
 
-function tableMarkdown(cols, rows) {
-  const header = Array.from({ length: cols }, (_, i) => `Header ${i + 1}`)
-  const divider = Array.from({ length: cols }, () => '---')
-  const body = Array.from({ length: rows - 1 }, (_, r) =>
-    Array.from({ length: cols }, (_, c) => `Cell ${r + 1}.${c + 1}`)
-  )
-  return [header, divider, ...body].map(tableRow).join('\n')
-}
 
-function tableRow(cells) {
-  return `| ${cells.join(' | ')} |`
-}
 
-function containsTable(md) {
-  return tableBounds(md) !== null
-}
 
-function containsMermaidDiagram(md) {
-  return firstCodeFenceLanguage(md, { onlyMermaid: true }) === 'mermaid'
-}
 
-function firstCodeFenceLanguage(md, { excludeMermaid = false, onlyMermaid = false } = {}) {
-  return firstCodeFenceDescriptor(md, { excludeMermaid, onlyMermaid })?.language ?? ''
-}
 
-function firstCodeFenceDescriptor(md, { excludeMermaid = false, onlyMermaid = false } = {}) {
-  let index = -1
-  let inFence = false
-  for (const line of md.split('\n')) {
-    const match = line.match(/^```\s*([A-Za-z0-9_+#.-]*)/)
-    if (!match) continue
-    if (inFence) {
-      inFence = false
-      continue
-    }
-    inFence = true
-    index++
-    const language = normalizeLanguage(match[1] || 'text')
-    if (excludeMermaid && language === 'mermaid') continue
-    if (onlyMermaid && language !== 'mermaid') continue
-    return { index, language }
-  }
-  return null
-}
 
 async function updateCodeBlockLanguage(language) {
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   const target = firstCodeFenceDescriptor(doc.markdown, { excludeMermaid: true })
   doc.markdown = rewriteCodeFenceLanguage(doc.markdown, target?.index, language)
@@ -1332,129 +1213,20 @@ async function updateCodeBlockLanguage(language) {
   markEdited(doc.markdown)
 }
 
-function rewriteCodeFenceLanguage(md, fenceIndex, language) {
-  if (!Number.isInteger(fenceIndex)) return md
-  const lines = md.split('\n')
-  const normalized = normalizeLanguage(language || 'text') || 'text'
-  let currentFenceIndex = -1
-  let inFence = false
-  for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/^(```)\s*([A-Za-z0-9_+#.-]*)/)
-    if (!match) continue
-    if (inFence) {
-      inFence = false
-      continue
-    }
-    inFence = true
-    currentFenceIndex++
-    if (currentFenceIndex !== fenceIndex) continue
-    if (normalizeLanguage(match[2] || 'text') === 'mermaid') continue
-    lines[i] = `${match[1]}${normalized}`
-    break
-  }
-  return lines.join('\n')
-}
 
-function tableBounds(md, tableIndex = 0) {
-  const lines = md.split('\n')
-  let currentTable = -1
-  for (let i = 0; i < lines.length - 1; i++) {
-    if (isTableRow(lines[i]) && isDividerRow(lines[i + 1])) {
-      currentTable++
-      let end = i + 2
-      while (end < lines.length && isTableRow(lines[end])) end++
-      if (currentTable === (Number.isInteger(tableIndex) ? tableIndex : 0)) return { lines, start: i, end }
-      i = end - 1
-    }
-  }
-  return null
-}
 
-function isTableRow(line) {
-  return /^\s*\|.+\|\s*$/.test(line)
-}
 
-function isDividerRow(line) {
-  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line)
-}
 
-function addTableRow(md, tableIndex = 0) {
-  return rewriteTable(md, tableIndex, (rows) => {
-    const cols = splitTableRow(rows[0]).length
-    rows.push(tableRow(Array.from({ length: cols }, () => '')))
-    return rows
-  })
-}
 
-function removeTableRow(md, tableIndex = 0) {
-  return rewriteTable(md, tableIndex, (rows) => {
-    if (rows.length > 3) rows.pop()
-    return rows
-  })
-}
 
-function addTableColumn(md, tableIndex = 0) {
-  return rewriteTable(md, tableIndex, (rows) => rows.map((row, index) => {
-    const cells = splitTableRow(row)
-    cells.push(index === 0 ? `Header ${cells.length + 1}` : index === 1 ? '---' : '')
-    return tableRow(cells)
-  }))
-}
 
-function removeTableColumn(md, tableIndex = 0) {
-  return rewriteTable(md, tableIndex, (rows) => rows.map((row) => {
-    const cells = splitTableRow(row)
-    if (cells.length > 1) cells.pop()
-    return tableRow(cells)
-  }))
-}
 
-function alignTable(md, alignment, tableIndex = 0) {
-  const marker = { left: ':---', center: ':---:', right: '---:' }[alignment]
-  return rewriteTable(md, tableIndex, (rows) => {
-    const cols = splitTableRow(rows[0]).length
-    rows[1] = tableRow(Array.from({ length: cols }, () => marker))
-    return rows
-  })
-}
 
-function deleteTable(md, tableIndex = 0) {
-  const bounds = tableBounds(md, tableIndex)
-  if (!bounds) return md
-  bounds.lines.splice(bounds.start, bounds.end - bounds.start)
-  return bounds.lines.join('\n').replace(/\n{3,}/g, '\n\n')
-}
 
-function rewriteTable(md, tableIndex, transform) {
-  const bounds = tableBounds(md, tableIndex)
-  if (!bounds) return md
-  const rows = bounds.lines.slice(bounds.start, bounds.end)
-  bounds.lines.splice(bounds.start, rows.length, ...transform(rows))
-  return bounds.lines.join('\n')
-}
 
-function splitTableRow(row) {
-  return row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim())
-}
 
-function indentLastListItem(md) {
-  return rewriteLastMatchingLine(md, /^(\s*)([-*+]|\d+\.)\s+/, (line) => `  ${line}`)
-}
 
-function outdentLastListItem(md) {
-  return rewriteLastMatchingLine(md, /^\s{2,}([-*+]|\d+\.)\s+/, (line) => line.replace(/^ {1,2}/, ''))
-}
 
-function rewriteLastMatchingLine(md, pattern, transform) {
-  const lines = md.split('\n')
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (pattern.test(lines[i])) {
-      lines[i] = transform(lines[i])
-      return lines.join('\n')
-    }
-  }
-  return md
-}
 
 function toggleTheme() {
   state.settings.theme = document.body.classList.contains('dark') ? 'light' : 'dark'
@@ -1493,6 +1265,7 @@ async function loadNativePreferences() {
     // Preferences are an enhancement; the editor is the product. A store the
     // app cannot read must never stop it starting (issue #17).
     console.warn('preferences load failed; starting with defaults', error)
+    bridge.recordEvent('preferences.load-failed', { error: String(error?.message ?? error) })
     return
   }
   mergeNativePreferences(prefs)
@@ -1523,7 +1296,7 @@ function normalizeRecents(recents) {
     .filter((recent) => recent && typeof recent.path === 'string' && recent.path.trim() !== '')
     .map((recent) => ({
       path: recent.path,
-      title: recent.title || titleForPath(recent.path, ''),
+      title: recent.title || titleForPath(recent.path),
       lastOpenedAt: recent.lastOpenedAt || '',
     }))
 }
@@ -1591,7 +1364,12 @@ function saveSettings() {
   applyRuntimeSettings()
   refreshRawOptionState()
   const pending = bridge.savePreferences(preferencesEnvelope())
-  if (pending?.catch) pending.catch((err) => console.warn('preferences save failed', err))
+  if (pending?.catch) {
+    pending.catch((err) => {
+      console.warn('preferences save failed', err)
+      bridge.recordEvent('preferences.save-failed', { error: String(err?.message ?? err) })
+    })
+  }
   closeSettings()
 }
 
@@ -1885,11 +1663,6 @@ async function waitForFormattedCodeElements(expectedCount) {
   return Array.from(els.wysiwyg.querySelectorAll('pre code'))
 }
 
-function fencedLanguages(md) {
-  return md.split('\n')
-    .map((line) => line.match(/^```\s*([A-Za-z0-9_+#.-]+)/)?.[1] || '')
-    .filter(Boolean)
-}
 
 function languageFromElement(code) {
   return Array.from(code.classList).find((name) => name.startsWith('language-'))?.replace(/^language-/, '') || ''
@@ -2020,7 +1793,6 @@ function inlineMarkdownNodes(text) {
 // syntax. Clearing the width returns the image to the portable form, so the
 // HTML form only ever appears where it carries information markdown cannot.
 
-const IMAGE_TOKEN_SOURCE = /!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\)|<img\b[^>]*>/.source
 
 // Preset widths in CSS pixels; "Original" clears the width entirely.
 const IMAGE_WIDTH_PRESETS = [
@@ -2031,89 +1803,40 @@ const IMAGE_WIDTH_PRESETS = [
   ['800', 'Extra large (800)'],
 ]
 
-function imageTokens(md) {
-  const tokens = []
-  const pattern = new RegExp(IMAGE_TOKEN_SOURCE, 'g')
-  let match = pattern.exec(md)
-  while (match) {
-    tokens.push({ text: match[0], start: match.index, end: match.index + match[0].length })
-    match = pattern.exec(md)
-  }
-  return tokens
-}
 
-function parseImageToken(text) {
-  if (text.startsWith('![')) {
-    const parsed = text.match(/^!\[([^\]]*)\]\(([^)\s]+)/)
-    return { alt: parsed?.[1] ?? '', path: parsed?.[2] ?? '', width: '' }
-  }
-  return {
-    alt: htmlImageAttribute(text, 'alt'),
-    path: htmlImageAttribute(text, 'src'),
-    width: htmlImageAttribute(text, 'width'),
-  }
-}
 
-function formatImageToken({ alt, path, width }) {
-  if (!width) return `![${alt}](${path})`
-  return `<img src="${path}" alt="${alt}" width="${width}">`
-}
 
-function selectedImageToken(md, imageIndex) {
-  return imageTokens(md)[Number.isInteger(imageIndex) ? imageIndex : 0] ?? null
-}
 
-// rewriteImage replaces exactly the selected image. transform returning null
-// deletes it, dropping the line when the image was the whole line.
-function rewriteImage(md, imageIndex, transform) {
-  const target = selectedImageToken(md, imageIndex)
-  if (!target) return md
-  const next = transform(parseImageToken(target.text))
-  const before = md.slice(0, target.start)
-  const after = md.slice(target.end)
-  if (next === null) {
-    const emptyLine = /(^|\n)$/.test(before) && /^(\n|$)/.test(after)
-    return emptyLine ? before + after.replace(/^\n/, '') : before + after
-  }
-  return before + formatImageToken(next) + after
-}
 
-// Schemes a document may link to. Anything else — javascript:, data:, file:,
-// vbscript:, or a scheme invented later — is refused rather than filtered,
-// because a denylist of dangerous schemes is a list you can always add to.
-const SAFE_LINK_SCHEMES = ['http:', 'https:', 'mailto:']
 
-// The URL parser removes every ASCII tab, LF and CR from a URL, and ignores
-// leading and trailing C0 controls and spaces, BEFORE it parses the scheme. Any
-// check that reads the raw string is therefore checking a different string than
-// the one the browser navigates to: `jav<TAB>ascript:` carries no scheme by a
-// regex's reading and `javascript:` by the parser's. That is how the previous
-// check — which looked for a scheme pattern and treated its absence as "this is
-// a relative link" — passed four separate spellings of javascript: through.
-function normalizeHref(href) {
-  return String(href).replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '')
-}
 
-// safeLinkHref returns the href to assign, or null to refuse. Returning the
-// normalized value rather than a boolean is the point: the caller cannot
-// validate one string and then assign another, which is the whole defect class
-// above rather than one instance of it.
-//
-// Every candidate is resolved against a base, so there is no "looks relative"
-// branch to slip past — a genuine relative link resolves to the base's https:
-// and is allowed on the same rule as everything else.
-function safeLinkHref(href) {
-  const value = normalizeHref(href)
-  try {
-    const resolved = new URL(value, 'https://example.invalid')
-    return SAFE_LINK_SCHEMES.includes(resolved.protocol) ? value : null
-  } catch {
-    return null
-  }
-}
 
 // handleDocumentLinkClick sends document links to the user's browser.
 //
+// Refusing a link is an autonomous security decision taken against untrusted
+// document content, with no user interaction, and it used to leave no trace at
+// all — not even a console line. A document probing for a `javascript:` URL
+// against bindings that expose arbitrary file read and write is precisely the
+// event a maintainer needs after the fact.
+//
+// Recorded once per distinct href rather than per render, because the same
+// refused link is rendered again and again. Measured, rather than assumed:
+// typing does NOT rebuild the preview anchors (10 simulated edits produced one
+// record), but every switch back into split mode does — five round trips
+// produced six. Recording unconditionally would let a document the app has
+// already judged hostile flood a trimmed log and evict every other event in it,
+// turning an audit record into a way to erase one. The cap bounds the same
+// attack carried out with many distinct hrefs instead of one repeated href.
+const REFUSED_LINK_RECORD_CAP = 32
+const refusedLinks = new Set()
+
+function recordRefusedLink(href) {
+  const key = String(href ?? '')
+  if (refusedLinks.has(key) || refusedLinks.size >= REFUSED_LINK_RECORD_CAP) return
+  refusedLinks.add(key)
+  bridge.recordEvent('link.refused', { href: key })
+}
+
 // The href was already filtered by safeLinkHref when the anchor was built, but
 // it is re-checked here rather than trusted: this handler is bound to the whole
 // document, so it must be safe for any anchor that reaches it, not only the
@@ -2121,18 +1844,22 @@ function safeLinkHref(href) {
 function handleDocumentLinkClick(event) {
   const anchor = event.target.closest?.('a[href]')
   if (!anchor) return
-  const safe = safeLinkHref(anchor.getAttribute('href'))
+  const raw = anchor.getAttribute('href')
+  const safe = safeLinkHref(raw)
   event.preventDefault()
-  if (safe === null) return
+  if (safe === null) {
+    // This handler is bound document-wide, so it must be safe for any anchor
+    // that reaches it — including one this module never built, which therefore
+    // never passed through the render-time check above.
+    recordRefusedLink(raw)
+    return
+  }
   bridge.openExternalURL(safe)?.catch?.((error) => {
     console.warn('bridge: refused to open link', error)
+    bridge.recordEvent('link.open-failed', { error: String(error?.message ?? error) })
   })
 }
 
-function htmlImageAttribute(tag, name) {
-  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i'))
-  return match?.[1] ?? ''
-}
 
 function inlineMarkdownNode(token) {
   if (token.startsWith('![')) {
@@ -2179,7 +1906,10 @@ function inlineMarkdownNode(token) {
     // ordinary action in a markdown viewer.
     const safe = safeLinkHref(link[2])
     if (safe !== null) anchor.href = safe
-    else anchor.dataset.blockedHref = 'true'
+    else {
+      anchor.dataset.blockedHref = 'true'
+      recordRefusedLink(link[2])
+    }
     return anchor
   }
   return document.createTextNode(token)
@@ -2314,7 +2044,7 @@ function closeCodeAssistant() {
 async function insertSelectedCodeBlock() {
   const language = selectedCodeLanguage || 'text'
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   doc.markdown = Number.isInteger(editingCodeFenceIndex)
     ? rewriteCodeFenceLanguage(doc.markdown, editingCodeFenceIndex, language)
@@ -2370,7 +2100,7 @@ function closeDiagramAssistant() {
 
 async function insertSelectedDiagram() {
   await persistCurrentEditorText()
-  startEditing(true)
+  startEditing()
   const doc = activeDoc()
   const source = currentDiagramSource()
   doc.markdown = Number.isInteger(editingDiagramFenceIndex)
@@ -2381,30 +2111,6 @@ async function insertSelectedDiagram() {
   closeDiagramAssistant()
 }
 
-function rewriteMermaidFenceSource(md, fenceIndex, source) {
-  if (!Number.isInteger(fenceIndex)) return md
-  const lines = md.split('\n')
-  let currentFenceIndex = -1
-  let inFence = false
-  for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/^```\s*([A-Za-z0-9_+#.-]*)/)
-    if (!match) continue
-    if (inFence) {
-      inFence = false
-      continue
-    }
-    currentFenceIndex++
-    const language = normalizeLanguage(match[1] || 'text')
-    inFence = true
-    if (currentFenceIndex !== fenceIndex || language !== 'mermaid') continue
-    let end = i + 1
-    while (end < lines.length && !/^```/.test(lines[end])) end++
-    if (end >= lines.length) return md
-    lines.splice(i + 1, end - i - 1, ...source.split('\n'))
-    return lines.join('\n')
-  }
-  return md
-}
 
 function renderDiagramAssistant() {
   const editing = Number.isInteger(editingDiagramFenceIndex)
@@ -2506,7 +2212,7 @@ async function pasteMarkdown() {
     markEdited(text)
     return
   }
-  startEditing(true)
+  startEditing()
   syncActiveState()
 }
 
@@ -2571,7 +2277,7 @@ function wire() {
   })
   els.btnNew.addEventListener('click', newDocument)
   els.emptyStart.addEventListener('click', () => {
-    startEditing(true)
+    startEditing()
     syncActiveState()
   })
   els.emptyPaste.addEventListener('click', pasteMarkdown)
@@ -2748,4 +2454,5 @@ async function boot() {
 // diagnosable failure rather than an unhandled rejection and a blank window.
 boot().catch((error) => {
   console.error('boot failed', error)
+  bridge.recordEvent('boot.failed', { error: String(error?.message ?? error) })
 })

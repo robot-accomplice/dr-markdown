@@ -202,3 +202,103 @@ parser. Neither is worth planning around today.
 1. Link reference definitions (the remaining item that *deletes* content) — 1–2 weeks.
 2. Serializer style options with per-document detection — days.
 3. Re-run the fidelity gate and retire the README caution item by item as each closes.
+
+---
+
+## Spike correction — 2026-08-09
+
+The spike above recorded a **preliminary no** for source-preserving editing and explicitly listed what
+it had not established: whether the `Crepe` instance exposes `.editor`/`.ctx`. That probe was left
+unfinished, with a note that someone should finish it before treating option (b) as closed.
+
+**It is finished, and the answer changes the picture.** From a live instance:
+
+- `crepe.editor` exists, with `config` (a function) and `ctx`.
+- `ctx.get('remarkStringifyOptions')` returns the live options object.
+- **`ctx.get('editorView')` returns the ProseMirror view.** The spike's second finding — "the view is
+  not reachable" — was true only of the DOM route. It is reachable through the context.
+- `ctx.get('serializer')` returns the serializer.
+
+Slices are addressable **by string name**, which is what makes this work without the bundle exporting
+any context keys.
+
+So the negative rested on one leg, not two. What survives is the first finding: the bundle exports no
+parser, so mdast **source positions** are still not obviously available, and those are the input
+source-preserving editing needs. That remains the open question, and it is now the *only* one.
+
+**Someone should probe `ctx.get('parser')` and whether the nodes it produces carry `position` data
+before option (b) is called closed.** I have not done that. Recording the correction rather than
+leaving a conclusion standing on a finding I have since disproved.
+
+### A working lesson from this, worth keeping
+
+Configuring the serializer took three failed attempts because `ctx.set` **replaces** the slice while
+the serializer holds a reference to the original options object — so a replacement is never read.
+Mutating the object the serializer already holds is what takes effect. Any future work against this
+context should assume the same: prefer mutating live objects over swapping slices, and verify the
+effect rather than the call.
+
+The third attempt failed for a different reason entirely — a missing import — and a `try/catch`
+written to keep a cosmetic failure from breaking the editor swallowed the `ReferenceError` for two
+rounds of debugging. The catch was right; logging only to `console.warn` in a build with no devtools
+was not.
+
+---
+
+## Probe result — 2026-08-09: source positions ARE available
+
+The correction above left exactly one question standing, and called it the only one: probe
+`ctx.get('parser')` and whether the nodes it produces carry `position` data, before option (b) is
+called closed.
+
+**Probed against a live instance. The answer is yes — but not from the slice the question named.**
+
+- **`ctx.get('parser')` is the wrong place.** It returns a function producing a **ProseMirror**
+  document: `isProseMirrorNode: true`, `hasPosition: false`, keys `type`/`attrs`/`marks`/`content`.
+  Positions were never going to be there. That mis-aimed probe is why the question stayed open.
+- **`ctx.get('remark')` returns the live unified processor**, and `remark.parse(src)` yields **mdast
+  carrying full `position` data** — `start`/`end` with `line`, `column` and `offset`, on every node
+  including the deepest text leaf. Measured on `# Title\n\nSome *emph* here.\n`: the `heading`
+  spans offsets 0–7, the trailing `text` leaf 20–26, the `root` 0–27.
+
+So the first finding of the original spike — "the bundle exports no parser, therefore there is no
+position data to map to" — was **true in its premise and wrong in its conclusion**. The bundle's
+export surface really is just `Crepe`, `CrepeBuilder`, `CrepeFeature`, `useCrepe`,
+`useCrepeFeatures`; re-confirmed in this probe. But the *instance* hands over the processor anyway,
+by the same string-addressable-slice mechanism that already unlocked `editorView` and `serializer`.
+The export surface was never the boundary it was taken for.
+
+Both legs of the negative have now fallen. **Option (b) is no longer closed on evidence.**
+
+### What this does NOT establish
+
+Source-preserving editing needs two things, and this probe delivers one:
+
+1. **Source positions from the parser — ESTABLISHED, available.**
+2. **A mapping from an editor transaction back to those positions — still open, untested.**
+
+Nobody should read this as "source-preserving editing works." It removes the blocker that made it
+un-plannable; the mapping is the next question and it is not a small one.
+
+Two limits worth recording so the next probe does not re-find them:
+
+- **Slice names could not be enumerated.** Walking the ctx object for a name map returned nothing;
+  the container does not expose its keys through any of `sliceMap`/`slices`/`map`. String addressing
+  works only if you already know the name, so the reachable surface is still discovered by guessing.
+- **Positions would be offsets into the *body*, not the file.** `editor.js` splits frontmatter and
+  substitutes break sentinels before Crepe sees the text, so any source range needs translating back
+  through those two transforms. A fixed shift, not an obstacle — but it is real and unhandled.
+
+### How this was probed
+
+A temporary test in `e2e/`, since removed: boot the app page, dynamically import the vendored bundle,
+create a throwaway Crepe on a detached div, then read the slices off `crepe.editor.ctx`. It is not
+kept as a permanent test because it asserts nothing about product behaviour — it answers a question,
+and the answer is now written down here.
+
+### Not recorded in Architext, deliberately
+
+`docs/architext/data/decisions.json` holds *accepted* decisions. This is an input to a decision, not
+a decision: option (b) is reopened, not chosen. Writing it there would represent an unreviewed
+planning proposal as Release Truth, which `CLAUDE.md` explicitly forbids. It belongs here until
+somebody decides what to do with it.

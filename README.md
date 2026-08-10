@@ -17,19 +17,21 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 >
 > Measured on the current build, WYSIWYG editing will:
 >
-> - **delete link reference definitions** and inline the links that used them; unused definitions are dropped outright
-> - rewrite two-space hard breaks to `\`, `-`/`+` bullets to `*`, setext headings to ATX, indented code to fenced, `~~~` fences to ```` ``` ````, and `---` breaks to `***`
-> - strip closing `##` from ATX headings, strip trailing whitespace, and reflow table padding
+> - rewrite two-space hard breaks to `\`, convert indented code blocks to fenced ones, and wrap bare URLs as `<autolinks>`
+> - decode HTML entities (`&amp;` and `&copy;` come back as `&` and `©`), strip trailing whitespace, collapse runs of blank lines, and normalize a tab after a list marker to a space
+> - reflow table padding, and shorten a closing `##` to match its heading's depth (`# H ##` → `# H #`)
 >
 > Inline HTML is **preserved** — `<b>`, `<span>`, `<kbd>`, comments and block-level `<div>` all round-trip byte-identically.
 >
 > **If the exact bytes matter — a Hugo or Jekyll site, an Obsidian vault, anything under version control — edit in Raw mode (⌘/Ctrl-R).** Raw mode preserves every construct listed above.
 >
+> **Fixed in v0.5.0:** link reference definitions are preserved, including unused ones, and the reference syntax that used them is restored rather than inlined. Bullet characters, ordered-list markers (including lists that repeat `1.` instead of counting up), setext headings, fence characters, thematic-break style and closing ATX hashes are now taken from the document itself instead of being normalized. A document with mixed styles keeps its majority style. A document that ended in a list or a footnote block no longer gains a trailing blank line. GFM footnote definitions are no longer duplicated on every save — a defect that grew the file by one copy each time.
+>
 > **Fixed in v0.4.1:** inline `<br>` is no longer deleted (in v0.4.0 it joined the words either side of it), and CRLF line endings now survive an edit instead of rewriting the whole file. Both were narrow bugs rather than the architectural limit this caution originally claimed — the correction is recorded in the v0.4.0 release notes.
 >
 > The remaining items follow from the vendored editor re-serializing the whole document. They are measured in `e2e/fidelity_test.go`, which fails if any of it changes, and the route to closing them is scoped in [docs/decisions/2026-08-08-markdown-fidelity-scope.md](docs/decisions/2026-08-08-markdown-fidelity-scope.md).
 >
-> Related: opening a document whose first block is a list currently marks it modified without any edit from you, so quitting offers to save the re-serialized text. Choose **Don't Save** unless you meant to change it.
+> **Also fixed:** opening a document whose first block is a list no longer marks it modified without an edit from you. That was the same root cause as the trailing blank line — the re-serialized text differed from the file by one newline, so the document looked changed the moment it opened, and quitting offered to save it.
 
 **Why?** Typora set the bar for distraction-free markdown editing, then went closed and paid. Dr. Markdown is the open-source answer: MIT licensed, native via the OS webview (no Electron), and built with zero Node.js anywhere — not at development time, not at build time, not at runtime. If you have Go, you can build it.
 
@@ -147,7 +149,8 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 
 ## Known limitations
 
-- **WYSIWYG editing rewrites some markdown, and deletes link reference definitions — see the caution at the top of this file. Use Raw mode when the exact bytes matter.** Inline `<br>` deletion and CRLF rewriting were fixed in v0.4.1.
+- **WYSIWYG editing respells some markdown — see the caution at the top of this file. Use Raw mode when the exact bytes matter.** Nothing is deleted any more: inline `<br>` and CRLF were fixed in v0.4.1, and link reference definitions plus footnote duplication in v0.5.0. 38 of 49 surveyed CommonMark and GFM constructs now round-trip byte-identically, measured by `e2e/fidelity_survey_test.go`.
+- Saving refuses to overwrite a file that changed on disk since the app last read or wrote it, and asks before replacing it. The check re-reads the file on every save, which is part of why large documents are slow.
 - Saving replaces the file via an atomic rename, which breaks hard links to it. Extended attributes such as Finder tags are preserved, and a read-only file is refused rather than replaced.
 - Large documents are slow: roughly 4 s to open a 140 KB file and 10 s for 280 KB, with no progress indicator and no way to cancel. There is no size limit.
 - Builds are unsigned and un-notarized, so macOS Gatekeeper and Windows SmartScreen will both warn. On macOS 15 and later, approve it under System Settings → Privacy & Security → Open Anyway.
