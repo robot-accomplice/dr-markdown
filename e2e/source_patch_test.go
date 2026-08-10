@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -209,5 +210,81 @@ func TestPatchWithNoEditReturnsTheOriginalBytes(t *testing.T) {
 	if got.Patched != patchFixture {
 		t.Errorf("patch did not return the original bytes.\n got: %q\nwant: %q\n(editor produced %q)",
 			got.Patched, patchFixture, got.Serialized)
+	}
+}
+
+// The gate the probe exists to pass: one word changes, and the table's
+// delimiter row is still `| --- | --- |` because nothing ever touched those
+// bytes.
+//
+// The edit is made through the DOM selection rather than by dispatching a
+// ProseMirror transaction. That keeps the probe honest — the transaction API is
+// the mechanism this design set out to avoid depending on, so using it to
+// manufacture the input would beg the question.
+func TestOneWordEditLeavesEveryOtherByteAlone(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	const want = "Intro paragraph with one WORD to change.\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+
+	var got struct {
+		Edited     bool   `json:"edited"`
+		Serialized string `json:"serialized"`
+		Patched    string `json:"patched"`
+	}
+	evalJS(t, ctx, probeCrepeJS+`(async () => {
+	  const S = await import('/src/markdown/sourcepatch.js')
+	  const original = `+jsString(patchFixture)+`
+	  const { crepe, host } = await newProbeCrepe(original)
+	  const remark = crepe.editor.ctx.get('remark')
+
+	  // Find the text node holding "word" by walking, rather than by guessing a
+	  // class name off the vendored bundle's internals.
+	  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT)
+	  let node = null
+	  while (walker.nextNode()) {
+	    if (walker.currentNode.nodeValue.includes('word')) { node = walker.currentNode; break }
+	  }
+	  if (!node) {
+	    await crepe.destroy().catch(() => {})
+	    host.remove()
+	    return { edited: false, serialized: '', patched: '' }
+	  }
+
+	  const editable = host.querySelector('[contenteditable="true"]')
+	  editable.focus()
+	  const at = node.nodeValue.indexOf('word')
+	  const range = document.createRange()
+	  range.setStart(node, at)
+	  range.setEnd(node, at + 'word'.length)
+	  const selection = window.getSelection()
+	  selection.removeAllRanges()
+	  selection.addRange(range)
+	  document.execCommand('insertText', false, 'WORD')
+
+	  await new Promise((resolve) => setTimeout(resolve, 250))
+	  const serialized = crepe.getMarkdown()
+	  const patched = S.patchPreservingSource(original, serialized, remark)
+	  await crepe.destroy().catch(() => {})
+	  host.remove()
+	  return { edited: true, serialized, patched }
+	})()`, &got)
+
+	// A test that never made an edit must not be read as a result either way.
+	if !got.Edited {
+		t.Fatal("the harness never found the word to edit, so nothing was measured")
+	}
+	if !strings.Contains(got.Serialized, "WORD") {
+		t.Fatalf("the editor did not observe the edit, so nothing was measured: %q", got.Serialized)
+	}
+
+	if got.Patched != want {
+		t.Errorf("the edit did not stay inside the paragraph.\n got: %q\nwant: %q\n(editor produced %q)",
+			got.Patched, want, got.Serialized)
+	}
+	if !strings.Contains(got.Patched, "| --- | --- |") {
+		t.Error("the delimiter row was respelled, which is the exact defect this probe exists to close")
 	}
 }
