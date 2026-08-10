@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"net/url"
@@ -20,10 +21,18 @@ import (
 	"dr-markdown/internal/session"
 )
 
+//go:embed VERSION
+var versionFile string
+
 // appVersion is the build identity carried into every recorded event, so a
-// user's bug report can be tied to what actually ran. Kept in step with
-// wails.json by TestAppVersionMatchesWailsConfig.
-const appVersion = "0.5.1"
+// user's bug report can be tied to what actually ran.
+//
+// It is READ from the VERSION file rather than written here. A version that
+// exists in two places is a version that drifts, and this project has already
+// shipped that bug: the plist said 1.0.0 for every release ever made, because
+// nothing compared it to anything. VERSION is the single source — Go embeds it,
+// the packaging script reads it, and it outlives whatever builds the bundle.
+var appVersion = strings.TrimSpace(versionFile)
 
 // fileOpenEvent is the Wails event carrying a path macOS asked us to open while
 // the app was already running. The frontend subscribes to it by this name.
