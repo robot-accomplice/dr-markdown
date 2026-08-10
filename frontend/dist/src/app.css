@@ -1070,7 +1070,14 @@ body.app-empty #contextual-controls-root {
 
 #empty-state {
   width: 560px;
-  align-self: center;
+  /* `safe` centre, not plain centre. #document-region scrolls, and a flex item
+     centred on the cross axis that outgrows its container overflows in BOTH
+     directions — the part above the top edge is then unreachable, because
+     scrollTop is already 0. Measured at a 1440x900 window with seven recent
+     files: the block was 798px in a 750px region and its top sat 53px above
+     the region's own top. `safe` falls back to flex-start exactly when that
+     would happen, and changes nothing when the content fits. */
+  align-self: safe center;
   display: none;
   flex-direction: column;
   align-items: center;
