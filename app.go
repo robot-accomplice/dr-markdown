@@ -6,15 +6,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	runtime2 "runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	imageassets "dr-markdown/internal/assets"
 	"dr-markdown/internal/document"
@@ -92,7 +88,11 @@ type nativePort interface {
 	RevealPath(context.Context, string) error
 	ConfirmOverwriteChanged(context.Context, string) (string, error)
 	OpenExternalURL(context.Context, string) error
-	SubscribeFileDrop(context.Context)
+	// SubscribeFileDrop receives paths from the OS. Emitting them to the webview
+	// is EmitFilesDropped, deliberately separate: the two cross the boundary in
+	// opposite directions and are different mechanisms under any other host.
+	SubscribeFileDrop(context.Context, func(paths []string))
+	EmitFilesDropped(context.Context, []string)
 	ShowError(context.Context, string, string)
 	ConfirmUnsaved(context.Context) (string, error)
 	SetTitle(context.Context, string)
@@ -119,7 +119,9 @@ type imageAssetPort interface {
 	LoadForDocument(documentPath string, markdownPath string) (imageassets.LoadedImage, error)
 }
 
-func NewApp() *App {
+// NewApp takes its native operations rather than constructing them, so this
+// file names no host. main.go asks the host for them.
+func NewApp(native nativePort) *App {
 	store, err := preferences.DefaultStore()
 	if err != nil {
 		store = preferences.NewStore(filepath.Join(os.TempDir(), "Dr. Markdown"), time.Now)
@@ -130,7 +132,7 @@ func NewApp() *App {
 	}
 	return newAppWithDependencies(appDependencies{
 		events:      eventlog.New(filepath.Join(logDir, "Dr. Markdown"), appVersion, time.Now),
-		native:      wailsNative{},
+		native:      native,
 		documents:   documentAdapter{},
 		fonts:       fontAdapter{},
 		preferences: store,
@@ -154,10 +156,16 @@ func (a *App) startup(ctx context.Context) {
 	defer a.reportPanic("startup")
 
 	a.ctx = ctx
-	// Wails resolves dropped files to real filesystem paths; the frontend's DOM
+	// The host resolves dropped files to real filesystem paths; the frontend's DOM
 	// drop event cannot. Subscribing through the native port keeps startup
-	// callable from tests that have no Wails runtime context.
-	a.native.SubscribeFileDrop(ctx)
+	// callable from tests that have no host runtime context.
+	//
+	// Receiving and forwarding are two calls on purpose. One takes paths FROM the
+	// OS, the other sends them TO the webview, and under a different host they are
+	// different mechanisms — a single fused call hid that.
+	a.native.SubscribeFileDrop(ctx, func(paths []string) {
+		a.native.EmitFilesDropped(ctx, paths)
+	})
 }
 
 // OpenResult is returned to the frontend when a document is opened.
@@ -592,124 +600,6 @@ func (a *App) updateTitle() {
 		title += " •"
 	}
 	a.native.SetTitle(a.ctx, title)
-}
-
-type wailsNative struct{}
-
-func (wailsNative) OpenMarkdownFile(ctx context.Context) (string, error) {
-	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
-		Title: "Open Markdown Document",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Markdown", Pattern: "*.md;*.markdown"},
-			{DisplayName: "All Files", Pattern: "*"},
-		},
-	})
-}
-
-func (wailsNative) SaveMarkdownFile(ctx context.Context, defaultFilename string) (string, error) {
-	return runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{
-		Title:           "Save Markdown Document",
-		DefaultFilename: defaultFilename,
-		Filters:         []runtime.FileFilter{{DisplayName: "Markdown", Pattern: "*.md"}},
-	})
-}
-
-func (wailsNative) SelectImageFile(ctx context.Context) (string, error) {
-	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
-		Title: "Import Image",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Images", Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.svg"},
-			{DisplayName: "All Files", Pattern: "*"},
-		},
-	})
-}
-
-// SubscribeFileDrop forwards Wails file-drop paths to the frontend, which
-// filters them to importable images.
-func (wailsNative) SubscribeFileDrop(ctx context.Context) {
-	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) {
-		runtime.EventsEmit(ctx, "files:dropped", paths)
-	})
-}
-
-// RevealPath shows the file in the platform's file browser rather than opening
-// it, so the user lands on the asset inside its document asset folder.
-//
-// This ships as one binary for macOS, Windows and Linux, so the command is
-// selected from GOOS rather than assumed. It previously always ran macOS's
-// `open -R`, which fails silently everywhere else.
-func (wailsNative) RevealPath(_ context.Context, path string) error {
-	name, args := revealCommand(runtime2.GOOS, path)
-	if name == "" {
-		return fmt.Errorf("reveal: unsupported platform %s", runtime2.GOOS)
-	}
-	return exec.Command(name, args...).Run()
-}
-
-// revealCommand maps an OS to its reveal-in-file-browser invocation. Split out
-// from RevealPath so the mapping is testable without executing anything.
-func revealCommand(goos, path string) (string, []string) {
-	switch goos {
-	case "darwin":
-		return "open", []string{"-R", path}
-	case "windows":
-		// /select, must be one argument with the path appended.
-		return "explorer", []string{"/select," + path}
-	case "linux":
-		// No universal "select the file" verb; open the containing directory.
-		return "xdg-open", []string{filepath.Dir(path)}
-	default:
-		return "", nil
-	}
-}
-
-func (wailsNative) ConfirmOverwriteChanged(ctx context.Context, path string) (string, error) {
-	return runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
-		Type:          runtime.QuestionDialog,
-		Title:         "File Changed on Disk",
-		Message:       filepath.Base(path) + " has been modified by another program since you opened it.\n\nSaving now replaces those changes with your version.",
-		Buttons:       []string{"Overwrite", "Cancel"},
-		DefaultButton: "Cancel",
-		CancelButton:  "Cancel",
-		Icon:          iconFreeMessageDialogPNG,
-	})
-}
-
-func (wailsNative) OpenExternalURL(ctx context.Context, url string) error {
-	runtime.BrowserOpenURL(ctx, url)
-	return nil
-}
-
-func (wailsNative) ShowError(ctx context.Context, title string, message string) {
-	runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
-		Type:    runtime.ErrorDialog,
-		Title:   title,
-		Message: message,
-		Icon:    iconFreeMessageDialogPNG,
-	})
-}
-
-func (wailsNative) ConfirmUnsaved(ctx context.Context) (string, error) {
-	return runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
-		Type:          runtime.QuestionDialog,
-		Title:         "Unsaved Changes",
-		Message:       "Save changes before closing?",
-		Buttons:       []string{"Save", "Don't Save", "Cancel"},
-		DefaultButton: "Save",
-		CancelButton:  "Cancel",
-		Icon:          iconFreeMessageDialogPNG,
-	})
-}
-
-func (wailsNative) SetTitle(ctx context.Context, title string) {
-	runtime.WindowSetTitle(ctx, title)
-}
-
-// EmitFileOpen tells the frontend to open a file macOS routed to us while the
-// app was already running. The launch case is served by FrontendReady instead,
-// because at launch there is no frontend to receive an event.
-func (wailsNative) EmitFileOpen(ctx context.Context, path string) {
-	runtime.EventsEmit(ctx, fileOpenEvent, path)
 }
 
 type documentAdapter struct{}
