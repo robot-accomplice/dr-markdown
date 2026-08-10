@@ -175,15 +175,16 @@
     },
     {
       "id": "file-association-does-not-open-the-file",
-      "title": "Opening a .md file from Finder launches the app but does not open the file",
+      "title": "Files opened from Finder reach the editor",
       "category": "technical",
-      "severity": "high",
-      "status": "open",
-      "summary": "The app bundle declares CFBundleDocumentTypes for net.daringfireball.markdown, so macOS associates .md files and launches the app when one is double-clicked \u2014 but nothing in main.go or app.go consumes a launch-time file argument or the macOS open-documents Apple Event, so the file is silently ignored and the user gets an empty untitled document. Found on 2026-08-10 by installing the v0.5.0 DMG to /Applications and opening a document with it: the process launched and stayed alive, but no document.opened event was recorded and no entry was added to recents. Double-clicking a markdown file is the most natural way to reach a markdown editor, and the app advertises that it handles them, so the failure is silent and reads as the app losing the document. Predates v0.5.0 \u2014 no launch-argument handling has ever existed \u2014 and was missed by four ABORT rounds because none of them installed the app. Tracked as GitHub issue 53.",
+      "severity": "medium",
+      "status": "closed",
+      "summary": "Closed 2026-08-10. The bundle had always declared CFBundleDocumentTypes, so macOS routed a double-clicked .md file to the app, but nothing consumed it and the user got an empty document with no hint their file had gone. main.go now sets mac.Options.OnFileOpen. Two arrival paths, because there are two situations: at LAUNCH the file reaches Go before the webview exists, so App holds it and the frontend asks for it through FrontendReady; while the app is RUNNING there is nothing to wait for, so Go emits the file:open event and the frontend listens. Verified on the installed .app for both paths \u2014 a launch-time file and a second file opened while running each recorded document.opened and appeared in recents. Predated v0.5.0 and was missed by four ABORT rounds because none of them installed the app.",
       "mitigations": [
-        "Consume the launch-time file argument and the macOS open-documents event, routing both through the existing openPath",
-        "Until then, correct the README: the association is advertised under Available today but the behaviour does not exist",
-        "In-app Open and Recent Files both work, so there is a path to every document the failure affects"
+        "mac.Options.OnFileOpen routes the macOS open-documents event into App.openFileFromOS",
+        "A file arriving before the frontend is ready is held rather than emitted into a webview that cannot receive it, and delivered when FrontendReady is called",
+        "FrontendReady clears what it returns, so a reload does not reopen a document the user already closed",
+        "A file that will not open is contained and recorded as os-file.open-failed rather than taking the editor down or failing silently"
       ],
       "relatedNodes": [
         "wails-go-api",
