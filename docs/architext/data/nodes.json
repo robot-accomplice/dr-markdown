@@ -257,17 +257,16 @@
       "id": "wails-go-api",
       "type": "service",
       "name": "Wails Go API",
-      "summary": "The Go object bound into Wails that adapts native dialogs, document IO, preference storage, dirty state, current content, close guard, font discovery, and title updates behind testable ports.",
+      "summary": "The Go object the host binds to the frontend. It adapts document IO, preference storage, dirty state, current content, close guard, font discovery, and title updates behind testable ports, and reaches every operating-system operation through nativePort rather than naming a host itself.",
       "responsibilities": [
-        "Dispatch reveal-in-file-browser per platform (darwin/windows/linux) rather than assuming macOS",
-        "Forward Wails file-drop paths to the frontend",
+        "Ask nativePort for dialogs, reveal, drop subscription and title, naming no host framework",
         "Import images through the native picker or a dropped file path",
         "Inline document-relative image assets for rendering and export",
         "List installed font families for settings controls",
         "Load and save application preferences",
         "Open a specific recent document path without showing the picker",
         "Open and save markdown files through native dialogs",
-        "Override Wails message-dialog alert artwork with a transparent icon",
+        "Hold a launch-time file path until the frontend asks for it, because at launch there is no view to receive an event",
         "Record recent documents after open and save",
         "Reveal an existing image asset in the OS file browser",
         "Track dirty/current content for close protection",
@@ -277,11 +276,12 @@
       "sourcePaths": [
         "app.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the host application process",
       "interfaces": [
         "window.go.main.App"
       ],
       "dependencies": [
+        "host-boundary",
         "document-io",
         "font-discovery",
         "preference-store",
@@ -920,6 +920,64 @@
         "TestLinkSafety",
         "TestDocumentTextConventions",
         "TestCommandTransforms"
+      ]
+    },
+    {
+      "id": "host-boundary",
+      "type": "module",
+      "name": "Host boundary",
+      "summary": "The seam between the application and whatever operating-system host runs it. hostPort asks for a window, an asset source, lifecycle callbacks and the native operations; host_wails.go is the only Go file in the shipped application that names Wails. The JavaScript side is NOT behind this boundary yet: transport.js and the generated bridge are Stage 2 and are deliberately held until the host question is settled, because a directly-rendered interface would have no JavaScript to put behind them.",
+      "responsibilities": [
+        "Define what the application needs from a host — a window, an asset source, startup/close/file-open callbacks and a bound object — in terms of the application's needs rather than the current host's shape",
+        "Supply nativePort to the application, composing the eleven native operations rather than re-cutting them",
+        "Translate hostConfig into the current host's options, and keep the translation in one file",
+        "Serve the embedded frontend without the application knowing how it reaches the view",
+        "Map reveal-in-file-browser to the running platform from GOOS, rather than assuming macOS",
+        "Forward operating-system file-drop paths inward, and emit the frontend event outward, as two separate operations",
+        "Supply transparent alert artwork to the host's message dialogs"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "host.go",
+        "host_wails.go",
+        "main.go"
+      ],
+      "runtime": "Go inside the host application process",
+      "interfaces": [
+        "hostPort.Native",
+        "hostPort.Run",
+        "hostConfig"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "local-file-path",
+        "markdown-document"
+      ],
+      "security": [
+        "The host is the trust boundary between the operating system and the application: dropped paths, OS-routed file-open paths and dialog results all enter here and are untrusted until the application checks them",
+        "OpenExternalURL passes a URL the application already re-checked in Go; the boundary deliberately does not re-decide scheme safety, so there is exactly one place that does",
+        "Assets reach the view through the host's in-process URL scheme handler, not a TCP listener — the application opens no socket"
+      ],
+      "observability": [
+        "TestOnlyTheHostFilesNameWails — asserts the boundary still holds, and is the measurement the host decision rests on",
+        "TestTheBoundaryDetectorActuallyReadsGoFiles — proves the walk inspects files rather than reporting clean by checking none"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "open-save-document"
+      ],
+      "relatedDecisions": [
+        "local-wails-app",
+        "native-file-boundary"
+      ],
+      "knownRisks": [
+        "no-recorded-state-for-rca"
+      ],
+      "verification": [
+        "TestOnlyTheHostFilesNameWails",
+        "TestTheBoundaryDetectorActuallyReadsGoFiles",
+        "TestFileDropSubscriptionAndEmissionAreSeparate",
+        "TestRevealCommandIsSelectedPerPlatform"
       ]
     }
   ]
