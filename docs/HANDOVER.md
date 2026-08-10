@@ -1,4 +1,4 @@
-# Handover — 2026-08-10
+# Handover — 2026-08-10 (rev 2)
 
 State of play for whoever picks this up next. Written to be actionable without the conversation that
 produced it. Supersedes the 2026-08-09 handover entirely; that one described a `main` at v0.4.1 and
@@ -6,7 +6,7 @@ three unmerged PRs, none of which is true now.
 
 ## Where things stand
 
-**v0.5.0 is released.** `main` is at the v0.5.0 tag, `develop` has nothing `main` lacks, and the
+**v0.5.0 is released, and `develop` has already moved past it.** `main` is at the v0.5.0 tag and the
 [release](https://github.com/robot-accomplice/dr-markdown/releases/tag/v0.5.0) carries two macOS
 DMGs — universal (Intel + Apple Silicon) and arm64-only. Unsigned, un-notarized.
 
@@ -25,22 +25,55 @@ It was found by a 49-construct survey, not by the round-trip corpus and not by r
 is the most transferable fact in this document: **the corpus only ever contains what somebody already
 suspected.**
 
-## The four things that are actually open
+## Waiting to ship: v0.5.1
 
-1. **Double-clicking a `.md` file does not open it** —
-   [#53](https://github.com/robot-accomplice/dr-markdown/issues/53), and the most user-visible defect
-   in the product. The bundle declares `CFBundleDocumentTypes`, so macOS routes the file to the app,
-   but nothing in `main.go` or `app.go` consumes the launch argument or the open-documents Apple
-   Event. You get an empty document. Found by installing the DMG, which four ABORT rounds never did.
+**`develop` is two commits ahead of `main` and carries a user-facing fix that is not released.**
+v0.5.0 on `main` still has the defect.
+
+- **Finder file-open is fixed** — [#53](https://github.com/robot-accomplice/dr-markdown/issues/53),
+  PR #56. `main.go` now sets `mac.Options.OnFileOpen`. Two arrival paths, because there are two
+  situations: at launch the file reaches Go before the webview exists, so `App` holds it and the
+  frontend asks through `FrontendReady`; while running, Go emits `file:open` and the frontend listens.
+  Verified on the installed `.app` for both paths.
+- Cutting v0.5.1 is the mechanics at the end of this document, unchanged.
+
+## The things that are actually open
+
+1. **The app has no macOS menu bar at all** —
+   [#57](https://github.com/robot-accomplice/dr-markdown/issues/57). No App, Edit, View or Window
+   menu. `main.go` passes no `Menu`, and in Wails v2.13.0 a nil menu means `SetApplicationMenu` is
+   never called, while `DefaultMacMenu()` — which would supply App + Edit — is commented out in that
+   version. **Established from source; not driven.** What is unverified is whether a user notices:
+   `Cmd+C`/`Cmd+V` are probably handled by WKWebView, but **`Cmd+Q` has no other provider** and most
+   likely does not quit. This is a subsystem (Go menu construction, dispatch into the frontend,
+   checkmark state) and the chromedp harness cannot verify it, because a native menu does not exist in
+   a browser view.
 2. **No crash handler.** `recover()` appears nowhere. Every non-crash failure now lands in a
    version-stamped event trail beside the preference store; a panic still leaves nothing. Small fix,
    deliberately not made on a frozen release candidate.
-3. **Windows and Linux are unbuilt.** Only `tools/build-macos.sh` exists. CI runs the full suite on
-   Linux but produces no artifact. A release build matrix is real work — native runners, per-platform
+3. **Windows and Linux are unbuilt.** Only `tools/build-macos.sh` exists, and it builds
+   `darwin/arm64` by default or `darwin/universal` with `--universal`. CI runs the full suite on Linux
+   but produces no artifact. A release build matrix is real work — native runners, per-platform
    packaging — not a flag.
 4. **The re-serialization class**, accepted since v0.4.0. 38 of 49 surveyed constructs round-trip
    byte-identically and **nothing is deleted any more**, but a construct nobody has surveyed is still
    respelled.
+
+## In flight: ribbon presentation
+
+`design/ribbon-presentation` carries an **approved design awaiting maintainer review**, at
+`docs/superpowers/specs/2026-08-10-ribbon-presentation-design.md`. No plan written, no code touched.
+
+Uniform-width ribbon buttons, five shortened Insert-tab labels, a never-truncate test gate, an
+icons-only setting in Appearance, `Cmd+Shift+L`, and deriving the Settings shortcut list from the same
+table the `keydown` handler dispatches from.
+
+Two questions were put to the maintainer and are unanswered: whether the Insert tab should lose its
+explicit labels (`Code block` → `Code`), and whether the shortcut-table change is wanted or just the
+two lines that add one hotkey.
+
+The View-menu item the maintainer asked for is **not** in that spec — see open item 1. There is no
+menu to add it to.
 
 ## The architecture, after three refactor phases
 
