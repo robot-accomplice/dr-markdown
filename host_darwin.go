@@ -78,7 +78,7 @@ func (darwinHost) Run(cfg hostConfig) error {
 	// window must stay open indefinitely waiting for a person to drag a file
 	// onto it. A watchdog that closes the window out from under the operator
 	// reports its own timeout as the result.
-	if !dropWaitMode && !walkMode && !closeCheckMode {
+	if !dropWaitMode && !walkMode && !closeCheckMode && !docCheckMode {
 		go func() {
 			select {
 			case <-time.After(45 * time.Second):
@@ -115,6 +115,9 @@ func (darwinHost) Run(cfg hostConfig) error {
 	}
 	if walkMode {
 		mode = 2
+	}
+	if docCheckMode {
+		mode = 5
 	}
 	if closeCheckMode {
 		mode = 3
@@ -157,6 +160,24 @@ func hostServeAsset(cpath *C.char, outLen *C.int, outMime **C.char) unsafe.Point
 	// literal. Escaping a script this size through ObjC has already cost a round:
 	// \n in a literal becomes a real newline, which is a SyntaxError that
 	// silently kills the entire injected script.
+	if requested == "/__docfixture.md" {
+		body, err := os.ReadFile(docFixturePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "doc fixture %s: %v\n", docFixturePath, err)
+			return nil
+		}
+		*outLen = C.int(len(body))
+		*outMime = C.CString("text/markdown")
+		return C.CBytes(body)
+	}
+
+	if requested == "/__doc.js" {
+		body := []byte(compositeDocJS)
+		*outLen = C.int(len(body))
+		*outMime = C.CString("text/javascript")
+		return C.CBytes(body)
+	}
+
 	if requested == "/__walk.js" {
 		body := []byte(walkModuleJS)
 		*outLen = C.int(len(body))
@@ -301,6 +322,9 @@ func dispatchCall(app *App, method, argsJSON string) (ok bool, payload string) {
 	case "__walk":
 		reportWalk(argsJSON)
 		return true, mustJSON("reported")
+	case "__doc":
+		reportComposite(argsJSON)
+		return true, mustJSON("reported")
 	case "__closenow":
 		hostRequestClose()
 		return true, mustJSON("reported")
@@ -410,6 +434,9 @@ var closeCheckMode bool
 
 // closeDirty makes the close check run against UNSAVED work.
 var closeDirty bool
+
+// docCheckMode runs a structured document through the editor.
+var docCheckMode bool
 
 // Lifecycle callbacks the application supplied, reachable from C.
 var (
@@ -803,4 +830,50 @@ func str2slice(v any) []any {
 func str(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+// reportComposite prints a line-by-line comparison of a structured document
+// before and after the editor, so what changes is visible rather than summarised.
+func reportComposite(argsJSON string) {
+	var payload []struct {
+		Input  string `json:"input"`
+		Output string `json:"output"`
+		Second string `json:"second"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &payload); err != nil || len(payload) == 0 {
+		fmt.Printf("DOC: unreadable payload: %v\n", err)
+		os.Exit(1)
+	}
+
+	in := strings.Split(payload[0].Input, "\n")
+	out := strings.Split(payload[0].Output, "\n")
+
+	stable := payload[0].Output == payload[0].Second
+	if payload[0].Input == payload[0].Output {
+		fmt.Printf("DOC: byte-identical across %d lines, stable=%v\n", len(in), stable)
+		fmt.Println("VERDICT: PASS — safe as a .canonical.md fixture")
+		os.Exit(0)
+	}
+	if !stable {
+		fmt.Println("DOC: the document is NOT STABLE — a second pass changed it again.")
+		fmt.Println("That is worse than a rewrite: the file would keep changing on every save.")
+	}
+
+	fmt.Printf("DOC: %d lines in, %d lines out, stable=%v — differences follow\n\n", len(in), len(out), stable)
+	for i := 0; i < len(in) || i < len(out); i++ {
+		var a, b string
+		if i < len(in) {
+			a = in[i]
+		}
+		if i < len(out) {
+			b = out[i]
+		}
+		if a == b {
+			continue
+		}
+		fmt.Printf("  line %2d\n    in : %q\n    out: %q\n", i+1, a, b)
+	}
+
+	fmt.Println("\nVERDICT: DIFFERS (see above; some rewriting is known and tracked)")
+	os.Exit(1)
 }
