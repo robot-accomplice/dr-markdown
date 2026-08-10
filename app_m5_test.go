@@ -306,6 +306,8 @@ type fakeNative struct {
 	externalURL     string
 
 	fileDropSubscribed bool
+	dropHandler        func(paths []string)
+	emittedDrops       [][]string
 	errorTitle         string
 	errorMessage       string
 	errorCount         int
@@ -325,7 +327,14 @@ func (f *fakeNative) SelectImageFile(context.Context) (string, error) {
 	return f.imagePath, nil
 }
 
-func (f *fakeNative) SubscribeFileDrop(context.Context) { f.fileDropSubscribed = true }
+func (f *fakeNative) SubscribeFileDrop(_ context.Context, onDrop func(paths []string)) {
+	f.fileDropSubscribed = true
+	f.dropHandler = onDrop
+}
+
+func (f *fakeNative) EmitFilesDropped(_ context.Context, paths []string) {
+	f.emittedDrops = append(f.emittedDrops, paths)
+}
 
 func (f *fakeNative) RevealPath(_ context.Context, path string) error {
 	f.revealedPath = path
