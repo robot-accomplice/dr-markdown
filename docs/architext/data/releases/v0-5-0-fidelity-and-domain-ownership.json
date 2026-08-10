@@ -1,0 +1,232 @@
+{
+  "id": "v0-5-0-fidelity-and-domain-ownership",
+  "version": "0.5.0",
+  "name": "Fidelity repair and domain ownership",
+  "status": "complete",
+  "posture": "on-track",
+  "summary": "Ship 0.5.0. The reason to release is a data-corruption defect: a GFM footnote definition was collected as a link reference definition, so restoration appended a copy of something never lost \u2014 and the copy was re-collected on the next pass. Files grew by one definition per save, without bound. It shipped in 0.4.1, survived review, and was found by surveying 49 ordinary constructs rather than by the corpus. Four more constructs now round-trip (closing ATX hashes, repeated ordered markers, tab-separated bullets, trailing newline), taking byte-identical round trips from 35 of 49 to 38 of 49; nothing is deleted any more, only respelled. Preserving the document's own trailing newline also fixed a bug that looked unrelated: a list-first document was marked modified the moment it opened. Every frontend failure surface now records into the event trail rather than a console no production build can display, including a refused link scheme \u2014 an autonomous security decision that previously left no trace at all. Five risk records that described a codebase which no longer existed were reconciled against the source. The editor adapter, the DOM shell and the Wails binding surface each gave up the domain logic they were carrying, to a fidelity registry, six markdown modules and internal/session.",
+  "targetWindow": "Current milestone",
+  "lastUpdated": "2026-08-09T00:00:00.000Z",
+  "updateSource": "ABORT Round 5 review",
+  "scope": {
+    "required": [
+      {
+        "id": "footnote-growth-fix",
+        "title": "Stop footnote definitions growing the file on every save",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "A GFM footnote definition matched the link-reference-definition shape, so it was collected as one and re-appended on serialize while the editor also preserved it natively. The appended copy was collected on the next pass, so the document grew without bound. Footnote labels are now excluded; GFM cannot confuse the two.",
+        "owner": "Project maintainers",
+        "workstreamId": "fidelity",
+        "dependsOn": [],
+        "evidence": [
+          "roundtrip-corpus",
+          "fidelity-survey"
+        ]
+      },
+      {
+        "id": "style-preservation-extra",
+        "title": "Preserve closing ATX hashes, repeated ordered markers and tab-separated bullets",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Three more style dimensions are taken from the document instead of imposed. The tab case was the worst: detection counted only space-separated markers, so a tab-indented file expressed no preference and every bullet in it was rewritten to the default.",
+        "owner": "Project maintainers",
+        "workstreamId": "fidelity",
+        "dependsOn": [],
+        "evidence": [
+          "fidelity-survey"
+        ]
+      },
+      {
+        "id": "trailing-newline-preservation",
+        "title": "Preserve the document's trailing newline, and stop list documents opening modified",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "A document ending in a block gained a blank line on first edit. The same difference made a list-first document report modified the instant it opened, so quitting offered to save text the user never wrote. Verified by reverting the fix and watching both list cases go dirty again.",
+        "owner": "Project maintainers",
+        "workstreamId": "fidelity",
+        "dependsOn": [],
+        "evidence": [
+          "roundtrip-corpus"
+        ]
+      },
+      {
+        "id": "diagnostics-reach-the-trail",
+        "title": "Route every frontend failure through the event trail",
+        "kind": "feature",
+        "status": "complete",
+        "summary": "The trail had exactly one call site. Ten diagnostics logged only to a console no production build can display. A link refused by the scheme allowlist recorded nothing at all \u2014 an autonomous security decision against untrusted content, leaving no trace. Refusals are deduped and capped so a hostile document cannot flood a trimmed log.",
+        "owner": "Project maintainers",
+        "workstreamId": "operability",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ]
+      },
+      {
+        "id": "exercise-staleness-control",
+        "title": "Exercise the write-staleness control",
+        "kind": "chore",
+        "status": "complete",
+        "summary": "The control that refuses to overwrite a file changed on disk was implemented but had no test \u2014 the 'control not exercised' cluster ABORT Round 4 named. Five tests pin its properties, each verified to fail against a deliberately broken control.",
+        "owner": "Project maintainers",
+        "workstreamId": "operability",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ]
+      },
+      {
+        "id": "reconcile-risk-records",
+        "title": "Reconcile five risk records with the source",
+        "kind": "chore",
+        "status": "complete",
+        "summary": "no-ci-enforcement, vendored-bundles-unverified, no-recorded-state-for-rca, no-write-staleness-check and asset-containment-not-type-bounded all described code that no longer existed, and architext validate passed on every one \u2014 it checks schema, not truth. A sixth, atomic-rename-metadata-loss, made three claims of which two were false and one contradicted the README; the code settled it.",
+        "owner": "Project maintainers",
+        "workstreamId": "operability",
+        "dependsOn": [],
+        "evidence": [
+          "architext-validate"
+        ]
+      },
+      {
+        "id": "domain-ownership",
+        "title": "Give fidelity, the markdown domain and the document session single owners",
+        "kind": "chore",
+        "status": "complete",
+        "summary": "Three phases against an agreed design and clean-code audit. editor.js 286 to 118 behind two ports and a registry; 360 lines of pure markdown logic out of app.js into six modules; the tabs, dirty state and on-disk baseline out of the Wails binding surface into internal/session. Every pre-existing test stayed green and unchanged throughout.",
+        "owner": "Project maintainers",
+        "workstreamId": "architecture",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "architext-validate"
+        ]
+      }
+    ],
+    "planned": [],
+    "stretch": [],
+    "deferred": [],
+    "outOfScope": []
+  },
+  "workstreams": [
+    {
+      "id": "fidelity",
+      "name": "Markdown fidelity",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Stop the WYSIWYG surface changing bytes it was not asked to change.",
+      "itemIds": [
+        "footnote-growth-fix",
+        "style-preservation-extra",
+        "trailing-newline-preservation"
+      ]
+    },
+    {
+      "id": "operability",
+      "name": "Operability and recorded state",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Make a failure diagnosable after the fact, and make the release record match the code.",
+      "itemIds": [
+        "diagnostics-reach-the-trail",
+        "exercise-staleness-control",
+        "reconcile-risk-records"
+      ]
+    },
+    {
+      "id": "architecture",
+      "name": "Domain ownership",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Give the parts that were changing users' bytes an owner, so the next compensation is one file rather than a three-place edit.",
+      "itemIds": [
+        "domain-ownership"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "wysiwyg-reserialization-class",
+      "title": "The WYSIWYG surface still re-serializes the whole document",
+      "severity": "high",
+      "status": "accepted",
+      "summary": "Unchanged and still accepted. The editor parses to ProseMirror's model and re-serializes everything, so a construct nobody tested is still respelled. 38 of 49 surveyed constructs now round-trip byte-identically and NOTHING is deleted, but the class is not closed \u2014 only source-preserving editing would close it. Source positions were proved reachable via ctx.get('remark') on 2026-08-09, so option (b) is no longer closed on evidence; the transaction-to-source mapping remains unproven. Disclosed in the README caution, measured by two tests that fail in both directions."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "m-fidelity-repair",
+      "label": "Fidelity repair",
+      "status": "complete",
+      "targetWindow": "0.5.0",
+      "order": 1,
+      "itemIds": [
+        "footnote-growth-fix",
+        "style-preservation-extra",
+        "trailing-newline-preservation"
+      ]
+    },
+    {
+      "id": "m-operability",
+      "label": "Recorded state and reconciled records",
+      "status": "complete",
+      "targetWindow": "0.5.0",
+      "order": 2,
+      "itemIds": [
+        "diagnostics-reach-the-trail",
+        "exercise-staleness-control",
+        "reconcile-risk-records"
+      ]
+    },
+    {
+      "id": "m-domain-ownership",
+      "label": "Domain ownership",
+      "status": "complete",
+      "targetWindow": "0.5.0",
+      "order": 3,
+      "itemIds": [
+        "domain-ownership"
+      ]
+    }
+  ],
+  "dependencies": [],
+  "evidence": [
+    {
+      "id": "full-test-suite",
+      "label": "go test ./... -count=1",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "roundtrip-corpus",
+      "label": "TestRoundTripCorpus over 22 canonical fixtures",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "fidelity-survey",
+      "label": "TestFidelitySurveyRewritesExactlyTheseConstructs \u2014 38 of 49 byte-identical",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "architext-validate",
+      "label": "architext validate .",
+      "kind": "check",
+      "status": "passing"
+    },
+    {
+      "id": "ci-workflow",
+      "label": "GitHub Actions: gofmt, vet, full suite with browser e2e, frontend syntax, vendor integrity",
+      "kind": "check",
+      "status": "passing"
+    }
+  ]
+}

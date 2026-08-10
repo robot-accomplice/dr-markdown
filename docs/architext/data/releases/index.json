@@ -1,5 +1,5 @@
 {
-  "currentReleaseId": "initial-architext-buildout",
+  "currentReleaseId": "v0-5-0-fidelity-and-domain-ownership",
   "releases": [
     {
       "id": "initial-architext-buildout",
@@ -21,6 +21,27 @@
         "stretch": 0
       },
       "file": "initial-architext-buildout.json"
+    },
+    {
+      "id": "v0-5-0-fidelity-and-domain-ownership",
+      "version": "0.5.0",
+      "name": "Fidelity repair and domain ownership",
+      "status": "complete",
+      "posture": "on-track",
+      "targetWindow": "Current milestone",
+      "lastUpdated": "2026-08-09T00:00:00.000Z",
+      "summary": "Ship 0.5.0. The reason to release is a data-corruption defect: a GFM footnote definition was collected as a link reference definition, so restoration appended a copy of something never lost — and the copy was re-collected on the next pass. Files grew by one definition per save, without bound. It shipped in 0.4.1, survived review, and was found by surveying 49 ordinary constructs rather than by the corpus. Four more constructs now round-trip (closing ATX hashes, repeated ordered markers, tab-separated bullets, trailing newline), taking byte-identical round trips from 35 of 49 to 38 of 49; nothing is deleted any more, only respelled. Preserving the document's own trailing newline also fixed a bug that looked unrelated: a list-first document was marked modified the moment it opened. Every frontend failure surface now records into the event trail rather than a console no production build can display, including a refused link scheme — an autonomous security decision that previously left no trace at all. Five risk records that described a codebase which no longer existed were reconciled against the source. The editor adapter, the DOM shell and the Wails binding surface each gave up the domain logic they were carrying, to a fidelity registry, six markdown modules and internal/session.",
+      "counts": {
+        "features": 1,
+        "bugFixes": 3,
+        "workstreams": 3,
+        "blockers": 1,
+        "complete": 7,
+        "inProgress": 0,
+        "planned": 0,
+        "stretch": 0
+      },
+      "file": "v0-5-0-fidelity-and-domain-ownership.json"
     }
   ]
 }

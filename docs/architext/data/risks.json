@@ -62,14 +62,17 @@
     },
     {
       "id": "no-write-staleness-check",
-      "title": "Saving clobbers changes made outside the app",
+      "title": "Saving refuses to clobber changes made outside the app",
       "category": "technical",
-      "severity": "high",
-      "status": "open",
-      "summary": "Nothing compares modification time, size or content before overwriting. A file changed on disk since it was opened — by a git pull, a sync client, or a second window — is replaced silently with no error. Raised as a blocking finding in ABORT Round 1 and carried across three rounds without a recorded justification.",
+      "severity": "medium",
+      "status": "closed",
+      "summary": "Implemented and, as of 2026-08-09, actually tested. `confirmNoExternalChange` re-reads the file before writing and compares it against what the app last READ OR WROTE — not against what it first opened, which would make every second save look like an external edit and turn the prompt into noise the user learns to click through. On a mismatch the user is asked, the choice is recorded as `document.conflict`, and a refusal returns an error naming the file rather than writing. Both save paths are covered: `SaveDocumentAs` delegates to `SaveDocument`, and `openPath` establishes the baseline. The control had shipped with NO test, which is ABORT Round 4's 'control not exercised' cluster — five tests now pin it, and each was verified to fail against a deliberately broken control. Residuals: detection is content-based, so it re-reads the whole file on every save (noticeable on large documents) and cannot distinguish a file changed and changed back — which is harmless, the bytes are identical. A Save-As onto a path the app never opened has no baseline, and is covered instead by the native dialog's own replace prompt.",
       "mitigations": [
-        "Disclosed in the README's Known limitations",
-        "Record the content or modification time at open and refuse or prompt when it has changed at save"
+        "confirmNoExternalChange re-reads and compares before every write, on both save paths",
+        "The user decides; the choice is recorded as a document.conflict event",
+        "A failure to RE-READ does not block the save — failing to verify is not evidence of a conflict, and must not strand the user's work",
+        "Pinned by five tests in app_staleness_test.go, each verified to fail against a broken control",
+        "Residual, accepted with reason: content comparison costs a full re-read per save"
       ],
       "relatedNodes": [
         "atomic-file-writer",
@@ -81,14 +84,15 @@
     },
     {
       "id": "atomic-rename-metadata-loss",
-      "title": "Replacement by rename loses file identity and metadata",
+      "title": "Replacement by rename breaks hard links to the document",
       "category": "technical",
-      "severity": "medium",
-      "status": "open",
-      "summary": "Saving writes a temp file and renames it over the target. That breaks hard links to the document, drops extended attributes such as Finder tags, and replaces a read-only file, because rename needs permission on the directory rather than on the file.",
+      "severity": "low",
+      "status": "accepted",
+      "summary": "Narrowed to one consequence, after the code was checked against this record and two of its three claims turned out to be false. Extended attributes such as Finder tags ARE carried across — `atomicfile.go` calls `copyExtendedAttributes` onto the temp file before the rename, best-effort so a filesystem without xattr support cannot cost the user their document. A read-only target IS refused rather than replaced, precisely because rename takes permission on the directory and would otherwise defeat the mechanism people use read-only for. What remains true: the rename gives the document a new inode, so hard links to it break. That is accepted, not a defect — the alternative is the non-atomic in-place write that `internal/atomicfile` exists to prevent, and a broken link between two names is recoverable where lost contents are not. The README already described the behaviour correctly; this record contradicted it and the code settled it.",
       "mitigations": [
-        "Disclosed in the README's Known limitations",
-        "Copy extended attributes onto the temp file before rename, and refuse a target the user cannot write"
+        "Extended attributes are copied onto the replacement before rename",
+        "A read-only target is refused with an explicit error rather than silently replaced",
+        "Hard-link breakage is disclosed in the README's Known limitations and reasoned through in internal/atomicfile/atomicfile.go"
       ],
       "relatedNodes": [
         "atomic-file-writer"
@@ -99,14 +103,15 @@
     },
     {
       "id": "asset-containment-not-type-bounded",
-      "title": "Asset containment bounds the directory but not the file type",
+      "title": "Asset containment bounds the directory and the file type",
       "category": "security",
       "severity": "medium",
-      "status": "open",
-      "summary": "A document may only reference assets at or below its own directory, which is enforced. But a non-image extension falls back to application/octet-stream and its bytes are still inlined, so any file at or below the document directory is readable on render — and rendering is automatic, with no user interaction. For a markdown file opened from a Downloads folder or a repository root, that set is not small.",
+      "status": "closed",
+      "summary": "Both bounds are enforced, and unlike the other controls audited on 2026-08-09 this one was already exercised. `internal/assets/manager.go` checks the extension against an image allowlist BEFORE reading any bytes, so a non-image file is refused rather than inlined as application/octet-stream — closing the path where opening a markdown file from a Downloads folder or a repository root meant `.env`, `id_rsa` or `secrets.yaml` beside it were read and embedded, automatically and with no user interaction. Directory containment is enforced separately, with symlinks re-resolved and the check applied to the resolved path. `TestOnlyImageFilesAreInlined` asserts both halves: the named secrets are refused AND their bytes do not appear in any returned data URI, while an ordinary image beside the document still loads.",
       "mitigations": [
-        "Restrict inlining to the known image extensions and refuse everything else",
-        "Refusals already surface through the existing missing-asset render state"
+        "Inlining is restricted to known image extensions, checked before any read",
+        "Directory containment re-resolves symlinks and checks the resolved path",
+        "Pinned by TestOnlyImageFilesAreInlined, which asserts the bytes are absent rather than only that an error was returned"
       ],
       "relatedNodes": [
         "image-asset-manager"
@@ -115,14 +120,17 @@
     },
     {
       "id": "no-recorded-state-for-rca",
-      "title": "No logging, crash record or error trail reaches the maintainer",
+      "title": "No crash record reaches the maintainer; the error trail now does",
       "category": "operational",
-      "severity": "high",
+      "severity": "medium",
       "status": "open",
-      "summary": "Frontend diagnostics are console warnings with no devtools in a production build; Go errors surface only as an ephemeral modal carrying the error string. Nothing is persisted. A bug reported by a user cannot be tied to a build or reproduced from recorded state, which this project's own rules require of any new failure surface.",
+      "summary": "Closed for the frontend. `internal/eventlog` persists a structured trail stamped with `appVersion`, reachable from the webview through `bridge.recordEvent`, and every frontend failure surface now records into it rather than only warning to a console no production build can display: boot failure, preferences load and save, image import (ribbon and drop), replace and reveal, render failure, editor style application — the site that once hid a ReferenceError for two rounds of debugging — plus refused link schemes. A refusal is recorded once per distinct href, capped, because the log is trimmed and the refused href is attacker-controlled: recording on every render would let a document the app has already judged hostile evict the rest of the trail. Residual: Go-side errors still surface mainly as an ephemeral native dialog, and no crash handler exists, so a hard crash still leaves nothing behind.",
       "mitigations": [
-        "Version identity now ships in the bundle so a report can at least name the build",
-        "Add a structured event trail persisted beside the preference store"
+        "Version identity ships in the bundle so a report can name the build",
+        "internal/eventlog persists a structured, version-stamped trail beside the user log directory",
+        "Every frontend failure surface records through bridge.recordEvent, pinned by TestFailureSurfacesRecordDurableEvents",
+        "Refused links are recorded once per distinct href and capped, so the audit trail cannot be flooded by the content it is auditing",
+        "Residual, recorded not dropped: Go-side error reporting and crash capture are still dialog-only"
       ],
       "relatedNodes": [
         "wails-go-api",
@@ -132,14 +140,15 @@
     },
     {
       "id": "no-ci-enforcement",
-      "title": "Every release gate is hand-run and nothing enforces them",
+      "title": "Release gates are enforced in CI, except the Architext validator",
       "category": "operational",
       "severity": "medium",
-      "status": "open",
-      "summary": "There is no CI configuration in the repository. Tests, vet, Architext validation, screenshot regeneration, vendoring and packaging are all run by hand, so forgetting any one of them is silent — and the release artifact was in fact found two rounds stale during ABORT Round 4.",
+      "status": "closed",
+      "summary": "Largely closed. `.github/workflows/ci.yml` runs on push and pull request to `main` and `develop`, enforcing gofmt, `go vet`, the full `go test ./...` including the browser e2e suite, a `node --check` syntax pass over the frontend sources, and vendored-bundle integrity. It also asserts Chrome is present, so the frontend suite cannot pass by being absent, and deliberately never sets DRMD_SKIP_E2E. Residual: `architext validate` is NOT in CI, and the workflow records why — the Architext CLI is a binary distributed outside this repository, and installing it would add a toolchain dependency to a project whose defining constraint is having none. It stays a maintainer-run gate, which means Architext data staleness is still caught by review rather than by machine. Screenshot regeneration and packaging also remain hand-run.",
       "mitigations": [
-        "Disclosed in the ABORT artifact",
-        "Add a workflow running go test, go vet and architext validate on push"
+        "CI enforces gofmt, vet, the full test suite, frontend syntax and vendor integrity on every push and PR to main and develop",
+        "The workflow fails when no Chrome is present rather than skipping the only frontend coverage",
+        "Residual, accepted with reason: architext validate, screenshot regeneration and packaging stay maintainer-run"
       ],
       "relatedNodes": [
         "vendored-editor-assets"
@@ -148,13 +157,15 @@
     },
     {
       "id": "vendored-bundles-unverified",
-      "title": "Vendored editor bundles carry no integrity record",
+      "title": "Vendored editor bundles are digest-verified, but against ourselves",
       "category": "security",
       "severity": "medium",
-      "status": "open",
-      "summary": "tools/vendor.sh fetches several megabytes of third-party JavaScript over the network and records no checksum; NOTICE.md records package and version but no hash, and the committed bundle is patched in place so it matches no upstream artifact. Provenance cannot be re-established later.",
+      "status": "closed",
+      "summary": "The committed bundles now carry recorded SHA-256 digests in `tools/vendor-digests.txt`, verified by `tools/verify-vendor.sh` on every CI run and refusing an empty digest file rather than reporting success over zero checks — so a substituted, corrupted or half-refreshed bundle is visible. Residual, and it is the honest limit of this control: the digests are of OUR committed bytes, taken after `tools/vendor.sh` patches the bundle in place, so they detect drift from the reviewed artifact but do not establish upstream provenance. Tying a bundle back to a published upstream artifact would need the digest recorded at fetch time, before patching.",
       "mitigations": [
-        "Record a SHA-256 per bundle in NOTICE.md and verify it in vendor.sh before writing"
+        "tools/vendor-digests.txt records a SHA-256 per vendored file",
+        "tools/verify-vendor.sh runs in CI, never touches the network, and fails on an empty digest file",
+        "Residual, accepted with reason: digests attest the reviewed committed bytes, not upstream provenance"
       ],
       "relatedNodes": [
         "vendored-editor-assets"

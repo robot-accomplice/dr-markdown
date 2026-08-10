@@ -42,12 +42,25 @@ func TestWysiwygRewritesTheseConstructs(t *testing.T) {
 		// still records LF here while TestLineEndingsSurviveAnEditAndSave proves
 		// a CRLF file saves as CRLF. Keeping both makes the distinction visible.
 		{"editor normalizes crlf internally", "line one\r\nline two\r\n", "line one\nline two\n"},
-		{"hyphen bullets become asterisks", "- a\n- b\n", "* a\n* b\n"},
-		{"plus bullets become asterisks", "+ a\n+ b\n", "* a\n* b\n"},
-		{"setext heading becomes atx", "Title\n=====\n", "# Title\n"},
-		{"closing hashes are stripped", "# Heading ##\n", "# Heading\n"},
-		{"tilde fence becomes backtick fence", "~~~\ncode\n~~~\n", "```\ncode\n```\n"},
-		{"thematic break is respelled", "a\n\n---\n\nb\n", "a\n\n***\n\nb\n"},
+		// Bullets, ordered markers, setext headings, fences and thematic breaks
+		// are now PRESERVED — the serializer is configured from the document's
+		// own style. What remains here is what style options cannot express.
+		// Closing hash sequences are no longer DELETED — the serializer is told
+		// the document uses them. What remains is that their length is
+		// normalized to the heading's depth, which is all the option can
+		// express: `# Heading ##` keeps a closing sequence but comes back with
+		// one hash. A document whose closing sequences already match their
+		// depth (`## Two ##`) round-trips exactly; see 22-style-atx-ordered.
+		{"closing hash length is normalized to depth", "# Heading ##\n", "# Heading #\n"},
+		{"two-space hard break becomes backslash", "a  \nb\n", "a\\\nb\n"},
+		// A tab after the bullet is normalized to a space, which no option can
+		// express. The BULLET CHARACTER must still survive: style detection
+		// counted only space-separated markers, so a tab-indented document
+		// expressed no preference and every bullet in it was rewritten to the
+		// serializer's default `*` — turning a whitespace nit into a whole-file
+		// diff.
+		{"tab after bullet becomes a space, marker preserved", "-\ta\n-\tb\n", "- a\n- b\n"},
+		{"trailing whitespace is stripped", "text   \n", "text\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in, err := json.Marshal(tc.in)
@@ -160,5 +173,56 @@ func TestLineEndingsSurviveAnEditAndSave(t *testing.T) {
 	}
 	if saved != original {
 		t.Errorf("saved bytes differ from the file that was opened:\n want %q\n got  %q", original, saved)
+	}
+}
+
+// Opening a document must not mark it modified. The WYSIWYG surface
+// re-serializes on load, so any difference between the file and its
+// re-serialization shows up as a dirty document the user never edited — and on
+// quit, as an offer to save text they never wrote.
+//
+// The instance that earned this test: the serializer emitted a blank line after
+// a document ending in a block, so every list-first file was dirty the moment it
+// opened. Preserving the document's own trailing newline closed it. Verified to
+// fail without that fix: `list first` and `ordered list first` both report dirty.
+//
+// This is the general property, not the one construct — a future serializer
+// change that reintroduces any load-time difference fails here.
+func TestOpeningADocumentDoesNotMarkItModified(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	for _, tc := range []struct{ name, doc string }{
+		{"list first", "- alpha\n- beta\n"},
+		{"heading first", "# Title\n\nBody.\n"},
+		{"ordered list first", "1. one\n2. two\n"},
+		{"footnote", "A claim[^src].\n\n[^src]: Ibid.\n"},
+		{"link references", "See the [spec][s].\n\n[s]: https://example.com/spec\n"},
+		{"table last", "| a | b |\n| - | - |\n| 1 | 2 |\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := json.Marshal(tc.doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var dirty bool
+			evalJS(t, ctx, `(async () => {
+				globalThis.go = { main: { App: {
+					LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
+					OpenDocument: async () => ({ path: '/tmp/probe.md', content: `+string(in)+` }),
+					SaveDocument: async () => {},
+					ResolveUnsavedChanges: async () => true,
+					SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
+				} } }
+				await window.__app.openDocument()
+				await new Promise((r) => setTimeout(r, 300))
+				return window.__app.state.dirty === true
+			})()`, &dirty)
+			if dirty {
+				t.Errorf("opening %q marked the document modified with no edit", tc.doc)
+			}
+		})
 	}
 }

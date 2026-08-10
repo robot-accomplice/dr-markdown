@@ -121,13 +121,20 @@
         "Push dirty state and content updates through the bridge",
         "Resolve rendered image sources through the asset bridge on every render surface",
         "Target image-local controls at the selected image block",
-        "Filter dropped files to importable image extensions"
+        "Filter dropped files to importable image extensions",
+        "Delegate document transforms to the markdown domain modules rather than implementing them: tables, fenced code, image tokens, link safety, line endings and commands"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
         "frontend/dist/index.html",
         "frontend/dist/src/app.js",
-        "frontend/dist/src/app.css"
+        "frontend/dist/src/app.css",
+        "frontend/dist/src/markdown/tables.js",
+        "frontend/dist/src/markdown/fences.js",
+        "frontend/dist/src/markdown/images.js",
+        "frontend/dist/src/markdown/links.js",
+        "frontend/dist/src/markdown/text.js",
+        "frontend/dist/src/markdown/commands.js"
       ],
       "runtime": "Embedded webview JavaScript",
       "interfaces": [
@@ -157,7 +164,7 @@
       "security": [
         "A Content-Security-Policy in index.html restricts script, style, image, font and connect sources; object-src, base-uri, form-action and frame-ancestors are 'none'",
         "Document links are routed to the OS browser via OpenExternalURL instead of navigating the app window",
-        "Rendered document links pass a scheme allowlist (http, https, mailto). The candidate is normalized exactly as the URL parser normalizes it — tabs, CR and LF stripped — because the check must refuse what the BROWSER navigates to, not what the raw string looks like",
+        "Rendered document links pass a scheme allowlist (http, https, mailto). The candidate is normalized exactly as the URL parser normalizes it \u2014 tabs, CR and LF stripped \u2014 because the check must refuse what the BROWSER navigates to, not what the raw string looks like",
         "Suppresses browser context menu and drag/drop navigation in the shell",
         "safeLinkHref returns the href to assign rather than a boolean, so a caller cannot validate one string and use another"
       ],
@@ -283,7 +290,8 @@
         "document-io",
         "font-discovery",
         "preference-store",
-        "image-asset-manager"
+        "image-asset-manager",
+        "document-session"
       ],
       "dataHandled": [
         "markdown-document",
@@ -461,17 +469,17 @@
       "id": "wysiwyg-editor",
       "type": "module",
       "name": "WYSIWYG editor adapter",
-      "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown and suppresses initial normalization as a dirty edit.",
+      "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown, suppresses initial normalization as a dirty edit, and runs the fidelity registry on the way in and out. It owns the editor lifecycle only; what is done to the user's bytes is owned by the fidelity domain.",
       "responsibilities": [
         "Create and rebuild the formatted editor",
         "Emit user edits to the frontend shell",
-        "Record image alt text per destination on load and restore it on serialize",
         "Serialize markdown from Crepe",
-        "Split YAML frontmatter out before the editor sees it and re-attach it on the way out"
+        "Run the fidelity registry: capture preservations from the document on build, apply serializer policies before the serializer runs, and restore preservations on serialize"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
         "frontend/dist/src/editor.js",
+        "frontend/dist/src/fidelity/index.js",
         "frontend/dist/vendor/crepe.bundle.mjs"
       ],
       "runtime": "Embedded webview JavaScript",
@@ -507,7 +515,11 @@
       "verification": [
         "TestRawModeEditsPreserveEveryOtherByte",
         "TestRoundTripCorpus",
-        "TestWysiwygRewritesTheseConstructs"
+        "TestWysiwygRewritesTheseConstructs",
+        "TestFidelitySurveyRewritesExactlyTheseConstructs",
+        "TestOpeningADocumentDoesNotMarkItModified",
+        "TestFidelityRegistryContract",
+        "TestEditorDoesNotKnowIndividualPreservations"
       ]
     },
     {
@@ -800,6 +812,59 @@
         "internal/atomicfile/atomicfile_test.go",
         "TestFailedWriteLeavesExistingFileIntact",
         "TestWriteReplacesContentAndAppliesPerm"
+      ]
+    },
+    {
+      "id": "document-session",
+      "type": "module",
+      "name": "Document session",
+      "summary": "Owns the open editor tabs, their dirty state and the per-path record of what the app last read from or wrote to disk.",
+      "responsibilities": [
+        "Hold the open tabs as the frontend reports them, copied rather than aliased",
+        "Answer which tab is active and which have unsaved changes, naming no file when it cannot know",
+        "Record a dirty frontend that never synced its documents, without inventing a write target",
+        "Decide which tab a save or an open adopts, in one place rather than once per caller",
+        "Hold the per-path on-disk baseline the staleness check compares against"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "internal/session/session.go"
+      ],
+      "runtime": "Go",
+      "interfaces": [
+        "Sync",
+        "Active",
+        "Dirty",
+        "SetDirty",
+        "HasUnsyncedDirty",
+        "UpdateActiveContent",
+        "AdoptPath",
+        "RememberOnDisk",
+        "BaselineFor"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "markdown-document"
+      ],
+      "security": [
+        "Never infers a write target from ambient state: an empty session names no file, which is the defect that once wrote one tab's content over another tab's file",
+        "AdoptPath is the single place deciding which tab a write lands on; it was duplicated across save and open before this"
+      ],
+      "observability": [
+        "internal/session tests"
+      ],
+      "relatedFlows": [
+        "open-save-document"
+      ],
+      "relatedDecisions": [
+        "domain-ownership-and-boundaries"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "TestActiveWithNoTabsNamesNoFile",
+        "TestDirtyWithNoSyncedTabsForcesAPromptWithoutNamingAFile",
+        "TestBaselineTracksTheLastReadOrWrite",
+        "TestAppDoesNotDuplicateSessionState"
       ]
     }
   ]
