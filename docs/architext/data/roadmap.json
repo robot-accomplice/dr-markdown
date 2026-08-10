@@ -109,13 +109,22 @@
       "summary": "Lift open, save, resolve-unsaved and asset import out of app.go (747 lines) into use-case types, leaving App as a thin adapter. The injected ports already exist and do not change. Sequenced last deliberately: dependency inversion is already in place, so this addresses comprehension rather than correctness, and deferring it costs clarity not safety."
     },
     {
+      "id": "host-boundary",
+      "kind": "chore",
+      "section": "Host Portability And Exit Path",
+      "title": "Draw the host boundary before choosing a replacement",
+      "status": "planned",
+      "priority": "high",
+      "summary": "Phase 0 of getting off Wails, approved 2026-08-10; design at docs/superpowers/specs/2026-08-10-host-boundary-design.md. One hostPort defined from what the application needs rather than what Wails offers, composing the existing nativePort rather than re-cutting 11 tested operations. tools/genbridge reads app.go via go/ast and emits a tracked bridge module, ending calls by name string and deleting three regex-based drift tests that generation makes impossible; the parser choice is a correctness requirement, since one of those tests matched 17 of 18 methods because UpdateContent is written on one line. Changes no runtime behaviour and ships an identical app, so every pre-existing test must stay green and unchanged. Its deliverable is a measurement: the host-specific surface reduced to main.go and transport.js and counted, so the choice between Wails v3, owning the host, and a macOS-native shell is made from evidence rather than estimate. Does not fix #61 or #57 and does not touch packaging, because all three need a host that exposes more than Wails v2 does."
+    },
+    {
       "id": "wails-exit-path",
       "kind": "chore",
       "section": "Host Portability And Exit Path",
       "title": "An exit path from Wails",
       "status": "planned",
-      "priority": "medium",
-      "summary": "Reduce the app to a host-swappable shell and choose a replacement. Wails is imported by only two files and every native operation already sits behind nativePort in the wailsNative adapter, so the remaining coupling is main.go's wails.Run bootstrap, the reflection binding that turns Bind: []interface{}{app} into a window.go.main.App surface bridge.js calls by name string, and tools/build-macos.sh delegating DMG packaging to wails build. Two open defects are host limitations rather than app defects: the missing File and View menus (#57 — AppKit supplies the default App, Edit and Window menus, verified by driving the installed 0.5.1 build, so what is absent is this app's own commands rather than a menu bar) and a panicking bound call whose frontend promise never settles. The vendored Milkdown Crepe frontend needs a webview, and the no-Node-toolchain rule excludes Electron, so candidates are webview hosts."
+      "priority": "high",
+      "summary": "Approved direction as of 2026-08-10, raised to high priority by the maintainer. Depends on host-boundary, which is phase 0 and deliberately does not choose a host. Reduce the app to a host-swappable shell and choose a replacement. Wails is imported by only two files and every native operation already sits behind nativePort in the wailsNative adapter, so the remaining coupling is main.go's wails.Run bootstrap, the reflection binding that turns Bind: []interface{}{app} into a window.go.main.App surface bridge.js calls by name string, and tools/build-macos.sh delegating DMG packaging to wails build. Two open defects are host limitations rather than app defects: the missing File and View menus (#57 — AppKit supplies the default App, Edit and Window menus, verified by driving the installed 0.5.1 build, so what is absent is this app's own commands rather than a menu bar) and a panicking bound call whose frontend promise never settles. The vendored Milkdown Crepe frontend needs a webview, and the no-Node-toolchain rule excludes Electron, so candidates are webview hosts."
     }
   ]
 }
