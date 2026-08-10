@@ -160,3 +160,39 @@ func TestLifecycleCallbacksReportTheirPanics(t *testing.T) {
 		}
 	}
 }
+
+// The dialog must not storm. UpdateContent is pushed debounced on every edit, so
+// a panic there repeats for as long as the user types; a blocking native dialog
+// per tick would make the app unusable, which is worse than the silently dead
+// call it replaced.
+//
+// The trail keeps every panic, because that is what root-causing needs. The
+// dialog is capped instead, and the cap is one per session rather than one per
+// operation: its instruction is "restart", and that does not improve on
+// repetition. This mirrors the capping already applied to refused link schemes,
+// for the same reason — a failure that repeats must not drown out everything
+// else.
+func TestRepeatedPanicsRecordEveryTimeButShowOneDialog(t *testing.T) {
+	dir := t.TempDir()
+	app, native := appWithEventLogIn(t, dir)
+
+	for _, op := range []string{"UpdateContent", "UpdateContent", "SaveDocument"} {
+		func() {
+			defer func() { _ = recover() }()
+			defer app.reportPanic(op)
+			panic("boom")
+		}()
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "events.log"))
+	if err != nil {
+		t.Fatalf("no panics were recorded: %v", err)
+	}
+	if got := strings.Count(string(data), `"event":"panic"`); got != 3 {
+		t.Errorf("the trail must keep every panic, got %d of 3:\n%s", got, data)
+	}
+	if native.errorCount != 1 {
+		t.Errorf("showed %d dialogs; a repeating panic would block the app behind a modal storm",
+			native.errorCount)
+	}
+}

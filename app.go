@@ -27,7 +27,7 @@ import (
 // appVersion is the build identity carried into every recorded event, so a
 // user's bug report can be tied to what actually ran. Kept in step with
 // wails.json by TestAppVersionMatchesWailsConfig.
-const appVersion = "0.5.0"
+const appVersion = "0.5.1"
 
 // fileOpenEvent is the Wails event carrying a path macOS asked us to open while
 // the app was already running. The frontend subscribes to it by this name.
@@ -71,6 +71,9 @@ type App struct {
 	preferences preferencePort
 	images      imageAssetPort
 	events      *eventlog.Log
+	// panicDialog fires at most once. Deliberately not guarded by mu: a panic
+	// raised while mu is held would deadlock its own report. See reportPanic.
+	panicDialog sync.Once
 }
 
 type appDependencies struct {

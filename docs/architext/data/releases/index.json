@@ -1,5 +1,5 @@
 {
-  "currentReleaseId": "v0-5-0-fidelity-and-domain-ownership",
+  "currentReleaseId": "v0-5-1-arrival-and-crash-visibility",
   "releases": [
     {
       "id": "initial-architext-buildout",
@@ -42,6 +42,27 @@
         "stretch": 0
       },
       "file": "v0-5-0-fidelity-and-domain-ownership.json"
+    },
+    {
+      "id": "v0-5-1-arrival-and-crash-visibility",
+      "version": "0.5.1",
+      "name": "Finder arrival and crash visibility",
+      "status": "in-progress",
+      "posture": "on-track",
+      "targetWindow": "Current milestone",
+      "lastUpdated": "2026-08-10T00:00:00.000Z",
+      "summary": "A patch with two user-facing fixes, both about a failure the user could see and the maintainer could not. A .md file double-clicked in Finder launched the app and then vanished: the bundle advertised CFBundleDocumentTypes so macOS routed the file, and nothing consumed it. It is now consumed on two paths, because there are two situations — at launch the file reaches Go before the webview exists, so App holds it until FrontendReady asks, and while running Go emits file:open for the frontend to listen for. The second fix corrects a belief rather than only a defect: the project recorded that no panic handler existed and that a crash therefore left nothing behind, which was true of this repo and false of the running program. Wails recovers panics inside bound-method dispatch, so the process survives one; it then returns an empty result that darwin/frontend.go passes to Frontend.Callback, whose JSON.parse throws before reaching the pending callback, and no call timeout is ever armed. The frontend's promise never settles and that operation is dead until restart, silently. App.reportPanic now records operation, message, stack and build version, shows a dialog naming the operation, and re-panics rather than recovering — swallowing during unwinding would return the method's zero values and report a failed save as a success. Coverage is pinned by two source-parsing gates because Wails binds by reflection and offers no seam to install it centrally.",
+      "counts": {
+        "features": 1,
+        "bugFixes": 6,
+        "workstreams": 2,
+        "blockers": 1,
+        "complete": 3,
+        "inProgress": 0,
+        "planned": 0,
+        "stretch": 0
+      },
+      "file": "v0-5-1-arrival-and-crash-visibility.json"
     }
   ]
 }
