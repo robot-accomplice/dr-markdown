@@ -1348,7 +1348,19 @@ body.split-mode #editor-host {
   background: var(--panel);
 }
 
-.code-block-header {
+/* These three are scoped under .code-block-shell to WIN A TIE, not for clarity.
+   The shell is injected into the Milkdown editor, so `.milkdown *` from the
+   vendored Crepe reset — `margin: 0; padding: 0` — matches every element in it.
+   That selector is (0,1,0) and so was a bare `.code-block-header`; index.html
+   loads app.css in <head> while loadTheme() appends the vendored sheets at
+   runtime, so the vendored rule is later and a tie goes to it. The result was
+   the language label jammed against the left border and Copy sitting inline
+   beside it instead of at the right edge, because `margin-right: auto` was
+   zeroed too. Any future rule styling an app-injected element inside the editor
+   needs to out-specify that reset. Pinned by TestCodeBlockChromeIsLaidOutAsDesigned,
+   which asserts position rather than presence — the existing chrome test checks
+   the label and button exist, and passed throughout. */
+.code-block-shell .code-block-header {
   height: 30px;
   display: flex;
   align-items: center;
@@ -1360,13 +1372,13 @@ body.split-mode #editor-host {
   font: 700 10.5px/1 var(--mono);
 }
 
-.code-block-language {
+.code-block-shell .code-block-language {
   margin-right: auto;
   color: var(--muted);
 }
 
-.code-block-copy,
-.code-language-tool {
+.code-block-shell .code-block-copy,
+.code-block-shell .code-language-tool {
   height: 22px;
   border: 0;
   border-radius: 6px;
