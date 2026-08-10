@@ -302,3 +302,87 @@ and the answer is now written down here.
 a decision: option (b) is reopened, not chosen. Writing it there would represent an unreviewed
 planning proposal as Release Truth, which `CLAUDE.md` explicitly forbids. It belongs here until
 somebody decides what to do with it.
+
+---
+
+## Probe result — 2026-08-10: source-range patching WORKS, at block granularity
+
+The 2026-08-09 entry above left the mapping open and called it the next question. It is answered,
+but not the way the question was posed.
+
+**The question named the wrong input.** "Map an editor transaction back to a source range" is the
+hardest available formulation: a ProseMirror transaction carries positions in the ProseMirror
+document, and Milkdown builds that document *from* mdast while keeping no back-reference. The
+editor's **serialized output** is an easier input, and it is already sitting there. Parse the
+original and the output, diff the two trees, splice only where they differ. No transaction is
+involved at any point.
+
+### What was measured
+
+**Prediction 1 — a table's mdast is invariant under delimiter-row padding: CONFIRMED.**
+`remark.parse('| a | b |\n| --- | --- |\n| 1 | 2 |\n')` and the same with `| - | - |` serialize to
+identical trees once `position` is stripped.
+
+**Prediction 2 — character references are decoded at parse time: CONFIRMED.** `remark.parse('&amp;')`
+yields a text node whose `value` is `&`.
+
+Both were measured **before any diff code was written**, as `TestRespellingLivesInTheSerializerNotTheTree`.
+That ordering was the point: a refutation would have ended the probe with a complete result rather
+than a half-built module.
+
+**Identity gate — PASSED.** `TestPatchWithNoEditReturnsTheOriginalBytes`. With no edit at all, the
+editor serializes the fixture's `| --- | --- |` as `| - | - |`; the patch returns the original bytes
+exactly. The test also asserts the editor *still respells* the fixture, so it cannot pass vacuously
+if a future editor stops rewriting it.
+
+**Edit gate — PASSED.** `TestOneWordEditLeavesEveryOtherByteAlone`. One word changed through the DOM
+selection — not through a dispatched transaction, which would have begged the question — and the
+output differs from the original by exactly that word. `| --- | --- |` is intact, because nothing
+ever wrote those bytes.
+
+The identity gate was proven able to go red before being trusted: pointing the `match` branch at the
+edited text instead of the original reproduces `| - | - |` in the output.
+
+### What this does NOT establish
+
+- **The body-to-file offset translation is untested.** The fixture deliberately carries no
+  frontmatter and no hard break, so neither the frontmatter split nor the break-sentinel
+  substitution fires and body offsets equal file offsets. That translation is real, known and
+  unhandled — it is the same limit the 2026-08-09 entry recorded, and this probe did not touch it.
+- **Block granularity only.** A one-word edit re-splices the whole paragraph. It passes here because
+  a plain-prose paragraph re-serializes byte-identically; a paragraph containing a bare URL would
+  come back with the URL respelled as an autolink. Sub-block patching is unbuilt.
+- **Block insertion and deletion bail out.** A changed run with no counterpart on one side has no
+  unambiguous anchor and the inter-block separator would have to be guessed, so
+  `patchPreservingSource` returns the editor's output unchanged. That is the design floor — never
+  worse than today — not a solved case.
+- **An edit that changes spelling without changing the tree would be reverted.** Typing `&` where
+  `&amp;` was produces an identical tree, so the original bytes win. Believed unreachable through
+  the WYSIWYG surface, and the raw surface does not use this path at all. **That is an assumption,
+  not a measurement** — nobody tested it.
+
+### What follows
+
+The direction is proven on its hardest premise. The real project is now four pieces, in dependency
+order: the body-to-file offset translation, sub-block granularity, insertion and deletion, and then
+the model itself in Go. `yuin/goldmark` gives a positioned tree the same way `remark` does, and the
+diff is ordinary code — `frontend/dist/src/markdown/sourcepatch.js` is 150 lines and translates
+directly.
+
+It also removes an argument for option D. Direct rendering was partly attractive because it closed
+the re-serialization class; that class can now be closed without removing the webview.
+
+### How this was probed
+
+Branch `probe/source-range-patching`, kept rather than removed: `frontend/dist/src/markdown/sourcepatch.js`
+and `e2e/source_patch_test.go`. Nothing is wired into the app — `remark` is reached through a
+throwaway Crepe on a detached div, the same method as the 2026-08-09 probe, so `app.js`, `editor.js`
+and the `fidelity/` registry are untouched. **No PR was opened.** Full local gate green:
+`gofmt -l . && go vet ./... && ./tools/verify-vendor.sh && go test ./... -count=1`.
+
+### Not recorded in Architext, deliberately
+
+Same call as the 2026-08-09 entry, for the same reason. `docs/architext/data/decisions.json` holds
+*accepted* decisions; this is an input to one. The direction is proven, not chosen — choosing it is
+a maintainer decision and a release-scope change, and recording it now would represent an unreviewed
+planning proposal as Release Truth.
