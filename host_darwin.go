@@ -80,7 +80,7 @@ func (darwinHost) Run(cfg hostConfig) error {
 	// window must stay open indefinitely waiting for a person to drag a file
 	// onto it. A watchdog that closes the window out from under the operator
 	// reports its own timeout as the result.
-	if !dropWaitMode && !walkMode && !closeCheckMode && !docCheckMode {
+	if gateMode {
 		go func() {
 			select {
 			case <-time.After(45 * time.Second):
@@ -123,6 +123,9 @@ func (darwinHost) Run(cfg hostConfig) error {
 	}
 	if menuCheckMode {
 		mode = 6
+	}
+	if gateMode {
+		mode = 7
 	}
 	if closeCheckMode {
 		mode = 3
@@ -445,6 +448,10 @@ var docCheckMode bool
 
 // menuCheckMode verifies the menu bar, which nothing else can see.
 var menuCheckMode bool
+
+// gateMode runs the host gates. NOT the default: with no flags this binary must
+// be the application a user launches.
+var gateMode bool
 
 // Lifecycle callbacks the application supplied, reachable from C.
 var (

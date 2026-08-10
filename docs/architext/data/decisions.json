@@ -2,19 +2,20 @@
   "decisions": [
     {
       "id": "local-wails-app",
-      "status": "accepted",
-      "title": "Ship Dr. Markdown as a local Wails desktop app",
+      "status": "superseded",
+      "title": "Ship Dr. Markdown as a local Wails desktop app (superseded by own-the-host)",
       "context": "The application is targeted at macOS and embeds frontend assets through Wails rather than serving a website.",
       "decision": "Use Wails to host the editor UI locally and bind native Go document operations into the frontend.",
       "consequences": [
         "The frontend can remain static assets embedded in the binary",
         "Native file dialogs and close guards live in Go",
-        "Browser-only behavior must be suppressed or replaced where it leaks into the desktop UX"
+        "Browser-only behavior must be suppressed or replaced where it leaks into the desktop UX",
+        "SUPERSEDED 2026-08-10 by own-the-host. Kept because the reasoning still holds \u2014 a local desktop app with embedded assets and native Go file operations \u2014 and only the framework underneath changed."
       ],
       "relatedNodes": [
-        "wails-desktop-app",
+        "desktop-app",
         "frontend-shell",
-        "wails-go-api"
+        "go-api"
       ],
       "relatedFlows": [
         "app-boot",
@@ -24,9 +25,9 @@
     {
       "id": "native-file-boundary",
       "status": "accepted",
-      "title": "Keep filesystem access behind the Wails Go API",
+      "title": "Keep filesystem access behind the Go API",
       "context": "The frontend shell runs in a webview and should not directly read or write local files.",
-      "decision": "Route open, save, save-as, dirty-state, and unsaved-change guard behavior through Wails-bound Go methods.",
+      "decision": "Route open, save, save-as, dirty-state, and unsaved-change guard behavior through the host-bound Go methods.",
       "consequences": [
         "E2E tests can stub bridge methods without native dialogs",
         "Document IO stays testable as a Go package",
@@ -34,8 +35,8 @@
       ],
       "relatedNodes": [
         "frontend-shell",
-        "wails-bridge",
-        "wails-go-api",
+        "native-bridge",
+        "go-api",
         "document-io"
       ],
       "relatedFlows": [
@@ -134,7 +135,7 @@
       ],
       "relatedNodes": [
         "image-asset-manager",
-        "wails-go-api"
+        "go-api"
       ],
       "relatedFlows": [
         "import-image-asset"
@@ -220,11 +221,34 @@
       "relatedNodes": [
         "wysiwyg-editor",
         "frontend-shell",
-        "wails-go-api"
+        "go-api"
       ],
       "relatedFlows": [
         "edit-markdown-document",
         "open-save-document"
+      ]
+    },
+    {
+      "id": "own-the-host",
+      "status": "accepted",
+      "title": "Own the macOS host instead of depending on an application framework",
+      "context": "Wails met every stated requirement, and was rejected on the relationship rather than on capability. Three maintainer objections: no control over the internals of one of the largest pieces of the application; dependence on an upstream bug-resolution schedule, which issue #61 demonstrated concretely \u2014 a panicking bound call left the frontend promise unsettled forever, with no downstream fix available and none in v2.14.0; and a 151-module trust surface. A fourth objection, that the framework involved TCP between Go and the frontend, was CHECKED AND REFUTED and is recorded so it is not derived again: both net.Listen sites in v3/pkg sit behind the server and mcp build tags.",
+      "decision": "Write the macOS host against AppKit and WebKit directly, behind the hostPort boundary already established. Measured before committing: a working host is the size of the boundary it replaces, not the size of the framework \u2014 Wails' macOS layer is 5,116 lines, but it buys a tray, custom chrome and a dev server this application does not use.",
+      "consequences": [
+        "No third-party dependency remains in the running application",
+        "A panicking bound call REJECTS the frontend promise, closing #61 with no upstream involved",
+        "The menu bar became ours to build, and its absence removed Cmd-C, Cmd-V, Cmd-X, Cmd-A and Cmd-Q until it was found",
+        "Bound-method dispatch is generated from app.go, so a renamed method is a compile error rather than a silent no-op",
+        "Windows and Linux have no host at all; neither was ever built under the framework either",
+        "Host verification drives a native window, so it cannot run in CI and is a manual step on a Mac"
+      ],
+      "relatedNodes": [
+        "desktop-app",
+        "host-boundary",
+        "go-api"
+      ],
+      "relatedFlows": [
+        "app-boot"
       ]
     }
   ]

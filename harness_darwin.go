@@ -19,6 +19,8 @@ func runHarness() bool {
 		switch arg {
 		case "-drop":
 			dropWaitMode = true
+		case "-gates":
+			gateMode = true
 		case "-walk":
 			walkMode = true
 		case "-close":

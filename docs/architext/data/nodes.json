@@ -15,10 +15,10 @@
       ],
       "runtime": "macOS desktop session",
       "interfaces": [
-        "Wails application window"
+        "Application window"
       ],
       "dependencies": [
-        "wails-desktop-app"
+        "desktop-app"
       ],
       "dataHandled": [
         "markdown-document"
@@ -41,10 +41,10 @@
       ]
     },
     {
-      "id": "wails-desktop-app",
+      "id": "desktop-app",
       "type": "software-system",
       "name": "Dr. Markdown",
-      "summary": "A Wails-based macOS markdown editor with embedded frontend assets and Go-bound native file operations.",
+      "summary": "A macOS markdown editor with embedded frontend assets and Go-bound native file operations. As of v0.6.0 it depends on NO application framework: the window, the webview, the asset scheme and the native dialogs are AppKit and WebKit directly, behind hostPort.",
       "responsibilities": [
         "Host the local editor UI",
         "Expose native document dialogs and close guards",
@@ -56,14 +56,14 @@
         "app.go",
         "frontend/dist"
       ],
-      "runtime": "Wails v2 desktop application",
+      "runtime": "macOS application, AppKit and WebKit",
       "interfaces": [
         "macOS application window",
-        "window.go.main.App bindings"
+        "globalThis.drmd.native bindings"
       ],
       "dependencies": [
         "frontend-shell",
-        "wails-go-api"
+        "go-api"
       ],
       "dataHandled": [
         "markdown-document",
@@ -75,7 +75,7 @@
         "Native dialogs mediate open/save file paths"
       ],
       "observability": [
-        "Wails dev server output",
+        "Host verification modes (-gates, -walk, -menu, -doc)",
         "Window title dirty marker"
       ],
       "relatedFlows": [
@@ -85,14 +85,14 @@
         "switch-editor-mode"
       ],
       "relatedDecisions": [
-        "local-wails-app"
+        "own-the-host"
       ],
       "knownRisks": [
         "raw-syntax-layer-missing"
       ],
       "verification": [
         "go test ./... -count=1",
-        "wails dev"
+        "tools/build-macos.sh --universal"
       ]
     },
     {
@@ -141,7 +141,7 @@
         "RawEditor"
       ],
       "dependencies": [
-        "wails-bridge",
+        "native-bridge",
         "wysiwyg-editor",
         "raw-editor",
         "syntax-highlighter",
@@ -196,12 +196,12 @@
       ]
     },
     {
-      "id": "wails-bridge",
+      "id": "native-bridge",
       "type": "module",
-      "name": "Frontend Wails bridge",
-      "summary": "A small JavaScript adapter over Wails bindings that lets tests stub native document operations.",
+      "name": "Frontend native bridge",
+      "summary": "A small JavaScript adapter over native host bindings that lets tests stub native document operations.",
       "responsibilities": [
-        "Call Wails-bound Go methods lazily",
+        "Call the host-bound Go methods lazily",
         "Gracefully warn when native bindings are unavailable in browser tests",
         "Report every open tab with its own path via SyncDocuments, so no write target is inferred from ambient state"
       ],
@@ -210,7 +210,7 @@
         "frontend/dist/src/bridge.js",
         "app.go"
       ],
-      "runtime": "Embedded webview JavaScript and Wails binding layer",
+      "runtime": "Embedded webview JavaScript and the host binding layer",
       "interfaces": [
         "OpenDocument",
         "OpenRecentDocument",
@@ -224,7 +224,7 @@
         "SavePreferences"
       ],
       "dependencies": [
-        "wails-go-api"
+        "go-api"
       ],
       "dataHandled": [
         "markdown-document",
@@ -254,9 +254,9 @@
       ]
     },
     {
-      "id": "wails-go-api",
+      "id": "go-api",
       "type": "service",
-      "name": "Wails Go API",
+      "name": "the host Go API",
       "summary": "The Go object the host binds to the frontend. It adapts document IO, preference storage, dirty state, current content, close guard, font discovery, and title updates behind testable ports, and reaches every operating-system operation through nativePort rather than naming a host itself.",
       "responsibilities": [
         "Ask nativePort for dialogs, reveal, drop subscription and title, naming no host framework",
@@ -276,9 +276,9 @@
       "sourcePaths": [
         "app.go"
       ],
-      "runtime": "Go inside the host application process",
+      "runtime": "Go inside the application process",
       "interfaces": [
-        "window.go.main.App"
+        "globalThis.drmd.native"
       ],
       "dependencies": [
         "host-boundary",
@@ -343,7 +343,7 @@
         "internal/preferences/store.go",
         "internal/preferences/store_test.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the host application process",
       "interfaces": [
         "preferences.Store.Load",
         "preferences.Store.Save",
@@ -392,7 +392,7 @@
       "sourcePaths": [
         "internal/fonts/fonts.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the host application process",
       "interfaces": [
         "fonts.ListFamilies"
       ],
@@ -728,7 +728,7 @@
       "sourcePaths": [
         "internal/assets/manager.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the host application process",
       "interfaces": [
         "ImportForDocument",
         "LoadForDocument"
@@ -780,7 +780,7 @@
       "sourcePaths": [
         "internal/atomicfile/atomicfile.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the host application process",
       "interfaces": [
         "Write"
       ],
@@ -925,28 +925,33 @@
     {
       "id": "host-boundary",
       "type": "module",
-      "name": "Host boundary",
-      "summary": "The seam between the application and whatever operating-system host runs it. hostPort asks for a window, an asset source, lifecycle callbacks and the native operations; host_wails.go is the only Go file in the shipped application that names Wails. The JavaScript side is NOT behind this boundary yet: transport.js and the generated bridge are Stage 2 and are deliberately held until the host question is settled, because a directly-rendered interface would have no JavaScript to put behind them.",
+      "name": "macOS host",
+      "summary": "The window, the webview and every operating-system operation, written against AppKit and WebKit directly. No framework sits between the application and the OS. hostPort is what the application asks; host_darwin.go and host_darwin.m are what answers on macOS, and host_unsupported.go refuses elsewhere so the package still compiles where CI runs.",
       "responsibilities": [
-        "Define what the application needs from a host — a window, an asset source, startup/close/file-open callbacks and a bound object — in terms of the application's needs rather than the current host's shape",
-        "Supply nativePort to the application, composing the eleven native operations rather than re-cutting them",
-        "Translate hostConfig into the current host's options, and keep the translation in one file",
-        "Serve the embedded frontend without the application knowing how it reaches the view",
-        "Map reveal-in-file-browser to the running platform from GOOS, rather than assuming macOS",
-        "Forward operating-system file-drop paths inward, and emit the frontend event outward, as two separate operations",
-        "Supply transparent alert artwork to the host's message dialogs"
+        "Open the window and run the AppKit event loop",
+        "Serve the embedded frontend over a custom URL scheme, in-process, with no socket",
+        "Install the menu bar \u2014 WITHOUT it a Cocoa app has no Cmd-C, Cmd-V, Cmd-X, Cmd-A or Cmd-Q",
+        "Dispatch bound calls with types generated from app.go, and REJECT the promise when one panics",
+        "Answer dialogs asynchronously over a channel, so a modal never pins a thread and a context can cancel",
+        "Deliver operating-system file drops inward and frontend events outward",
+        "Give every goroutine an exit through a host lifetime signal"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
         "host.go",
-        "host_wails.go",
+        "host_darwin.go",
+        "host_darwin.m",
+        "host_lifecycle_darwin.go",
+        "host_unsupported.go",
+        "bound_generated.go",
         "main.go"
       ],
       "runtime": "Go inside the host application process",
       "interfaces": [
         "hostPort.Native",
         "hostPort.Run",
-        "hostConfig"
+        "hostConfig",
+        "globalThis.drmd.native"
       ],
       "dependencies": [],
       "dataHandled": [
@@ -956,11 +961,13 @@
       "security": [
         "The host is the trust boundary between the operating system and the application: dropped paths, OS-routed file-open paths and dialog results all enter here and are untrusted until the application checks them",
         "OpenExternalURL passes a URL the application already re-checked in Go; the boundary deliberately does not re-decide scheme safety, so there is exactly one place that does",
-        "Assets reach the view through the host's in-process URL scheme handler, not a TCP listener — the application opens no socket"
+        "Assets reach the view through the host's in-process URL scheme handler, not a TCP listener \u2014 the application opens no socket"
       ],
       "observability": [
-        "TestOnlyTheHostFilesNameWails — asserts the boundary still holds, and is the measurement the host decision rests on",
-        "TestTheBoundaryDetectorActuallyReadsGoFiles — proves the walk inspects files rather than reporting clean by checking none"
+        "TestOnlyTheHostFilesReachTheOperatingSystem \u2014 only the host files import \"C\"",
+        "-gates: boot, bound call, panic rejection, events, drop, document round trip",
+        "-walk: 40 checks across the whole UI surface",
+        "-menu: the menu bar exists and steals no editor shortcut"
       ],
       "relatedFlows": [
         "app-boot",
@@ -974,10 +981,10 @@
         "no-recorded-state-for-rca"
       ],
       "verification": [
-        "TestOnlyTheHostFilesNameWails",
+        "TestOnlyTheHostFilesReachTheOperatingSystem",
         "TestTheBoundaryDetectorActuallyReadsGoFiles",
-        "TestFileDropSubscriptionAndEmissionAreSeparate",
-        "TestRevealCommandIsSelectedPerPlatform"
+        "TestGeneratedDispatchMatchesAppGo",
+        "TestFileDropSubscriptionAndEmissionAreSeparate"
       ]
     }
   ]

@@ -363,12 +363,13 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     // a host implementing nothing. A proxy would make every method look present
     // and route it to a dispatcher with no answer.
     NSString *js =
-        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@; globalThis.__drmdDocMode = %@;",
+        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@; globalThis.__drmdDocMode = %@; globalThis.__drmdGateMode = %@;",
                                     dropMode == 1 ? @"true" : @"false",
                                     dropMode == 2 ? @"true" : @"false",
                                     (dropMode == 3 || dropMode == 4) ? @"true" : @"false",
                                     dropMode == 4 ? @"true" : @"false",
-                                    dropMode == 5 ? @"true" : @"false"];
+                                    dropMode == 5 ? @"true" : @"false",
+                                    dropMode == 7 ? @"true" : @"false"];
     js = [js stringByAppendingString:
         @"(() => {"
         @"let nextId = 1; const pending = new Map();"
@@ -541,7 +542,11 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"    })();"
         @"  }"
         @"  else if (globalThis.__drmdDocMode) { import('drmd://app/__doc.js'); }"
-        @"  else if (!globalThis.__drmdDropMode) { runGates(); }"
+        // Gates run ONLY when asked for. They were the default, which meant the
+        // shipped application started a test harness and exited -- every
+        // verification run looked right because every verification run passed a
+        // flag, and nobody had launched it the way a user would.
+        @"  else if (globalThis.__drmdGateMode) { runGates(); }"
         @"});"
         @"})()"];
     // The content world is load-bearing, and getting it wrong fails silently.
