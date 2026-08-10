@@ -45,12 +45,13 @@
       "category": "technical",
       "severity": "high",
       "status": "accepted",
-      "summary": "The WYSIWYG surface parses markdown into the vendored ProseMirror model and re-serializes the WHOLE document, so any construct the model cannot express is rewritten or lost, and because an edit replaces the entire buffer the blast radius of one keystroke is the whole file. Measured: inline <br> deleted (joining adjacent words), link reference definitions deleted and inlined, CRLF rewritten whole-file, plus respellings of bullets, fences, setext headings, hard breaks and thematic breaks. Accepted for the 0.4.0 GA by maintainer decision with disclosure as the mitigation; the defect itself is open.",
+      "summary": "The WYSIWYG surface parses markdown into the vendored ProseMirror model and re-serializes the WHOLE document, so any construct the model cannot express is respelled, and because an edit replaces the entire buffer the blast radius of one keystroke is the whole file. NOTHING IS DELETED any more: inline <br>, CRLF, link reference definitions, footnote definitions, image alt text and frontmatter are all preserved as of v0.5.0. Measured at 38 of 49 surveyed CommonMark and GFM constructs round-tripping byte-identically; the remaining 11 are respellings \u2014 two-space hard breaks to backslash, indented code to fenced, bare URLs to autolinks, HTML entities decoded, table padding reflow, trailing whitespace, collapsed blank-line runs, a tab after a list marker to a space, and closing-hash length normalized to heading depth. Accepted since the 0.4.0 GA by maintainer decision with disclosure as the mitigation; the class itself is open, because a construct nobody has surveyed is still respelled.",
       "mitigations": [
-        "README leads with a caution naming each rewrite and directing users to Raw mode when exact bytes matter",
-        "e2e/fidelity_test.go measures the behaviour so the caution cannot drift from the code",
+        "README leads with a caution naming each remaining rewrite and directing users to Raw mode when exact bytes matter",
+        "e2e/fidelity_test.go and e2e/fidelity_survey_test.go both measure the behaviour and FAIL IN BOTH DIRECTIONS, so a fix that is not disclosed breaks the build as loudly as a regression",
+        "The 49-construct survey pins the exact set, so a construct that starts or stops being rewritten is caught",
         "Raw mode preserves every affected construct and is the documented safe path",
-        "Evaluate a replacement editing engine: a CommonMark-faithful schema, or source-preserving editing where WYSIWYG edits patch the original text instead of replacing it with a re-serialization"
+        "Source positions were proved reachable via ctx.get('remark') on 2026-08-09, so source-preserving editing is no longer closed on evidence; the transaction-to-source mapping remains unproven"
       ],
       "relatedNodes": [
         "wysiwyg-editor",
@@ -66,11 +67,11 @@
       "category": "technical",
       "severity": "medium",
       "status": "closed",
-      "summary": "Implemented and, as of 2026-08-09, actually tested. `confirmNoExternalChange` re-reads the file before writing and compares it against what the app last READ OR WROTE — not against what it first opened, which would make every second save look like an external edit and turn the prompt into noise the user learns to click through. On a mismatch the user is asked, the choice is recorded as `document.conflict`, and a refusal returns an error naming the file rather than writing. Both save paths are covered: `SaveDocumentAs` delegates to `SaveDocument`, and `openPath` establishes the baseline. The control had shipped with NO test, which is ABORT Round 4's 'control not exercised' cluster — five tests now pin it, and each was verified to fail against a deliberately broken control. Residuals: detection is content-based, so it re-reads the whole file on every save (noticeable on large documents) and cannot distinguish a file changed and changed back — which is harmless, the bytes are identical. A Save-As onto a path the app never opened has no baseline, and is covered instead by the native dialog's own replace prompt.",
+      "summary": "Implemented and, as of 2026-08-09, actually tested. `confirmNoExternalChange` re-reads the file before writing and compares it against what the app last READ OR WROTE \u2014 not against what it first opened, which would make every second save look like an external edit and turn the prompt into noise the user learns to click through. On a mismatch the user is asked, the choice is recorded as `document.conflict`, and a refusal returns an error naming the file rather than writing. Both save paths are covered: `SaveDocumentAs` delegates to `SaveDocument`, and `openPath` establishes the baseline. The control had shipped with NO test, which is ABORT Round 4's 'control not exercised' cluster \u2014 five tests now pin it, and each was verified to fail against a deliberately broken control. Residuals: detection is content-based, so it re-reads the whole file on every save (noticeable on large documents) and cannot distinguish a file changed and changed back \u2014 which is harmless, the bytes are identical. A Save-As onto a path the app never opened has no baseline, and is covered instead by the native dialog's own replace prompt.",
       "mitigations": [
         "confirmNoExternalChange re-reads and compares before every write, on both save paths",
         "The user decides; the choice is recorded as a document.conflict event",
-        "A failure to RE-READ does not block the save — failing to verify is not evidence of a conflict, and must not strand the user's work",
+        "A failure to RE-READ does not block the save \u2014 failing to verify is not evidence of a conflict, and must not strand the user's work",
         "Pinned by five tests in app_staleness_test.go, each verified to fail against a broken control",
         "Residual, accepted with reason: content comparison costs a full re-read per save"
       ],
@@ -88,7 +89,7 @@
       "category": "technical",
       "severity": "low",
       "status": "accepted",
-      "summary": "Narrowed to one consequence, after the code was checked against this record and two of its three claims turned out to be false. Extended attributes such as Finder tags ARE carried across — `atomicfile.go` calls `copyExtendedAttributes` onto the temp file before the rename, best-effort so a filesystem without xattr support cannot cost the user their document. A read-only target IS refused rather than replaced, precisely because rename takes permission on the directory and would otherwise defeat the mechanism people use read-only for. What remains true: the rename gives the document a new inode, so hard links to it break. That is accepted, not a defect — the alternative is the non-atomic in-place write that `internal/atomicfile` exists to prevent, and a broken link between two names is recoverable where lost contents are not. The README already described the behaviour correctly; this record contradicted it and the code settled it.",
+      "summary": "Narrowed to one consequence, after the code was checked against this record and two of its three claims turned out to be false. Extended attributes such as Finder tags ARE carried across \u2014 `atomicfile.go` calls `copyExtendedAttributes` onto the temp file before the rename, best-effort so a filesystem without xattr support cannot cost the user their document. A read-only target IS refused rather than replaced, precisely because rename takes permission on the directory and would otherwise defeat the mechanism people use read-only for. What remains true: the rename gives the document a new inode, so hard links to it break. That is accepted, not a defect \u2014 the alternative is the non-atomic in-place write that `internal/atomicfile` exists to prevent, and a broken link between two names is recoverable where lost contents are not. The README already described the behaviour correctly; this record contradicted it and the code settled it.",
       "mitigations": [
         "Extended attributes are copied onto the replacement before rename",
         "A read-only target is refused with an explicit error rather than silently replaced",
@@ -107,7 +108,7 @@
       "category": "security",
       "severity": "medium",
       "status": "closed",
-      "summary": "Both bounds are enforced, and unlike the other controls audited on 2026-08-09 this one was already exercised. `internal/assets/manager.go` checks the extension against an image allowlist BEFORE reading any bytes, so a non-image file is refused rather than inlined as application/octet-stream — closing the path where opening a markdown file from a Downloads folder or a repository root meant `.env`, `id_rsa` or `secrets.yaml` beside it were read and embedded, automatically and with no user interaction. Directory containment is enforced separately, with symlinks re-resolved and the check applied to the resolved path. `TestOnlyImageFilesAreInlined` asserts both halves: the named secrets are refused AND their bytes do not appear in any returned data URI, while an ordinary image beside the document still loads.",
+      "summary": "Both bounds are enforced, and unlike the other controls audited on 2026-08-09 this one was already exercised. `internal/assets/manager.go` checks the extension against an image allowlist BEFORE reading any bytes, so a non-image file is refused rather than inlined as application/octet-stream \u2014 closing the path where opening a markdown file from a Downloads folder or a repository root meant `.env`, `id_rsa` or `secrets.yaml` beside it were read and embedded, automatically and with no user interaction. Directory containment is enforced separately, with symlinks re-resolved and the check applied to the resolved path. `TestOnlyImageFilesAreInlined` asserts both halves: the named secrets are refused AND their bytes do not appear in any returned data URI, while an ordinary image beside the document still loads.",
       "mitigations": [
         "Inlining is restricted to known image extensions, checked before any read",
         "Directory containment re-resolves symlinks and checks the resolved path",
@@ -124,7 +125,7 @@
       "category": "operational",
       "severity": "medium",
       "status": "open",
-      "summary": "Closed for the frontend. `internal/eventlog` persists a structured trail stamped with `appVersion`, reachable from the webview through `bridge.recordEvent`, and every frontend failure surface now records into it rather than only warning to a console no production build can display: boot failure, preferences load and save, image import (ribbon and drop), replace and reveal, render failure, editor style application — the site that once hid a ReferenceError for two rounds of debugging — plus refused link schemes. A refusal is recorded once per distinct href, capped, because the log is trimmed and the refused href is attacker-controlled: recording on every render would let a document the app has already judged hostile evict the rest of the trail. Residual: Go-side errors still surface mainly as an ephemeral native dialog, and no crash handler exists, so a hard crash still leaves nothing behind.",
+      "summary": "Closed for the frontend. `internal/eventlog` persists a structured trail stamped with `appVersion`, reachable from the webview through `bridge.recordEvent`, and every frontend failure surface now records into it rather than only warning to a console no production build can display: boot failure, preferences load and save, image import (ribbon and drop), replace and reveal, render failure, editor style application \u2014 the site that once hid a ReferenceError for two rounds of debugging \u2014 plus refused link schemes. A refusal is recorded once per distinct href, capped, because the log is trimmed and the refused href is attacker-controlled: recording on every render would let a document the app has already judged hostile evict the rest of the trail. Residual: Go-side errors still surface mainly as an ephemeral native dialog, and no crash handler exists, so a hard crash still leaves nothing behind.",
       "mitigations": [
         "Version identity ships in the bundle so a report can name the build",
         "internal/eventlog persists a structured, version-stamped trail beside the user log directory",
@@ -144,7 +145,7 @@
       "category": "operational",
       "severity": "medium",
       "status": "closed",
-      "summary": "Largely closed. `.github/workflows/ci.yml` runs on push and pull request to `main` and `develop`, enforcing gofmt, `go vet`, the full `go test ./...` including the browser e2e suite, a `node --check` syntax pass over the frontend sources, and vendored-bundle integrity. It also asserts Chrome is present, so the frontend suite cannot pass by being absent, and deliberately never sets DRMD_SKIP_E2E. Residual: `architext validate` is NOT in CI, and the workflow records why — the Architext CLI is a binary distributed outside this repository, and installing it would add a toolchain dependency to a project whose defining constraint is having none. It stays a maintainer-run gate, which means Architext data staleness is still caught by review rather than by machine. Screenshot regeneration and packaging also remain hand-run.",
+      "summary": "Largely closed. `.github/workflows/ci.yml` runs on push and pull request to `main` and `develop`, enforcing gofmt, `go vet`, the full `go test ./...` including the browser e2e suite, a `node --check` syntax pass over the frontend sources, and vendored-bundle integrity. It also asserts Chrome is present, so the frontend suite cannot pass by being absent, and deliberately never sets DRMD_SKIP_E2E. Residual: `architext validate` is NOT in CI, and the workflow records why \u2014 the Architext CLI is a binary distributed outside this repository, and installing it would add a toolchain dependency to a project whose defining constraint is having none. It stays a maintainer-run gate, which means Architext data staleness is still caught by review rather than by machine. Screenshot regeneration and packaging also remain hand-run.",
       "mitigations": [
         "CI enforces gofmt, vet, the full test suite, frontend syntax and vendor integrity on every push and PR to main and develop",
         "The workflow fails when no Chrome is present rather than skipping the only frontend coverage",
@@ -161,7 +162,7 @@
       "category": "security",
       "severity": "medium",
       "status": "closed",
-      "summary": "The committed bundles now carry recorded SHA-256 digests in `tools/vendor-digests.txt`, verified by `tools/verify-vendor.sh` on every CI run and refusing an empty digest file rather than reporting success over zero checks — so a substituted, corrupted or half-refreshed bundle is visible. Residual, and it is the honest limit of this control: the digests are of OUR committed bytes, taken after `tools/vendor.sh` patches the bundle in place, so they detect drift from the reviewed artifact but do not establish upstream provenance. Tying a bundle back to a published upstream artifact would need the digest recorded at fetch time, before patching.",
+      "summary": "The committed bundles now carry recorded SHA-256 digests in `tools/vendor-digests.txt`, verified by `tools/verify-vendor.sh` on every CI run and refusing an empty digest file rather than reporting success over zero checks \u2014 so a substituted, corrupted or half-refreshed bundle is visible. Residual, and it is the honest limit of this control: the digests are of OUR committed bytes, taken after `tools/vendor.sh` patches the bundle in place, so they detect drift from the reviewed artifact but do not establish upstream provenance. Tying a bundle back to a published upstream artifact would need the digest recorded at fetch time, before patching.",
       "mitigations": [
         "tools/vendor-digests.txt records a SHA-256 per vendored file",
         "tools/verify-vendor.sh runs in CI, never touches the network, and fails on an empty digest file",
@@ -171,6 +172,26 @@
         "vendored-editor-assets"
       ],
       "relatedFlows": []
+    },
+    {
+      "id": "file-association-does-not-open-the-file",
+      "title": "Opening a .md file from Finder launches the app but does not open the file",
+      "category": "technical",
+      "severity": "high",
+      "status": "open",
+      "summary": "The app bundle declares CFBundleDocumentTypes for net.daringfireball.markdown, so macOS associates .md files and launches the app when one is double-clicked \u2014 but nothing in main.go or app.go consumes a launch-time file argument or the macOS open-documents Apple Event, so the file is silently ignored and the user gets an empty untitled document. Found on 2026-08-10 by installing the v0.5.0 DMG to /Applications and opening a document with it: the process launched and stayed alive, but no document.opened event was recorded and no entry was added to recents. Double-clicking a markdown file is the most natural way to reach a markdown editor, and the app advertises that it handles them, so the failure is silent and reads as the app losing the document. Predates v0.5.0 \u2014 no launch-argument handling has ever existed \u2014 and was missed by four ABORT rounds because none of them installed the app. Tracked as GitHub issue 53.",
+      "mitigations": [
+        "Consume the launch-time file argument and the macOS open-documents event, routing both through the existing openPath",
+        "Until then, correct the README: the association is advertised under Available today but the behaviour does not exist",
+        "In-app Open and Recent Files both work, so there is a path to every document the failure affects"
+      ],
+      "relatedNodes": [
+        "wails-go-api",
+        "wails-desktop-app"
+      ],
+      "relatedFlows": [
+        "open-save-document"
+      ]
     }
   ]
 }
