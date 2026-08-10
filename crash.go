@@ -35,12 +35,24 @@ func (a *App) reportPanic(operation string) {
 		"message":   fmt.Sprint(recovered),
 		"stack":     string(debug.Stack()),
 	})
+	// Every panic is recorded; only the first raises a dialog. UpdateContent is
+	// pushed debounced on every edit, so a panic there repeats for as long as the
+	// user types, and a blocking native dialog per tick would leave the app
+	// unusable behind a modal storm — worse than the silently dead call this
+	// replaced. One per session rather than one per operation, because the
+	// instruction is "restart" and that does not improve on repetition.
 	if a.native != nil && a.ctx != nil {
-		a.native.ShowError(a.ctx, "Dr. Markdown hit an internal error", fmt.Sprintf(
-			"An internal error interrupted %s, and the app may no longer be in a state it understands.\n\n"+
-				"Copy any unsaved text into another app, then restart Dr. Markdown.\n\n"+
-				"The details were written to the event log beside your preferences.",
-			operation))
+		a.panicDialog.Do(func() {
+			a.showPanicDialog(operation)
+		})
 	}
 	panic(recovered)
+}
+
+func (a *App) showPanicDialog(operation string) {
+	a.native.ShowError(a.ctx, "Dr. Markdown hit an internal error", fmt.Sprintf(
+		"An internal error interrupted %s, and the app may no longer be in a state it understands.\n\n"+
+			"Copy any unsaved text into another app, then restart Dr. Markdown.\n\n"+
+			"The details were written to the event log beside your preferences.",
+		operation))
 }
