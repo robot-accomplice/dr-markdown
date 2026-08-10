@@ -292,6 +292,7 @@ func TestAppListFontFamiliesDelegatesToProvider(t *testing.T) {
 }
 
 type fakeNative struct {
+	emittedOpens    []string
 	openPath        string
 	savePath        string
 	imagePath       string
@@ -333,6 +334,10 @@ func (f *fakeNative) RevealPath(_ context.Context, path string) error {
 func (f *fakeNative) OpenExternalURL(_ context.Context, url string) error {
 	f.externalURL = url
 	return nil
+}
+
+func (f *fakeNative) EmitFileOpen(_ context.Context, path string) {
+	f.emittedOpens = append(f.emittedOpens, path)
 }
 
 func (f *fakeNative) ConfirmOverwriteChanged(_ context.Context, _ string) (string, error) {
