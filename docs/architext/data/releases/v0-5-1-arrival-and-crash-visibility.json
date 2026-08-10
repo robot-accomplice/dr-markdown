@@ -1,0 +1,215 @@
+{
+  "id": "v0-5-1-arrival-and-crash-visibility",
+  "version": "0.5.1",
+  "name": "Finder arrival and crash visibility",
+  "status": "in-progress",
+  "posture": "on-track",
+  "summary": "A patch with two user-facing fixes, both about a failure the user could see and the maintainer could not. A .md file double-clicked in Finder launched the app and then vanished: the bundle advertised CFBundleDocumentTypes so macOS routed the file, and nothing consumed it. It is now consumed on two paths, because there are two situations — at launch the file reaches Go before the webview exists, so App holds it until FrontendReady asks, and while running Go emits file:open for the frontend to listen for. The second fix corrects a belief rather than only a defect: the project recorded that no panic handler existed and that a crash therefore left nothing behind, which was true of this repo and false of the running program. Wails recovers panics inside bound-method dispatch, so the process survives one; it then returns an empty result that darwin/frontend.go passes to Frontend.Callback, whose JSON.parse throws before reaching the pending callback, and no call timeout is ever armed. The frontend's promise never settles and that operation is dead until restart, silently. App.reportPanic now records operation, message, stack and build version, shows a dialog naming the operation, and re-panics rather than recovering — swallowing during unwinding would return the method's zero values and report a failed save as a success. Coverage is pinned by two source-parsing gates because Wails binds by reflection and offers no seam to install it centrally.",
+  "targetWindow": "Current milestone",
+  "lastUpdated": "2026-08-10T00:00:00.000Z",
+  "updateSource": "ABORT Round 6 review",
+  "scope": {
+    "required": [
+      {
+        "id": "finder-file-open",
+        "title": "Open a .md file handed over by Finder",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "main.go now sets mac.Options.OnFileOpen. Two arrival paths, because there are two situations: at launch the file reaches Go before the webview exists, so App holds it and the frontend collects it through FrontendReady; while the app is running Go emits the file:open event and the frontend listens. Closes #53, which was found by installing the DMG rather than by any automated gate.",
+        "owner": "Project maintainers",
+        "workstreamId": "arrival",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "packaged-app-check"
+        ]
+      },
+      {
+        "id": "panic-trail",
+        "title": "Record panics and tell the user, instead of losing them",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "App.reportPanic records operation, message, stack and appVersion into the event trail, shows a native dialog naming the operation, then re-panics. Installed on all 18 bound methods and on startup, beforeClose and openFileFromOS, which Wails does not guard. It does not recover, because the guard runs during unwinding and swallowing would hand the frontend a nil error for a save that never touched the disk.",
+        "owner": "Project maintainers",
+        "workstreamId": "observability",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "panic-coverage-gates"
+        ]
+      },
+      {
+        "id": "panic-dialog-cap",
+        "title": "Cap the panic dialog to one per session",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Found by the ABORT review, Station 2, as a NO-GO against this release's own change. UpdateContent is pushed debounced on every edit, so a panic on that path repeats while the user types, and the first implementation raised a blocking native dialog on each occurrence — a modal storm that made the app unusable, which is worse than the silently dead call it replaced. Every panic is still recorded; the dialog is capped with sync.Once. One per session rather than one per operation, because the instruction is to restart and that does not improve on repetition. The cap is deliberately not guarded by a.mu, since a panic raised while mu is held would deadlock its own report.",
+        "owner": "Project maintainers",
+        "workstreamId": "observability",
+        "dependsOn": [
+          "panic-trail"
+        ],
+        "evidence": [
+          "full-test-suite",
+          "abort-round-6"
+        ]
+      }
+    ],
+    "planned": [],
+    "stretch": [],
+    "deferred": [
+      {
+        "id": "unsettled-promise-after-panic",
+        "title": "A panicking bound call never settles its frontend promise",
+        "kind": "bug-fix",
+        "status": "deferred",
+        "summary": "Deferred on risk and scope, not forgotten. This is a Wails defect that re-panicking preserves rather than fixes: the dispatcher discards the callback message, so the frontend await hangs until restart. Closing it means either DisablePanicRecovery, which trades a hung call for a dead process, or passing a positive call timeout from the frontend, which changes the behaviour of every binding. Neither belongs in a patch whose purpose is to make the failure visible. The native dialog is the interim report, and the residual is recorded in risks.json and the README.",
+        "owner": "Project maintainers",
+        "workstreamId": "observability",
+        "dependsOn": [],
+        "evidence": [
+          "panic-coverage-gates"
+        ]
+      },
+      {
+        "id": "panic-before-app-exists",
+        "title": "A panic raised before the App and its log exist",
+        "kind": "bug-fix",
+        "status": "deferred",
+        "summary": "Deferred on dependency: a panic inside NewApp or wails.Run happens before the event trail is constructed and before a window exists, so there is nothing to record into and nothing to show a dialog on. Closing it needs a trail that can be opened without the App, which is a change to construction order rather than a guard.",
+        "owner": "Project maintainers",
+        "workstreamId": "observability",
+        "dependsOn": [],
+        "evidence": []
+      },
+      {
+        "id": "macos-menu-bar",
+        "title": "The app has no macOS menu bar",
+        "kind": "feature",
+        "status": "deferred",
+        "summary": "Deferred on scope and verifiability. main.go passes no Menu, and in Wails v2.13.0 a nil menu means SetApplicationMenu is never called while DefaultMacMenu is commented out, so there is no App, Edit, View or Window menu — established from source, not driven. It is a subsystem, not a line: Go menu construction, dispatch into the frontend, and checkmark state, none of which the chromedp harness can verify because a native menu does not exist in a browser view. Tracked as #57, and the wails-exit-path roadmap item may change what the right implementation is.",
+        "owner": "Project maintainers",
+        "workstreamId": "arrival",
+        "dependsOn": [],
+        "evidence": []
+      },
+      {
+        "id": "windows-linux-build-matrix",
+        "title": "Windows and Linux artifacts",
+        "kind": "chore",
+        "status": "deferred",
+        "summary": "Deferred on scope and infrastructure, unchanged from 0.5.0. Only tools/build-macos.sh exists. CI runs the full suite on Linux but produces no artifact. A release build matrix means native runners and per-platform packaging, which is real work rather than a flag.",
+        "owner": "Project maintainers",
+        "workstreamId": "arrival",
+        "dependsOn": [],
+        "evidence": []
+      },
+      {
+        "id": "panic-flood-evicts-trail",
+        "title": "A repeating panic evicts the context needed to diagnose it",
+        "kind": "bug-fix",
+        "status": "deferred",
+        "summary": "Deferred on scope, with the reason recorded and an issue filed (#63). The event log is bounded at 2000 entries and trimmed newest-first, and panic recording is uncapped, so a document that reliably panics a bound method evicts the first panic and the context before it — inverting what root-causing needs. Not a blocker: it degrades a diagnostic under a precondition that already means the app is broken, and before this release the same scenario produced no record at all. This repo already solved the same shape for refused link schemes by capping per distinct href.",
+        "owner": "Project maintainers",
+        "workstreamId": "observability",
+        "dependsOn": [],
+        "evidence": [
+          "abort-round-6"
+        ]
+      }
+    ],
+    "outOfScope": []
+  },
+  "workstreams": [
+    {
+      "id": "arrival",
+      "name": "How documents and the OS reach the app",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Make the app answer the ways macOS hands it work.",
+      "itemIds": [
+        "finder-file-open"
+      ]
+    },
+    {
+      "id": "observability",
+      "name": "Recorded state for root-cause analysis",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Ensure a failure a user reports can be reconstructed rather than guessed at.",
+      "itemIds": [
+        "panic-trail",
+        "panic-dialog-cap"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "wysiwyg-reserialization-class",
+      "title": "The WYSIWYG surface still re-serializes the whole document",
+      "severity": "high",
+      "status": "accepted",
+      "summary": "Carried forward from 0.5.0 unchanged, and nothing in this patch touches it. The editor parses to ProseMirror's model and re-serializes everything, so a construct nobody surveyed is still respelled. 38 of 49 surveyed constructs round-trip byte-identically and nothing is deleted. Only source-preserving editing would close the class. Disclosed in the README caution and measured by two tests that fail in both directions."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "m-finder-arrival",
+      "label": "Finder arrival",
+      "status": "complete",
+      "targetWindow": "0.5.1",
+      "order": 1,
+      "itemIds": [
+        "finder-file-open"
+      ]
+    },
+    {
+      "id": "m-crash-visibility",
+      "label": "Crash visibility",
+      "status": "complete",
+      "targetWindow": "0.5.1",
+      "order": 2,
+      "itemIds": [
+        "panic-trail",
+        "panic-dialog-cap"
+      ]
+    }
+  ],
+  "dependencies": [],
+  "evidence": [
+    {
+      "id": "full-test-suite",
+      "label": "go test ./... -count=1",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "panic-coverage-gates",
+      "label": "TestEveryBoundMethodReportsItsPanics, TestLifecycleCallbacksReportTheirPanics",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "packaged-app-check",
+      "label": "Installed DMG opens a document handed over by Finder",
+      "kind": "manual",
+      "status": "pending"
+    },
+    {
+      "id": "architext-validation",
+      "label": "architext validate .",
+      "kind": "test",
+      "status": "passing"
+    },
+    {
+      "id": "abort-round-6",
+      "label": "ABORT Round 6 review, docs/releases/v0.5.1-abort.md",
+      "kind": "review",
+      "status": "passing"
+    }
+  ]
+}

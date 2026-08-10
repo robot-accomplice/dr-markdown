@@ -176,7 +176,9 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 - **A crash is recorded, but the operation that crashed does not recover.** Every method the frontend
   calls, and the three Wails lifecycle callbacks, write a panic — operation, message, stack and build
   version — into the version-stamped event trail beside the preference store, and show a dialog naming
-  the operation. The panic is then left to travel, so what happens next is unchanged: Wails recovers
+  the operation. Every panic is recorded; the dialog appears **once per session**, because a panic on a
+  path the editor calls repeatedly would otherwise put the app behind a modal you cannot type past.
+  The panic is then left to travel, so what happens next is unchanged: Wails recovers
   panics inside bound-method dispatch, and the frontend call that triggered one never settles, so that
   one operation stays dead until you restart. A panic in a lifecycle callback still ends the process,
   and a panic raised before the app is constructed still leaves nothing behind.

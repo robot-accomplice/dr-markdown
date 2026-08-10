@@ -308,6 +308,7 @@ type fakeNative struct {
 	fileDropSubscribed bool
 	errorTitle         string
 	errorMessage       string
+	errorCount         int
 }
 
 func (f *fakeNative) OpenMarkdownFile(context.Context) (string, error) {
@@ -351,6 +352,7 @@ func (f *fakeNative) ConfirmOverwriteChanged(_ context.Context, _ string) (strin
 func (f *fakeNative) ShowError(_ context.Context, title string, message string) {
 	f.errorTitle = title
 	f.errorMessage = message
+	f.errorCount++
 }
 
 func (f *fakeNative) ConfirmUnsaved(context.Context) (string, error) {
