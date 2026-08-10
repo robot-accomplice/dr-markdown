@@ -303,21 +303,39 @@ method.
 `flows.json`, and `decisions.json` holds `local-wails-app`. Renaming ids is a coordinated edit that
 validation will catch if done partially; it is not a find-and-replace.
 
-## Revised recommendation on sequencing
+## Sequencing
 
-The `bridge.js` finding already established that the host is **one cutover, not a migration**. The
-release constraint adds a second ordering fact: **packaging is on the critical path and the host is
-not sufficient.**
+**One release, and it is a hard cliff between Wails and not-Wails.** There is no point release
+before it and no partial state after it.
 
-So the order is:
+Two measured facts constrain the order, and one earlier reading of them was wrong.
 
-1. **Size the packaging replacement.** A spike, same discipline: build a `.app` bundle and a DMG
-   without `wails build`, verify with `lipo -archs` and `PlistBuddy`, and measure it. Until this
-   number exists, no date should be offered for a post-Wails release.
-2. **Move version identity** off `wails.json` to a source that survives, with a drift gate proven
-   able to fail.
-3. **Build the twelve `nativePort` operations** against real AppKit.
-4. **Cut over in one commit**, delete `host_wails.go`, drop the `go.mod` entries.
-5. **Re-aim or retire** `host_boundary_test.go`; update Architext ids and README.
+**The host is one cutover, not a migration.** `bridge.js` degrades when the host is absent but throws
+when it is partial, so no host can ship implementing a subset. This is measured, not preferred.
 
-Steps 1 and 2 are the ones that can be done now and are not blocked on anything.
+**Packaging is NOT the next thing, and treating it as such was an error.** It was promoted here on
+the reasoning that the release gate put it on the critical path. That inverted the problem: packaging
+is a shipping concern, and there is nothing to ship until the application runs without Wails at all.
+Sizing the bundle-and-DMG replacement before the twelve `nativePort` operations exist would be
+optimising a release for software that does not yet run.
+
+The order:
+
+1. **Build the twelve `nativePort` operations against real AppKit.** Dialogs, reveal, title,
+   external URL, the two event emits, the drop subscription. This is what "replace Wails" means at
+   the runtime level, and until it is done nothing else can be judged.
+2. **Cut over in one commit.** Delete `host_wails.go`, point `main.go` at `darwinHost`, drop
+   `github.com/wailsapp/wails/v2` and the two `wailsapp` indirects from `go.mod`.
+3. **Replace `wails build`.** `tools/build-macos.sh` delegates bundle assembly, `Info.plist`
+   templating, icon embedding and DMG creation to that one command, and none of it is in the 486
+   lines. It is real, unmeasured work — but it is the step that makes a working app shippable, not
+   the step that makes it work.
+4. **Re-aim or deliberately retire** `host_boundary_test.go`; update Architext ids and the README.
+
+**Version identity is already done** and was not a sequencing hazard, contrary to what an earlier
+revision of this document claimed. `VERSION` is now the single source, embedded into Go; the control
+that matters names no framework and survives Wails' removal, and the `wails.json` cross-check is a
+separate test that skips when the file is gone and says so in its own comment.
+
+**Out of scope for the cutover:** the `globalThis.go.main.App` shape. It is what let the entire
+frontend run unchanged against the spike. Renaming it is a separate, optional change.
