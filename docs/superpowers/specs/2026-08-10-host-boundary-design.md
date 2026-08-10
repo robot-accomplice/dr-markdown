@@ -32,6 +32,66 @@ Three candidate hosts were identified and are **deliberately not chosen here**:
 The maintainer's position on 2026-08-10: *"if B/C turn out to be low enough effort the long term
 payoff makes them feel worthwhile."* That is what this project must make answerable.
 
+### Recorded non-options
+
+Named here because they are the two anyone will raise first, and a spec that does not mention them
+looks like it did not consider them.
+
+- **Tauri.** Rust core. Keeping the Go backend means running it as a sidecar process, so every
+  `nativePort` call becomes inter-process communication and the file and dialog model changes shape.
+  That is a different project from a host swap, and it trades one framework's decisions for
+  another's plus a process boundary.
+- **Electron.** Excluded outright by the project's no-Node-toolchain constraint.
+
+### B scoped — own the host
+
+Measured 2026-08-10, not estimated. Wails v2.13.0's own per-platform desktop layer is the closest
+available proxy for what "own the host" costs at full fidelity:
+
+| platform | lines | files |
+| --- | --- | --- |
+| darwin | 5,116 | 35 |
+| windows | 18,196 | 88 |
+| linux | 3,545 | 16 |
+| **total** | **26,911** | **139** |
+
+Two things follow. **Windows dominates** at 3.5× macOS, because WebView2 is COM interop. And this is
+an **upper bound**, not an estimate: Wails carries system tray, custom window chrome, a dev server,
+drag regions and much else that dr-markdown does not use. The application's actual requirement is the
+ten rows enumerated below — window, asset serving, file drop, document handover, lifecycle, eleven
+native operations, event emission, method binding.
+
+Three sub-shapes, with the state of each foundation checked rather than assumed:
+
+- **B1 — build on `webview/webview_go`.** Effectively disqualified. The Go binding was last pushed
+  **2024-08-31**, roughly two years stale, at 448 stars. Adopting it trades a maintained dependency
+  for an unmaintained one, which is the opposite of the motivation. (The C++ core at
+  `webview/webview` is healthier — 14.2k stars, last pushed 2026-03-09 — but it is deliberately tiny
+  and does not provide native menus.)
+- **B2 — build on `crgimenes/glaze`.** A CGo-free Go webview toolkit built on purego, with native
+  file dialogs and a reusable native menu bar. CGo-free is a genuine advantage for cross-compilation.
+  It is also **six months old** (created 2026-02-09, last pushed 2026-08-03) at 132 stars, so it is a
+  young foundation for a product. Worth an evaluation, not a commitment.
+- **B3 — hand-rolled cgo per platform.** What Wails itself does. Most control, no ceiling, and the
+  26,911-line table above is the honest upper bound on the work.
+
+### C scoped — macOS-native shell now
+
+Wails' full macOS layer is **5,116 lines across 35 files**, and dr-markdown needs a strict subset of
+it. C is therefore the cheapest way to reach a native surface the app fully controls — menus
+included — at the cost of the cross-platform goal, which is currently unmet anyway since only
+`tools/build-macos.sh` exists.
+
+The open sub-decision under C is whether the shell is Swift calling a Go archive, or cgo inside the
+Go binary. That decision is deferred until phase 0 has measured the boundary it would sit behind.
+
+### What phase 0 adds to these numbers
+
+Every figure above describes what a host layer costs to *write*. None of them says what dr-markdown
+costs to *move*, because today the coupling is spread across four files. Phase 0 reduces it to two
+and counts it, turning each option into arithmetic: B is that number written again per platform, C is
+that number written once.
+
 ## What phase 0 is
 
 **One `hostPort`, defined from what the application needs — never from what Wails offers.**
