@@ -209,11 +209,12 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     // a host implementing nothing. A proxy would make every method look present
     // and route it to a dispatcher with no answer.
     NSString *js =
-        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@;",
+        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@; globalThis.__drmdDocMode = %@;",
                                     dropMode == 1 ? @"true" : @"false",
                                     dropMode == 2 ? @"true" : @"false",
-                                    dropMode >= 3 ? @"true" : @"false",
-                                    dropMode == 4 ? @"true" : @"false"];
+                                    (dropMode == 3 || dropMode == 4) ? @"true" : @"false",
+                                    dropMode == 4 ? @"true" : @"false",
+                                    dropMode == 5 ? @"true" : @"false"];
     js = [js stringByAppendingString:
         @"(() => {"
         @"let nextId = 1; const pending = new Map();"
@@ -385,6 +386,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"      window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__closenow', args: [] });"
         @"    })();"
         @"  }"
+        @"  else if (globalThis.__drmdDocMode) { import('drmd://app/__doc.js'); }"
         @"  else if (!globalThis.__drmdDropMode) { runGates(); }"
         @"});"
         @"})()"];

@@ -23,6 +23,11 @@ func runHarness() bool {
 			walkMode = true
 		case "-close":
 			closeCheckMode = true
+		case "-doc":
+			docCheckMode = true
+			if i+2 <= len(os.Args)-1 {
+				docFixturePath = os.Args[i+2]
+			}
 		case "-close-dirty":
 			closeCheckMode, closeDirty = true, true
 		case "-modal":
