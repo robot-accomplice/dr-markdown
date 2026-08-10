@@ -23,6 +23,8 @@ func runHarness() bool {
 			walkMode = true
 		case "-close":
 			closeCheckMode = true
+		case "-menu":
+			menuCheckMode = true
 		case "-doc":
 			docCheckMode = true
 			if i+2 <= len(os.Args)-1 {

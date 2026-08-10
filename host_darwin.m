@@ -189,6 +189,160 @@ void hostCloseNow(void) {
 }
 @end
 
+// A Cocoa application gets NO menu bar unless it builds one. AppKit does not
+// supply a default, and the consequence is not cosmetic: in a Cocoa app the
+// EDIT MENU's key equivalents are what deliver Cmd-C, Cmd-V, Cmd-X and Cmd-A to
+// the first responder. Without a menu there is no copy, no paste, and no Cmd-Q.
+//
+// Wails built one (Application.m calls setMainMenu:), which is why nobody
+// noticed it was load-bearing until the host was replaced. Measured before
+// this existed: mainMenu=NIL.
+//
+// The standard selectors are used deliberately for Edit — cut:, copy:, paste:,
+// selectAll:, undo:, redo: travel the responder chain to the WKWebView, so the
+// editor gets real system editing rather than a reimplementation.
+@interface DrmdMenuTarget : NSObject
+- (void)runJS:(NSMenuItem *)sender;
+@end
+
+@implementation DrmdMenuTarget
+- (void)runJS:(NSMenuItem *)sender {
+  hostEvalJS([sender.representedObject UTF8String]);
+}
+@end
+
+static DrmdMenuTarget *gMenuTarget = nil;
+
+static NSMenuItem *jsItem(NSString *title, NSString *key, NSEventModifierFlags mods, NSString *js) {
+  NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title
+                                               action:@selector(runJS:)
+                                        keyEquivalent:key];
+  item.keyEquivalentModifierMask = mods;
+  item.target = gMenuTarget;
+  item.representedObject = js;
+  return item;
+}
+
+static NSMenuItem *sel(NSString *title, SEL action, NSString *key, NSEventModifierFlags mods) {
+  NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:key];
+  item.keyEquivalentModifierMask = mods;
+  return item;
+}
+
+static void installMenuBar(NSString *appName) {
+  gMenuTarget = [[DrmdMenuTarget alloc] init];
+  NSMenu *bar = [[NSMenu alloc] init];
+
+  // Application menu. Its title is ignored by AppKit — the first menu always
+  // shows the process name — but Quit must live here to get its conventional
+  // position and behaviour.
+  NSMenuItem *appItem = [[NSMenuItem alloc] init];
+  NSMenu *appMenu = [[NSMenu alloc] init];
+  [appMenu addItem:sel([@"About " stringByAppendingString:appName],
+                       @selector(orderFrontStandardAboutPanel:), @"", 0)];
+  [appMenu addItem:[NSMenuItem separatorItem]];
+  [appMenu addItem:sel([@"Hide " stringByAppendingString:appName], @selector(hide:), @"h",
+                       NSEventModifierFlagCommand)];
+  [appMenu addItem:sel(@"Hide Others", @selector(hideOtherApplications:), @"h",
+                       NSEventModifierFlagCommand | NSEventModifierFlagOption)];
+  [appMenu addItem:[NSMenuItem separatorItem]];
+  [appMenu addItem:sel([@"Quit " stringByAppendingString:appName], @selector(terminate:), @"q",
+                       NSEventModifierFlagCommand)];
+  appItem.submenu = appMenu;
+  [bar addItem:appItem];
+
+  // File. Issue #57 asked for this one by name.
+  NSMenuItem *fileItem = [[NSMenuItem alloc] init];
+  NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+  [fileMenu addItem:jsItem(@"New", @"n", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.newDocument()")];
+  [fileMenu addItem:jsItem(@"Open…", @"o", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.openDocument()")];
+  [fileMenu addItem:[NSMenuItem separatorItem]];
+  [fileMenu addItem:jsItem(@"Save", @"s", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.save()")];
+  // NO key equivalent. Shift-Cmd-S is Save As by macOS convention, but this
+  // application already binds it to Split, and a menu key equivalent BEATS the
+  // webview — taking it would silently break a documented shortcut.
+  [fileMenu addItem:jsItem(@"Save As…", @"", 0, @"globalThis.__app?.saveAs()")];
+  [fileMenu addItem:[NSMenuItem separatorItem]];
+  // Cmd-W closes the TAB here, matching the application. The window gets
+  // Shift-Cmd-W, which is the convention when Cmd-W is a tab.
+  [fileMenu addItem:jsItem(@"Close Tab", @"w", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.closeActiveTab()")];
+  [fileMenu addItem:sel(@"Close Window", @selector(performClose:), @"w",
+                        NSEventModifierFlagCommand | NSEventModifierFlagShift)];
+  fileItem.submenu = fileMenu;
+  [bar addItem:fileItem];
+
+  // Edit. Standard selectors on purpose — see the note above.
+  NSMenuItem *editItem = [[NSMenuItem alloc] init];
+  NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+  [editMenu addItem:sel(@"Undo", @selector(undo:), @"z", NSEventModifierFlagCommand)];
+  [editMenu addItem:sel(@"Redo", @selector(redo:), @"z",
+                        NSEventModifierFlagCommand | NSEventModifierFlagShift)];
+  [editMenu addItem:[NSMenuItem separatorItem]];
+  [editMenu addItem:sel(@"Cut", @selector(cut:), @"x", NSEventModifierFlagCommand)];
+  [editMenu addItem:sel(@"Copy", @selector(copy:), @"c", NSEventModifierFlagCommand)];
+  [editMenu addItem:sel(@"Paste", @selector(paste:), @"v", NSEventModifierFlagCommand)];
+  [editMenu addItem:sel(@"Select All", @selector(selectAll:), @"a", NSEventModifierFlagCommand)];
+  editItem.submenu = editMenu;
+  [bar addItem:editItem];
+
+  // View. The other menu #57 asked for.
+  NSMenuItem *viewItem = [[NSMenuItem alloc] init];
+  NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+  [viewMenu addItem:jsItem(@"Formatted", @"1", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.setMode('formatted')")];
+  [viewMenu addItem:jsItem(@"Raw", @"2", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.setMode('raw')")];
+  [viewMenu addItem:jsItem(@"Split", @"3", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.toggleSplit()")];
+  [viewMenu addItem:[NSMenuItem separatorItem]];
+  // No key equivalents: Cmd-B is Bold in the editor, and a menu would take it.
+  [viewMenu addItem:jsItem(@"Toggle Files", @"", 0,
+                           @"globalThis.__app?.toggleSidePanel('left')")];
+  [viewMenu addItem:jsItem(@"Toggle Outline", @"", 0,
+                           @"globalThis.__app?.toggleSidePanel('right')")];
+  viewItem.submenu = viewMenu;
+  [bar addItem:viewItem];
+
+  // Window. Minimize and Zoom are expected to exist; AppKit fills the rest.
+  NSMenuItem *windowItem = [[NSMenuItem alloc] init];
+  NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
+  [windowMenu addItem:sel(@"Minimize", @selector(performMiniaturize:), @"m",
+                          NSEventModifierFlagCommand)];
+  [windowMenu addItem:sel(@"Zoom", @selector(performZoom:), @"", 0)];
+  windowItem.submenu = windowMenu;
+  [bar addItem:windowItem];
+
+  [NSApp setMainMenu:bar];
+  [NSApp setWindowsMenu:windowMenu];
+}
+
+// hostMenuJSON describes the installed menu bar so Go can assert on it.
+// The caller frees the result.
+char *hostMenuJSON(void) {
+  NSMutableArray *menus = [NSMutableArray array];
+  for (NSMenuItem *top in NSApp.mainMenu.itemArray) {
+    NSMutableArray *items = [NSMutableArray array];
+    for (NSMenuItem *item in top.submenu.itemArray) {
+      if (item.isSeparatorItem) continue;
+      [items addObject:@{
+        @"title" : item.title ?: @"",
+        @"key" : item.keyEquivalent ?: @"",
+        @"shift" : @((item.keyEquivalentModifierMask & NSEventModifierFlagShift) != 0),
+        @"hasAction" : @(item.action != NULL),
+        @"js" : (item.representedObject ?: @""),
+      }];
+    }
+    [menus addObject:@{@"title" : top.submenu.title ?: @"", @"items" : items}];
+  }
+  NSData *json = [NSJSONSerialization dataWithJSONObject:menus options:0 error:nil];
+  NSString *s = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
+  return strdup(s.UTF8String);
+}
+
 void hostRun(const char *title, int width, int height, int dropMode) {
   @autoreleasepool {
     NSApplication *app = [NSApplication sharedApplication];
@@ -423,6 +577,11 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     gWindowDelegate = [[DrmdWindowDelegate alloc] init];
     window.delegate = gWindowDelegate;
 
+    installMenuBar([NSString stringWithUTF8String:title]);
+    if (dropMode == 6) {
+      hostReportMenu();
+      return;
+    }
     [window center];
     [window makeKeyAndOrderFront:nil];
     [app activateIgnoringOtherApps:YES];
