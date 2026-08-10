@@ -29,6 +29,10 @@ import (
 // wails.json by TestAppVersionMatchesWailsConfig.
 const appVersion = "0.5.0"
 
+// fileOpenEvent is the Wails event carrying a path macOS asked us to open while
+// the app was already running. The frontend subscribes to it by this name.
+const fileOpenEvent = "file:open"
+
 var iconFreeMessageDialogPNG = []byte{
 	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 	0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
@@ -49,6 +53,13 @@ type App struct {
 	mu sync.Mutex
 	// session owns the open tabs, their dirty state and the on-disk baseline.
 	session *session.Session
+	// pendingOpen holds files macOS handed us before the webview could accept
+	// one. Launching by double-click delivers the file BEFORE the frontend
+	// exists, so emitting straight away would drop it silently — which is the
+	// defect this replaced (#53).
+	pendingOpen []string
+	// frontendReady flips once the webview has asked for its pending files.
+	frontendReady bool
 	// currentPath is the last path opened or saved. It names the window title
 	// and the Save-As default only; it is NEVER a write target, because
 	// inferring the target from ambient state is what destroyed documents.
@@ -82,6 +93,7 @@ type nativePort interface {
 	ShowError(context.Context, string, string)
 	ConfirmUnsaved(context.Context) (string, error)
 	SetTitle(context.Context, string)
+	EmitFileOpen(context.Context, string)
 }
 
 type documentPort interface {
@@ -651,6 +663,13 @@ func (wailsNative) SetTitle(ctx context.Context, title string) {
 	runtime.WindowSetTitle(ctx, title)
 }
 
+// EmitFileOpen tells the frontend to open a file macOS routed to us while the
+// app was already running. The launch case is served by FrontendReady instead,
+// because at launch there is no frontend to receive an event.
+func (wailsNative) EmitFileOpen(ctx context.Context, path string) {
+	runtime.EventsEmit(ctx, fileOpenEvent, path)
+}
+
 type documentAdapter struct{}
 
 func (documentAdapter) ReadMarkdown(path string) (string, error) {
@@ -675,4 +694,41 @@ func (imageAssetAdapter) ImportForDocument(documentPath string, sourcePath strin
 
 func (imageAssetAdapter) LoadForDocument(documentPath string, markdownPath string) (imageassets.LoadedImage, error) {
 	return imageassets.LoadForDocument(documentPath, markdownPath)
+}
+
+// openFileFromOS receives a path macOS routed to us: a double-click in Finder, a
+// drop on the Dock icon, or `open -a`. The bundle advertises the association
+// through CFBundleDocumentTypes, so the file arrives whether or not anything
+// consumes it — for a long time nothing did, and the user got an empty document
+// with no hint their file had gone (#53).
+//
+// Before the frontend is listening the path is held rather than emitted, because
+// the launch case delivers the file first and an event into a webview that does
+// not exist yet is an event nobody receives.
+func (a *App) openFileFromOS(path string) {
+	if path == "" {
+		return
+	}
+	a.mu.Lock()
+	ready := a.frontendReady
+	if !ready {
+		a.pendingOpen = append(a.pendingOpen, path)
+	}
+	a.mu.Unlock()
+	if ready {
+		a.native.EmitFileOpen(a.ctx, path)
+	}
+}
+
+// FrontendReady is called by the webview once it can accept a document. It
+// returns every file that arrived while nothing was listening, and clears them:
+// the frontend calls this on every boot, and a reload must not reopen a document
+// the user has already closed.
+func (a *App) FrontendReady() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.frontendReady = true
+	pending := a.pendingOpen
+	a.pendingOpen = nil
+	return pending
 }
