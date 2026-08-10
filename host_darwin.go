@@ -35,6 +35,7 @@ void hostRevealPath(const char *path);
 void hostOpenURL(const char *url);
 void hostSetTitle(const char *title);
 void hostCloseNow(void);
+char *hostMenuJSON(void);
 */
 import "C"
 
@@ -47,6 +48,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -118,6 +120,9 @@ func (darwinHost) Run(cfg hostConfig) error {
 	}
 	if docCheckMode {
 		mode = 5
+	}
+	if menuCheckMode {
+		mode = 6
 	}
 	if closeCheckMode {
 		mode = 3
@@ -437,6 +442,9 @@ var closeDirty bool
 
 // docCheckMode runs a structured document through the editor.
 var docCheckMode bool
+
+// menuCheckMode verifies the menu bar, which nothing else can see.
+var menuCheckMode bool
 
 // Lifecycle callbacks the application supplied, reachable from C.
 var (
@@ -876,4 +884,138 @@ func reportComposite(argsJSON string) {
 
 	fmt.Println("\nVERDICT: DIFFERS (see above; some rewriting is known and tracked)")
 	os.Exit(1)
+}
+
+// hostReportMenu checks the installed menu bar and exits.
+//
+// A Cocoa app has NO menu unless it builds one, and the Edit menu's key
+// equivalents are what deliver Cmd-C, Cmd-V, Cmd-X and Cmd-A to the first
+// responder. The first version of this host shipped with mainMenu=NIL, which
+// means an editor with no copy and no paste — invisible to every other gate,
+// because the frontend is perfectly healthy and the keystrokes simply never
+// arrive.
+//
+//export hostReportMenu
+func hostReportMenu() {
+	raw := C.hostMenuJSON()
+	defer C.free(unsafe.Pointer(raw))
+
+	var menus []struct {
+		Title string `json:"title"`
+		Items []struct {
+			Title     string `json:"title"`
+			Key       string `json:"key"`
+			Shift     int    `json:"shift"`
+			HasAction int    `json:"hasAction"`
+			JS        string `json:"js"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(C.GoString(raw)), &menus); err != nil {
+		fmt.Printf("MENU: unreadable: %v\n", err)
+		os.Exit(1)
+	}
+
+	// title is empty for the application menu: AppKit always shows the process
+	// name there and ignores whatever it is called.
+	required := []struct{ menu, item, key string }{
+		{"", "Quit", "q"},
+		{"File", "New", "n"},
+		{"File", "Open", "o"},
+		{"File", "Save", "s"},
+		{"Edit", "Cut", "x"},
+		{"Edit", "Copy", "c"},
+		{"Edit", "Paste", "v"},
+		{"Edit", "Select All", "a"},
+		{"View", "Formatted", "1"},
+		{"View", "Raw", "2"},
+	}
+
+	failed := 0
+	fmt.Printf("MENU: %d menus\n", len(menus))
+	for _, m := range menus {
+		fmt.Printf("  %-8s %d items\n", "["+m.Title+"]", len(m.Items))
+	}
+	fmt.Println()
+
+	for _, want := range required {
+		found := false
+		for _, m := range menus {
+			if m.Title != want.menu {
+				continue
+			}
+			for _, item := range m.Items {
+				if strings.HasPrefix(item.Title, want.item) && item.Key == want.key && item.HasAction == 1 {
+					found = true
+				}
+			}
+		}
+		if !found {
+			fmt.Printf("  MISSING  %s > %s (cmd-%s)\n", want.menu, want.item, want.key)
+			failed++
+			continue
+		}
+		fmt.Printf("  ok       %s > %s (cmd-%s)\n", want.menu, want.item, want.key)
+	}
+
+	// A menu key equivalent BEATS the webview, so any key the frontend already
+	// binds is a shortcut the menu would silently steal. Three were taken on the
+	// first attempt -- Cmd-B (bold), Shift-Cmd-S (split) and Cmd-W (close tab) --
+	// and none of them would have failed a test or logged anything. They would
+	// simply have stopped working.
+	taken, err := frontendShortcuts()
+	if err != nil {
+		fmt.Printf("\ncould not read the frontend shortcuts: %v\n", err)
+		os.Exit(1)
+	}
+	for _, m := range menus {
+		for _, item := range m.Items {
+			if item.Key == "" {
+				continue
+			}
+			combo := item.Key
+			if item.Shift == 1 {
+				combo = "shift+" + item.Key
+			}
+			owner, clash := taken[combo]
+			if !clash {
+				continue
+			}
+			// Sharing a key is fine when the menu runs the SAME handler. Compared
+			// against the JavaScript the item executes, not its title: "New" and
+			// "newDocument" have no useful textual relationship, and matching on
+			// titles would either miss real clashes or exempt them by accident.
+			if owner != "" && strings.Contains(item.JS, owner) {
+				continue
+			}
+			fmt.Printf("  CLASH    %s > %s takes cmd-%s, which the editor binds to %s\n",
+				m.Title, item.Title, combo, owner)
+			failed++
+		}
+	}
+
+	if failed > 0 {
+		fmt.Printf("\nVERDICT: FAIL (%d problems)\n", failed)
+		os.Exit(1)
+	}
+	fmt.Println("\nVERDICT: PASS")
+	os.Exit(0)
+}
+
+// frontendShortcuts reads the keys app.js binds, so the menu is checked against
+// what the application actually does rather than against a list kept by hand.
+func frontendShortcuts() (map[string]string, error) {
+	src, err := os.ReadFile("frontend/dist/src/app.js")
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	re := regexp.MustCompile(`key === '([a-z0-9` + "`" + `])'( && e\.shiftKey)?\)\s*\{\s*\n\s*e\.preventDefault\(\)\s*\n\s*([A-Za-z]+)`)
+	for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+		combo := m[1]
+		if m[2] != "" {
+			combo = "shift+" + m[1]
+		}
+		out[combo] = m[3]
+	}
+	return out, nil
 }
