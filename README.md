@@ -25,7 +25,7 @@ Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) wi
 >
 > **If the exact bytes matter — a Hugo or Jekyll site, an Obsidian vault, anything under version control — edit in Raw mode (⌘/Ctrl-R).** Raw mode preserves every construct listed above.
 >
-> **Fixed since v0.4.1:** link reference definitions are preserved, including unused ones, and the reference syntax that used them is restored rather than inlined. Bullet characters, ordered-list markers (including lists that repeat `1.` instead of counting up), setext headings, fence characters, thematic-break style and closing ATX hashes are now taken from the document itself instead of being normalized. A document with mixed styles keeps its majority style. A document that ended in a list or a footnote block no longer gains a trailing blank line. GFM footnote definitions are no longer duplicated on every save — a defect that grew the file by one copy each time.
+> **Fixed in v0.5.0:** link reference definitions are preserved, including unused ones, and the reference syntax that used them is restored rather than inlined. Bullet characters, ordered-list markers (including lists that repeat `1.` instead of counting up), setext headings, fence characters, thematic-break style and closing ATX hashes are now taken from the document itself instead of being normalized. A document with mixed styles keeps its majority style. A document that ended in a list or a footnote block no longer gains a trailing blank line. GFM footnote definitions are no longer duplicated on every save — a defect that grew the file by one copy each time.
 >
 > **Fixed in v0.4.1:** inline `<br>` is no longer deleted (in v0.4.0 it joined the words either side of it), and CRLF line endings now survive an edit instead of rewriting the whole file. Both were narrow bugs rather than the architectural limit this caution originally claimed — the correction is recorded in the v0.4.0 release notes.
 >
@@ -149,7 +149,7 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 
 ## Known limitations
 
-- **WYSIWYG editing respells some markdown — see the caution at the top of this file. Use Raw mode when the exact bytes matter.** Nothing is deleted any more: inline `<br>` and CRLF were fixed in v0.4.1, and link reference definitions since. 38 of 49 surveyed CommonMark and GFM constructs now round-trip byte-identically, measured by `e2e/fidelity_survey_test.go`.
+- **WYSIWYG editing respells some markdown — see the caution at the top of this file. Use Raw mode when the exact bytes matter.** Nothing is deleted any more: inline `<br>` and CRLF were fixed in v0.4.1, and link reference definitions plus footnote duplication in v0.5.0. 38 of 49 surveyed CommonMark and GFM constructs now round-trip byte-identically, measured by `e2e/fidelity_survey_test.go`.
 - Saving refuses to overwrite a file that changed on disk since the app last read or wrote it, and asks before replacing it. The check re-reads the file on every save, which is part of why large documents are slow.
 - Saving replaces the file via an atomic rename, which breaks hard links to it. Extended attributes such as Finder tags are preserved, and a read-only file is refused rather than replaced.
 - Large documents are slow: roughly 4 s to open a 140 KB file and 10 s for 280 KB, with no progress indicator and no way to cancel. There is no size limit.
