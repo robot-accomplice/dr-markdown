@@ -85,6 +85,51 @@ included — at the cost of the cross-platform goal, which is currently unmet an
 The open sub-decision under C is whether the shell is Swift calling a Go archive, or cgo inside the
 Go binary. That decision is deferred until phase 0 has measured the boundary it would sit behind.
 
+### D scoped — direct rendering, no webview
+
+Raised by the maintainer on 2026-08-10. It is a **product decision, not a host choice**, and it needs
+its own brainstorm rather than a paragraph here. Recorded because it changes what phase 0 is worth.
+
+**First, a correction that must not be re-derived.** The motivating intuition was that the app hosts
+a server on a TCP port and talks to it across process boundaries. **It does not.** Verified in
+`wails@v2.13.0`:
+
+- No `net.Listen`, `http.Serve` or `ListenAndServe` anywhere in `internal/` outside tests.
+- macOS serves assets over a **custom URL scheme** — `startURL = "wails://wails/"` with a
+  `WKURLSchemeHandler`, handled in-process by `processURLRequest`
+  (`internal/frontend/desktop/darwin/frontend.go:40,511`).
+- The dev server is behind `//go:build dev`; production is `//go:build production`. Only `wails dev`
+  ever binds a socket.
+- Frontend-to-Go calls are `window.WailsInvoke("C" + json)` into the dispatcher — a call across the
+  WKWebView boundary, not a socket.
+
+So there is no port, no loopback and nothing listening. That surface is already absent, and any
+argument for D must rest on the others.
+
+**What D would actually delete**, measured 2026-08-10:
+
+| | |
+| --- | --- |
+| Vendored third-party JS/CSS | **5.9 MB**, 26 files — Crepe 2.7 MB, Mermaid 2.6 MB, CodeMirror 369 KB, highlight.js 125 KB |
+| Our own frontend | **6,804 lines** of JavaScript |
+| `tools/verify-vendor.sh` and its digests | exists only to police that 5.9 MB |
+| A full browser engine in-process | the largest single component, and the one that cannot be audited |
+| CSP, link-scheme allowlist, `<img>` attribute filter | `index.html` plus two call sites |
+| The bridge, the transport, the scheme handler, the dispatcher | entirely |
+| **The re-serialization class** | permanently — see below |
+
+**D is the only option that closes the standing GA blocker.** The re-serialization class exists
+because the editor parses to ProseMirror's model and re-serializes the whole document, so a construct
+nobody surveyed is respelled. An editor working on the markdown source can preserve bytes by
+construction. A, B and C cannot touch this; they change the host, not the editor.
+
+**The honest cost, and it is the whole risk.** The editor *is* the product. Crepe supplies the
+document model, remark parse and serialize, tables, code blocks, syntax highlighting and Mermaid.
+Beyond that, WKWebView is providing capability that must otherwise be rebuilt: text layout,
+bidirectional text, **IME composition for CJK input**, **accessibility and VoiceOver**, spell-check,
+selection and caret behaviour, and font fallback. IME and accessibility in a hand-rolled text view
+are where such editors are quietly bad for years, and neither has a shortcut.
+
 ### What phase 0 adds to these numbers
 
 Every figure above describes what a host layer costs to *write*. None of them says what dr-markdown
@@ -104,6 +149,22 @@ is real.
 already have a working, tested shape and a working fake; re-cutting them would risk behaviour for no
 gain. `hostPort` adds the parts that have no port today — lifecycle, window, asset source, event
 emission, binding registration — and exposes `nativePort` as one of its members.
+
+### Phase 0 splits cleanly along the Go/JS seam, and that decides its order
+
+Option D changes what parts of this work are worth doing now, and it splits the phase along a seam
+that was not visible when it was first written:
+
+- **Unconditionally useful, including under D:** `hostPort`, `nativePort`, window lifecycle, native
+  dialogs, document handover. Those are operating-system concerns and exist whether the user
+  interface is a webview or drawn directly.
+- **Wasted under D:** the generated bridge, `transport.js`, the JavaScript event channel. Under
+  direct rendering there is no JavaScript at all.
+
+**Therefore the Go-side boundary is built first**, and the JavaScript generation is deferred until
+the interface question is settled. Nothing built is wasted whichever way D goes, and the Go boundary
+is also what makes D's own cost measurable — the native operations it defines are exactly what a
+directly-rendered application would still need.
 
 ### Hard constraint
 

@@ -24,6 +24,28 @@
 
 ---
 
+## Execution Order — read this before starting
+
+Tasks are **not** executed in numbered order. Option D (direct rendering, no webview) was raised
+after this plan was written, and it splits the work along the Go/JavaScript seam:
+
+| stage | tasks | why |
+| --- | --- | --- |
+| **Stage 1 — build now** | **1, then 7, then the Go half of 8** | Operating-system concerns. Needed whether the interface is a webview or drawn directly, so nothing here is wasted under any option including D |
+| **Stage 2 — hold** | **2, 3, 4, 5, 6, and the JS half of 8** | The generated bridge, `transport.js` and the event channel. **Under D there is no JavaScript at all**, so this work is wasted if D is chosen |
+
+**Stage 2 does not begin until the interface question is settled.** Task 7 depends on Task 1 only;
+it has no dependency on Tasks 2–6, so Stage 1 stands alone and ships alone.
+
+Numbering is left unchanged so that the interface blocks in each task (`Consumes` / `Produces`)
+still resolve against the task numbers they name.
+
+When Stage 1 completes, Task 8 splits: run **Steps 3, 5, 6 and 7** (the boundary gate, the gate run,
+the measurement, and the Architext update) and **hold Steps 1, 2 and 4** (the regenerate-and-diff
+gate and the deletion of the bound-method panic gate), because both concern generation.
+
+---
+
 ## File Structure
 
 **Created:**
