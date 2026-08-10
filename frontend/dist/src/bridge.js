@@ -24,6 +24,10 @@ export const bridge = {
   loadImageAsset: (documentPath, markdownPath) =>
     wails()?.LoadImageAsset?.(documentPath, markdownPath) ?? missing('LoadImageAsset'),
   recordEvent: (event, fields) => wails()?.RecordClientEvent?.(event, fields ?? {}),
+  // Files macOS routed to us before this webview existed. Launching by
+  // double-click delivers the file first, so the frontend has to ASK for it
+  // rather than wait to be told — an event sent before boot reaches nobody.
+  frontendReady: () => wails()?.FrontendReady?.() ?? Promise.resolve([]),
   openExternalURL: (url) => wails()?.OpenExternalURL?.(url) ?? missing('OpenExternalURL'),
   revealImageAsset: (documentPath, markdownPath) =>
     wails()?.RevealImageAsset?.(documentPath, markdownPath) ?? missing('RevealImageAsset'),

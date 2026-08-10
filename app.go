@@ -27,7 +27,11 @@ import (
 // appVersion is the build identity carried into every recorded event, so a
 // user's bug report can be tied to what actually ran. Kept in step with
 // wails.json by TestAppVersionMatchesWailsConfig.
-const appVersion = "0.5.0"
+const appVersion = "0.5.1"
+
+// fileOpenEvent is the Wails event carrying a path macOS asked us to open while
+// the app was already running. The frontend subscribes to it by this name.
+const fileOpenEvent = "file:open"
 
 var iconFreeMessageDialogPNG = []byte{
 	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -49,6 +53,13 @@ type App struct {
 	mu sync.Mutex
 	// session owns the open tabs, their dirty state and the on-disk baseline.
 	session *session.Session
+	// pendingOpen holds files macOS handed us before the webview could accept
+	// one. Launching by double-click delivers the file BEFORE the frontend
+	// exists, so emitting straight away would drop it silently — which is the
+	// defect this replaced (#53).
+	pendingOpen []string
+	// frontendReady flips once the webview has asked for its pending files.
+	frontendReady bool
 	// currentPath is the last path opened or saved. It names the window title
 	// and the Save-As default only; it is NEVER a write target, because
 	// inferring the target from ambient state is what destroyed documents.
@@ -60,6 +71,9 @@ type App struct {
 	preferences preferencePort
 	images      imageAssetPort
 	events      *eventlog.Log
+	// panicDialog fires at most once. Deliberately not guarded by mu: a panic
+	// raised while mu is held would deadlock its own report. See reportPanic.
+	panicDialog sync.Once
 }
 
 type appDependencies struct {
@@ -82,6 +96,7 @@ type nativePort interface {
 	ShowError(context.Context, string, string)
 	ConfirmUnsaved(context.Context) (string, error)
 	SetTitle(context.Context, string)
+	EmitFileOpen(context.Context, string)
 }
 
 type documentPort interface {
@@ -136,6 +151,8 @@ func newAppWithDependencies(deps appDependencies) *App {
 }
 
 func (a *App) startup(ctx context.Context) {
+	defer a.reportPanic("startup")
+
 	a.ctx = ctx
 	// Wails resolves dropped files to real filesystem paths; the frontend's DOM
 	// drop event cannot. Subscribing through the native port keeps startup
@@ -152,6 +169,8 @@ type OpenResult struct {
 // OpenDocument shows a native open dialog and reads the chosen file.
 // A canceled dialog returns an empty OpenResult and nil error.
 func (a *App) OpenDocument() (OpenResult, error) {
+	defer a.reportPanic("OpenDocument")
+
 	path, err := a.native.OpenMarkdownFile(a.ctx)
 	if err != nil {
 		return OpenResult{}, err
@@ -169,6 +188,8 @@ func (a *App) OpenDocument() (OpenResult, error) {
 // — a git pull, a sync client, a second window — was replaced with no error and
 // no prompt.
 func (a *App) SaveDocument(path, content string) error {
+	defer a.reportPanic("SaveDocument")
+
 	if path == "" {
 		return fmt.Errorf("SaveDocument: empty path")
 	}
@@ -195,6 +216,8 @@ func (a *App) SaveDocument(path, content string) error {
 // SaveDocumentAs shows a native save dialog and writes content atomically.
 // Returns the saved path, or "" if the user canceled.
 func (a *App) SaveDocumentAs(content string) (string, error) {
+	defer a.reportPanic("SaveDocumentAs")
+
 	path, err := a.native.SaveMarkdownFile(a.ctx, "untitled.md")
 	if err != nil {
 		return "", err
@@ -224,6 +247,8 @@ type OpenDocument = session.Document
 // write must now name its own target, and dirty state aggregates across tabs
 // rather than tracking only the visible one.
 func (a *App) SyncDocuments(docs []OpenDocument) {
+	defer a.reportPanic("SyncDocuments")
+
 	a.session.Sync(docs)
 	a.updateTitle()
 }
@@ -234,6 +259,8 @@ func (a *App) SyncDocuments(docs []OpenDocument) {
 // against the last opened path: not knowing which file is dirty must lead to
 // asking the user, never to writing a guess.
 func (a *App) SetDirty(dirty bool) {
+	defer a.reportPanic("SetDirty")
+
 	a.session.SetDirty(dirty)
 	a.updateTitle()
 }
@@ -246,25 +273,36 @@ func (a *App) activeDocument() OpenDocument { return a.session.Active() }
 
 // UpdateContent stores the latest markdown for the active tab (pushed
 // debounced by the frontend) so the close guard can save without a round-trip.
-func (a *App) UpdateContent(content string) { a.session.UpdateActiveContent(content) }
+func (a *App) UpdateContent(content string) {
+	defer a.reportPanic("UpdateContent")
+	a.session.UpdateActiveContent(content)
+}
 
 // ListFontFamilies returns installed font family names for settings controls.
 func (a *App) ListFontFamilies() []string {
+	defer a.reportPanic("ListFontFamilies")
+
 	return a.fonts.ListFamilies()
 }
 
 // LoadPreferences returns persisted preferences and recents for frontend boot.
 func (a *App) LoadPreferences() (preferences.Preferences, error) {
+	defer a.reportPanic("LoadPreferences")
+
 	return a.preferences.Load()
 }
 
 // SavePreferences persists runtime settings selected in the frontend.
 func (a *App) SavePreferences(prefs preferences.Preferences) error {
+	defer a.reportPanic("SavePreferences")
+
 	return a.preferences.Save(prefs)
 }
 
 // OpenRecentDocument opens a known recent path without showing a native picker.
 func (a *App) OpenRecentDocument(path string) (OpenResult, error) {
+	defer a.reportPanic("OpenRecentDocument")
+
 	if path == "" {
 		return OpenResult{}, fmt.Errorf("OpenRecentDocument: empty path")
 	}
@@ -280,6 +318,8 @@ var errUnsavedImageImport = errors.New("Save the document before inserting image
 // An unsaved document is rejected before the picker opens, so the user is
 // never asked to choose a file the import could never have accepted.
 func (a *App) ImportImage(documentPath string) (imageassets.ImportedImage, error) {
+	defer a.reportPanic("ImportImage")
+
 	if documentPath == "" {
 		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
 		return imageassets.ImportedImage{}, errUnsavedImageImport
@@ -303,6 +343,8 @@ func (a *App) ImportImage(documentPath string) (imageassets.ImportedImage, error
 // path is already known, so no picker is shown, but the same asset policy and
 // unsaved-document rejection apply as for the ribbon command.
 func (a *App) ImportDroppedImage(documentPath string, sourcePath string) (imageassets.ImportedImage, error) {
+	defer a.reportPanic("ImportDroppedImage")
+
 	if documentPath == "" {
 		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
 		return imageassets.ImportedImage{}, errUnsavedImageImport
@@ -318,6 +360,8 @@ func (a *App) ImportDroppedImage(documentPath string, sourcePath string) (imagea
 // LoadImageAsset inlines a document-relative image so the webview can render
 // it and so print/export artifacts stay self-contained.
 func (a *App) LoadImageAsset(documentPath string, markdownPath string) (imageassets.LoadedImage, error) {
+	defer a.reportPanic("LoadImageAsset")
+
 	return a.images.LoadForDocument(documentPath, markdownPath)
 }
 
@@ -338,6 +382,8 @@ var safeExternalSchemes = map[string]bool{"http": true, "https": true, "mailto":
 // the remote page — a chrome-less window with no address bar and no back
 // button, from which the only escape is quitting.
 func (a *App) OpenExternalURL(raw string) error {
+	defer a.reportPanic("OpenExternalURL")
+
 	// Strip exactly what a URL parser strips, so this check cannot be fooled by
 	// a string that reads as harmless here and as `javascript:` to the opener.
 	cleaned := strings.Map(func(r rune) rune {
@@ -396,6 +442,8 @@ func (a *App) confirmNoExternalChange(path string) error {
 // Fields are recorded as data, never interpreted. The webview parses untrusted
 // document content, so anything arriving here is untrusted too.
 func (a *App) RecordClientEvent(event string, fields map[string]string) {
+	defer a.reportPanic("RecordClientEvent")
+
 	if event == "" {
 		return
 	}
@@ -403,6 +451,8 @@ func (a *App) RecordClientEvent(event string, fields map[string]string) {
 }
 
 func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
+	defer a.reportPanic("RevealImageAsset")
+
 	loaded, err := a.images.LoadForDocument(documentPath, markdownPath)
 	if err != nil {
 		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
@@ -426,6 +476,8 @@ func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 // dialog as the close guard; Save saves first, Don't Save proceeds, and
 // Cancel (or a dialog/save failure) aborts.
 func (a *App) ResolveUnsavedChanges() bool {
+	defer a.reportPanic("ResolveUnsavedChanges")
+
 	if !a.activeDocument().Dirty {
 		return true
 	}
@@ -435,6 +487,8 @@ func (a *App) ResolveUnsavedChanges() bool {
 // beforeClose implements the unsaved-changes guard: Save / Don't Save /
 // Cancel, matching the spec's error-handling contract.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	defer a.reportPanic("beforeClose")
+
 	unsynced := a.session.HasUnsyncedDirty()
 	if len(a.dirtyDocuments()) == 0 && !unsynced {
 		return false
@@ -651,6 +705,13 @@ func (wailsNative) SetTitle(ctx context.Context, title string) {
 	runtime.WindowSetTitle(ctx, title)
 }
 
+// EmitFileOpen tells the frontend to open a file macOS routed to us while the
+// app was already running. The launch case is served by FrontendReady instead,
+// because at launch there is no frontend to receive an event.
+func (wailsNative) EmitFileOpen(ctx context.Context, path string) {
+	runtime.EventsEmit(ctx, fileOpenEvent, path)
+}
+
 type documentAdapter struct{}
 
 func (documentAdapter) ReadMarkdown(path string) (string, error) {
@@ -675,4 +736,45 @@ func (imageAssetAdapter) ImportForDocument(documentPath string, sourcePath strin
 
 func (imageAssetAdapter) LoadForDocument(documentPath string, markdownPath string) (imageassets.LoadedImage, error) {
 	return imageassets.LoadForDocument(documentPath, markdownPath)
+}
+
+// openFileFromOS receives a path macOS routed to us: a double-click in Finder, a
+// drop on the Dock icon, or `open -a`. The bundle advertises the association
+// through CFBundleDocumentTypes, so the file arrives whether or not anything
+// consumes it — for a long time nothing did, and the user got an empty document
+// with no hint their file had gone (#53).
+//
+// Before the frontend is listening the path is held rather than emitted, because
+// the launch case delivers the file first and an event into a webview that does
+// not exist yet is an event nobody receives.
+func (a *App) openFileFromOS(path string) {
+	defer a.reportPanic("openFileFromOS")
+
+	if path == "" {
+		return
+	}
+	a.mu.Lock()
+	ready := a.frontendReady
+	if !ready {
+		a.pendingOpen = append(a.pendingOpen, path)
+	}
+	a.mu.Unlock()
+	if ready {
+		a.native.EmitFileOpen(a.ctx, path)
+	}
+}
+
+// FrontendReady is called by the webview once it can accept a document. It
+// returns every file that arrived while nothing was listening, and clears them:
+// the frontend calls this on every boot, and a reload must not reopen a document
+// the user has already closed.
+func (a *App) FrontendReady() []string {
+	defer a.reportPanic("FrontendReady")
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.frontendReady = true
+	pending := a.pendingOpen
+	a.pendingOpen = nil
+	return pending
 }
