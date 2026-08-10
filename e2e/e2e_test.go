@@ -820,13 +820,13 @@ func TestFileFlowWithStubBridge(t *testing.T) {
 	bootApp(t, ctx, url)
 
 	stub := `globalThis.__calls = [];
-globalThis.go = { main: { App: {
+globalThis.drmd = { native: {
   OpenDocument: async () => ({ path: '/tmp/fake.md', content: "# From Stub\n" }),
   SaveDocument: async (p, c) => { globalThis.__calls.push(['save', p, c]); },
   SaveDocumentAs: async (c) => { globalThis.__calls.push(['saveAs', c]); return '/tmp/fake.md'; },
   SetDirty: (d) => { globalThis.__calls.push(['dirty', d]); },
   UpdateContent: (c) => { globalThis.__calls.push(['content', c]); },
-} } }; 'ok'`
+} } ; 'ok'`
 	var res string
 	evalJS(t, ctx, stub, &res)
 
@@ -872,10 +872,10 @@ func TestDirtyWiringWithStubBridge(t *testing.T) {
 	bootApp(t, ctx, url)
 
 	stub := `globalThis.__calls = [];
-globalThis.go = { main: { App: {
+globalThis.drmd = { native: {
   SetDirty: (d) => { globalThis.__calls.push(['dirty', d]); },
   UpdateContent: (c) => { globalThis.__calls.push(['content', c]); },
-} } }; 'ok'`
+} } ; 'ok'`
 	var res string
 	evalJS(t, ctx, stub, &res)
 
@@ -917,10 +917,10 @@ func TestRawModeDirtyTracking(t *testing.T) {
 	bootApp(t, ctx, url)
 
 	stub := `globalThis.__calls = [];
-globalThis.go = { main: { App: {
+globalThis.drmd = { native: {
   SetDirty: (d) => { globalThis.__calls.push(['dirty', d]); },
   UpdateContent: (c) => { globalThis.__calls.push(['content', c]); },
-} } }; 'ok'`
+} } ; 'ok'`
 	var res string
 	evalJS(t, ctx, stub, &res)
 
@@ -959,7 +959,7 @@ func TestOpenOverDirtyGuard(t *testing.T) {
 
 	stub := `globalThis.__calls = [];
 globalThis.__resolveResult = false;
-globalThis.go = { main: { App: {
+globalThis.drmd = { native: {
   OpenDocument: async () => {
     globalThis.__calls.push(['open']);
     return { path: '/tmp/guard.md', content: "# Opened Doc\n" };
@@ -970,7 +970,7 @@ globalThis.go = { main: { App: {
   },
   SetDirty: (d) => { globalThis.__calls.push(['dirty', d]); },
   UpdateContent: (c) => { globalThis.__calls.push(['content', c]); },
-} } }; 'ok'`
+} } ; 'ok'`
 	var res string
 	evalJS(t, ctx, stub, &res)
 
@@ -1247,12 +1247,12 @@ func TestRibbonCompletionCommandsAreBacked(t *testing.T) {
 	var res string
 	// Image insertion is backed by the native import bridge, so the ribbon
 	// wiring can only be exercised with that binding stubbed.
-	evalJS(t, ctx, `globalThis.go = { main: { App: {
+	evalJS(t, ctx, `globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		ImportImage: async () => ({ markdown: '![shot](doc.assets/shot.png)' }),
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 	evalJS(t, ctx, "window.__app.setMarkdown('# Ribbon Completion\\n').then(() => 'ok')", &res)
 
 	var homeCommands bool
@@ -1348,7 +1348,7 @@ func TestImageRibbonCommandImportsNativeAssetMarkdown(t *testing.T) {
 
 	var res string
 	evalJS(t, ctx, `globalThis.__imageImportPath = '';
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		ImportImage: async (documentPath) => {
 			globalThis.__imageImportPath = documentPath
@@ -1356,7 +1356,7 @@ func TestImageRibbonCommandImportsNativeAssetMarkdown(t *testing.T) {
 		},
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 	evalJS(t, ctx, `(() => {
 		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
 		doc.path = '/tmp/doc.md'
@@ -1384,12 +1384,12 @@ func TestImageRibbonCommandLeavesDocumentUnchangedWhenImportFails(t *testing.T) 
 	bootApp(t, ctx, url)
 
 	var res string
-	evalJS(t, ctx, `globalThis.go = { main: { App: {
+	evalJS(t, ctx, `globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		ImportImage: async () => { throw new Error('Save the document before inserting images.') },
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 	evalJS(t, ctx, "window.__app.setMarkdown('# Import Failure\\n').then(() => 'ok')", &res)
 
 	var settled string
@@ -1417,7 +1417,7 @@ func TestRenderedImagesResolveThroughAssetBridge(t *testing.T) {
 
 	var res string
 	evalJS(t, ctx, `globalThis.__loadedAssets = [];
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		LoadImageAsset: async (documentPath, markdownPath) => {
 			globalThis.__loadedAssets.push([documentPath, markdownPath])
@@ -1425,7 +1425,7 @@ func TestRenderedImagesResolveThroughAssetBridge(t *testing.T) {
 		},
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 	evalJS(t, ctx, `(() => {
 		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
 		doc.path = '/tmp/doc.md'
@@ -1463,12 +1463,12 @@ func TestMissingImageAssetRendersVisibleBrokenState(t *testing.T) {
 	bootApp(t, ctx, url)
 
 	var res string
-	evalJS(t, ctx, `globalThis.go = { main: { App: {
+	evalJS(t, ctx, `globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		LoadImageAsset: async () => ({ dataURI: '', exists: false, absolutePath: '/tmp/doc.assets/gone.png' }),
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 	evalJS(t, ctx, `(() => {
 		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
 		doc.path = '/tmp/doc.md'
@@ -1500,12 +1500,12 @@ func TestPrintExportInlinesImageAssets(t *testing.T) {
 	bootApp(t, ctx, url)
 
 	var res string
-	evalJS(t, ctx, `globalThis.go = { main: { App: {
+	evalJS(t, ctx, `globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		LoadImageAsset: async () => ({ dataURI: 'data:image/png;base64,PRINTED', exists: true }),
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; window.print = () => { globalThis.__printed = true }; 'ok'`, &res)
+	} } ; window.print = () => { globalThis.__printed = true }; 'ok'`, &res)
 	evalJS(t, ctx, `(() => {
 		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
 		doc.path = '/tmp/doc.md'
@@ -1534,12 +1534,12 @@ func TestPreviewDropsEventHandlersFromDocumentImageTags(t *testing.T) {
 	bootApp(t, ctx, url)
 
 	var res string
-	evalJS(t, ctx, `globalThis.go = { main: { App: {
+	evalJS(t, ctx, `globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		LoadImageAsset: async () => ({ dataURI: '', exists: false }),
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; window.print = () => {}; 'ok'`, &res)
+	} } ; window.print = () => {}; 'ok'`, &res)
 	evalJS(t, ctx, `window.__app.setMarkdown('<img src="x.png" alt="a" width="100" onerror="globalThis.__pwned = true">\n').then(() => 'ok')`, &res)
 	evalJS(t, ctx, "window.__app.printDocument('print').then(() => 'ok')", &res)
 
@@ -1567,14 +1567,14 @@ func bootImageDocument(t *testing.T, ctx context.Context, selectIndex int) {
 	t.Helper()
 	var res string
 	evalJS(t, ctx, `globalThis.__revealed = null;
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		LoadImageAsset: async () => ({ dataURI: 'data:image/png;base64,AAAA', exists: true }),
 		RevealImageAsset: async (documentPath, markdownPath) => { globalThis.__revealed = [documentPath, markdownPath] },
 		ImportImage: async () => ({ markdown: '![swapped](doc.assets/swapped.png)', markdownPath: 'doc.assets/swapped.png' }),
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 	evalJS(t, ctx, `(() => {
 		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
 		doc.path = '/tmp/doc.md'
@@ -1730,7 +1730,7 @@ func TestDroppedImageFilesImportThroughAssetPolicy(t *testing.T) {
 
 	var res string
 	evalJS(t, ctx, `globalThis.__dropped = [];
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		LoadImageAsset: async () => ({ dataURI: 'data:image/png;base64,AAAA', exists: true }),
 		ImportDroppedImage: async (documentPath, sourcePath) => {
@@ -1739,7 +1739,7 @@ func TestDroppedImageFilesImportThroughAssetPolicy(t *testing.T) {
 		},
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 	evalJS(t, ctx, `(() => {
 		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
 		doc.path = '/tmp/doc.md'
@@ -1773,11 +1773,11 @@ func TestBootSurvivesRejectedPreferences(t *testing.T) {
 	defer cancel()
 	url := serveFrontend(t)
 
-	bootAppWithNativeStub(t, ctx, url, `globalThis.go = { main: { App: {
+	bootAppWithNativeStub(t, ctx, url, `globalThis.drmd = { native: {
 		LoadPreferences: async () => { throw new Error('decode preferences: unexpected end of JSON input') },
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } };`)
+	} } ;`)
 
 	var mounted bool
 	evalJS(t, ctx, `Boolean(window.__app && window.__app.ready === true &&
@@ -1805,12 +1805,12 @@ func TestImageAssetsResolveOnEveryRenderSurface(t *testing.T) {
 	bootApp(t, ctx, url)
 
 	var res string
-	evalJS(t, ctx, `globalThis.go = { main: { App: {
+	evalJS(t, ctx, `globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		LoadImageAsset: async () => ({ dataURI: 'data:image/png;base64,SURFACE', exists: true }),
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; window.print = () => {}; 'ok'`, &res)
+	} } ; window.print = () => {}; 'ok'`, &res)
 	evalJS(t, ctx, `(() => {
 		const doc = window.__app.state.docs.find((item) => item.id === window.__app.state.activeDocId)
 		doc.path = '/tmp/doc.md'
@@ -1864,14 +1864,14 @@ func TestSettingsModalAppliesBackedRuntimePreferences(t *testing.T) {
 
 	var res string
 	evalJS(t, ctx, `globalThis.__calls = [];
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		ListFontFamilies: async () => {
 			globalThis.__calls.push(['fonts'])
 			return ['Georgia', 'Fira Code', 'Menlo']
 		},
 		SetDirty: () => {},
 		UpdateContent: () => {},
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 	evalJS(t, ctx, "window.__app.setMarkdown('# Fonts\\n\\nBody text.\\n').then(() => 'ok')", &res)
 	evalJS(t, ctx, "window.__app.openSettings().then(() => 'ok')", &res)
 
@@ -2035,7 +2035,7 @@ func TestBootLoadsPersistedPreferencesThroughBridge(t *testing.T) {
 	defer cancel()
 	url := serveFrontend(t)
 	bootAppWithNativeStub(t, ctx, url, `globalThis.__nativeCalls = [];
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		LoadPreferences: async () => {
 			globalThis.__nativeCalls.push(['loadPreferences'])
 			return {
@@ -2057,7 +2057,7 @@ func TestBootLoadsPersistedPreferencesThroughBridge(t *testing.T) {
 		SetDirty: async () => {},
 		UpdateContent: async () => {},
 		ListFontFamilies: async () => ['Georgia', 'Menlo']
-	} } };`)
+	} } ;`)
 
 	var applied bool
 	evalJS(t, ctx, `globalThis.__nativeCalls.some((call) => call[0] === 'loadPreferences') &&
@@ -2080,13 +2080,13 @@ func TestSettingsSavePersistsNativePreferences(t *testing.T) {
 	defer cancel()
 	url := serveFrontend(t)
 	bootAppWithNativeStub(t, ctx, url, `globalThis.__savedPreferences = null;
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		SavePreferences: async (prefs) => { globalThis.__savedPreferences = prefs },
 		ListFontFamilies: async () => ['Georgia', 'Menlo'],
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } };`)
+	} } ;`)
 
 	var res string
 	evalJS(t, ctx, "window.__app.openSettings().then(() => 'ok')", &res)
@@ -2116,7 +2116,7 @@ func TestRecentFilesRenderAndOpenSpecificRecentBridge(t *testing.T) {
 	defer cancel()
 	url := serveFrontend(t)
 	bootAppWithNativeStub(t, ctx, url, `globalThis.__recentOpened = '';
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		LoadPreferences: async () => ({
 			settings: {},
 			rawOptions: {},
@@ -2128,7 +2128,7 @@ func TestRecentFilesRenderAndOpenSpecificRecentBridge(t *testing.T) {
 		},
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } };`)
+	} } ;`)
 
 	var recentRows []string
 	evalJS(t, ctx, `Array.from(document.querySelectorAll('[data-recent-file]')).map((row) => row.textContent.trim())`, &recentRows)
@@ -2188,13 +2188,13 @@ func TestFileRailSearchAndOutlinePanelsAreBacked(t *testing.T) {
 		{ path: '/tmp/alpha.md', content: '# Alpha\n\n## Beta\n\nSee [Docs](https://example.com).\n' },
 		{ path: '/tmp/gamma.md', content: '# Gamma\n' }
 	];
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		OpenDocument: async () => globalThis.__openQueue.shift(),
 		SaveDocument: async () => {},
 		SaveDocumentAs: async () => '/tmp/saved.md',
 		SetDirty: () => {},
 		UpdateContent: () => {},
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 	evalJS(t, ctx, "window.__app.openDocument().then(() => 'ok')", &res)
 	evalJS(t, ctx, "window.__app.newDocument().then(() => 'ok')", &res)
 	evalJS(t, ctx, "window.__app.openDocument().then(() => 'ok')", &res)
@@ -3004,12 +3004,12 @@ func TestFrontendReportsEveryTabWithItsOwnPath(t *testing.T) {
 
 	var res string
 	evalJS(t, ctx, `globalThis.__synced = null;
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		SyncDocuments: async (docs) => { globalThis.__synced = docs },
 		SetDirty: async () => {},
 		UpdateContent: async () => {}
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 
 	// Tab one, given a path and edited.
 	evalJS(t, ctx, `(() => {

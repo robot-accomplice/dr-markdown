@@ -238,7 +238,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"  'FrontendReady','Ping','Boom'];"
         @"const App = {};"
         @"for (const n of NAMES) App[n] = (...args) => call(n, args);"
-        @"globalThis.go = { main: { App } };"
+        @"globalThis.drmd = { native: App };"
         // app.js subscribes through globalThis.runtime.EventsOn at two sites
         // (files:dropped and file:open), so a host must supply that surface too.
         // It is not part of go.main.App and a host that provides only the bound
@@ -280,25 +280,25 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"  out.diag_app_exists = typeof globalThis.__app;"
         @"  out.diag_errors = errors.slice(0, 8);"
         @"  out.gate2_ping = await timed("
-        @"    globalThis.go.main.App.Ping('hello').catch((e) => 'THREW: ' + e.message), 'ping');"
+        @"    globalThis.drmd.native.Ping('hello').catch((e) => 'THREW: ' + e.message), 'ping');"
         @"  out.gate3_boom = await timed("
-        @"    globalThis.go.main.App.Boom()"
+        @"    globalThis.drmd.native.Boom()"
         @"      .then(() => 'RESOLVED — WRONG, a panic must not resolve')"
         @"      .catch((e) => 'REJECTED: ' + e.message), 'boom');"
         @"  out.gate3b_survived = await timed("
-        @"    globalThis.go.main.App.Ping('still here').catch((e) => 'THREW: ' + e.message), 'ping2');"
+        @"    globalThis.drmd.native.Ping('still here').catch((e) => 'THREW: ' + e.message), 'ping2');"
         // Gate 4: the Go -> frontend event channel. app.js subscribes through
         // globalThis.runtime.EventsOn for files:dropped and file:open, and a host
         // that implements only bound methods leaves both silently dead — no
         // error, just a file opened from Finder that never appears.
         @"  const got = new Promise((r) => globalThis.runtime.EventsOn('file:open', r));"
-        @"  globalThis.go.main.App.Ping('__emit_file_open');"
+        @"  globalThis.drmd.native.Ping('__emit_file_open');"
         @"  out.gate4_event_received = await timed(got, 'event');"
         // Gate 5: the file-drop path from AppKit's callback through the
         // subscriber to the frontend. The OS delivery itself needs a real drag
         // and a person; everything downstream of it is exercised here.
         @"  const dropped = new Promise((r) => globalThis.runtime.EventsOn('files:dropped', r));"
-        @"  globalThis.go.main.App.Ping('__simulate_drop');"
+        @"  globalThis.drmd.native.Ping('__simulate_drop');"
         @"  out.gate5_drop_delivered = await timed(dropped, 'drop');"
         // Gate 6: an actual document round trip. The other gates prove the host
         // works; this proves the APPLICATION does — the editor, the fidelity
@@ -338,9 +338,9 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"    out.gate6_stage = 'serialize';"
         @"    const serialized = globalThis.__app.getEditorMarkdown();"
         @"    out.gate6_stage = 'save';"
-        @"    await timed(globalThis.go.main.App.SaveDocument(path, serialized), 'save');"
+        @"    await timed(globalThis.drmd.native.SaveDocument(path, serialized), 'save');"
         @"    out.gate6_stage = 'reopen';"
-        @"    const reopened = await timed(globalThis.go.main.App.OpenRecentDocument(path), 'reopen');"
+        @"    const reopened = await timed(globalThis.drmd.native.OpenRecentDocument(path), 'reopen');"
         @"    out.gate6_stage = 'done';"
         // Compared against what the EDITOR produced, not against the fixture.
         // The editor respells a table's delimiter row — the standing

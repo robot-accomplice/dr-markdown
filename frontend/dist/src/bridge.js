@@ -1,50 +1,57 @@
-// Adapter over the Wails bindings (window.go.main.App in the real app).
-// Resolved lazily so e2e tests can install a stub at any time, and the app
-// degrades gracefully in a plain browser.
-const wails = () => globalThis.go?.main?.App ?? null
+// Adapter over the native bindings the host installs as globalThis.drmd.native.
+//
+// Resolved lazily so e2e tests can install a stub at any time, and so the app
+// degrades gracefully in a plain browser with no host at all.
+//
+// CAUTION, and it is load-bearing: the optional chaining below guards the HOST
+// being absent, not a METHOD being missing. Several entries are written
+// `native()?.Method(x)` rather than `native()?.Method?.(x)`, so once the object
+// exists a missing method is a TypeError and boot dies. A host must therefore
+// install the WHOLE surface or none of it — there is no partial host.
+const native = () => globalThis.drmd?.native ?? null
 
 function missing(name) {
-  console.warn(`bridge: Wails binding unavailable for ${name} (not running under Wails?)`)
+  console.warn(`bridge: native binding unavailable for ${name} (no host?)`)
   return null
 }
 
 export const bridge = {
-  available: () => wails() !== null,
-  openDocument: () => wails()?.OpenDocument() ?? missing('OpenDocument'),
+  available: () => native() !== null,
+  openDocument: () => native()?.OpenDocument() ?? missing('OpenDocument'),
   saveDocument: (path, content) =>
-    wails()?.SaveDocument(path, content) ?? missing('SaveDocument'),
+    native()?.SaveDocument(path, content) ?? missing('SaveDocument'),
   saveDocumentAs: (content) =>
-    wails()?.SaveDocumentAs(content) ?? missing('SaveDocumentAs'),
+    native()?.SaveDocumentAs(content) ?? missing('SaveDocumentAs'),
   openRecentDocument: (path) =>
-    wails()?.OpenRecentDocument?.(path) ?? missing('OpenRecentDocument'),
+    native()?.OpenRecentDocument?.(path) ?? missing('OpenRecentDocument'),
   importImage: (documentPath) =>
-    wails()?.ImportImage?.(documentPath) ?? missing('ImportImage'),
+    native()?.ImportImage?.(documentPath) ?? missing('ImportImage'),
   importDroppedImage: (documentPath, sourcePath) =>
-    wails()?.ImportDroppedImage?.(documentPath, sourcePath) ?? missing('ImportDroppedImage'),
+    native()?.ImportDroppedImage?.(documentPath, sourcePath) ?? missing('ImportDroppedImage'),
   loadImageAsset: (documentPath, markdownPath) =>
-    wails()?.LoadImageAsset?.(documentPath, markdownPath) ?? missing('LoadImageAsset'),
-  recordEvent: (event, fields) => wails()?.RecordClientEvent?.(event, fields ?? {}),
+    native()?.LoadImageAsset?.(documentPath, markdownPath) ?? missing('LoadImageAsset'),
+  recordEvent: (event, fields) => native()?.RecordClientEvent?.(event, fields ?? {}),
   // Files macOS routed to us before this webview existed. Launching by
   // double-click delivers the file first, so the frontend has to ASK for it
   // rather than wait to be told — an event sent before boot reaches nobody.
-  frontendReady: () => wails()?.FrontendReady?.() ?? Promise.resolve([]),
-  openExternalURL: (url) => wails()?.OpenExternalURL?.(url) ?? missing('OpenExternalURL'),
+  frontendReady: () => native()?.FrontendReady?.() ?? Promise.resolve([]),
+  openExternalURL: (url) => native()?.OpenExternalURL?.(url) ?? missing('OpenExternalURL'),
   revealImageAsset: (documentPath, markdownPath) =>
-    wails()?.RevealImageAsset?.(documentPath, markdownPath) ?? missing('RevealImageAsset'),
-  setDirty: (d) => wails()?.SetDirty(d),
+    native()?.RevealImageAsset?.(documentPath, markdownPath) ?? missing('RevealImageAsset'),
+  setDirty: (d) => native()?.SetDirty(d),
   // Explicit rather than an optional call: this is the only binding whose
   // silent absence re-enables a data-loss bug, so it must warn like the rest.
   // A stale generated binding lacking SyncDocuments used to no-op here, leaving
   // Go with no documents at all.
   syncDocuments: (docs) => {
-    const app = wails()
+    const app = native()
     if (!app?.SyncDocuments) return missing('SyncDocuments')
     return app.SyncDocuments(docs)
   },
-  updateContent: (c) => wails()?.UpdateContent(c),
-  listFontFamilies: () => wails()?.ListFontFamilies() ?? missing('ListFontFamilies'),
-  loadPreferences: () => wails()?.LoadPreferences?.() ?? null,
-  savePreferences: (prefs) => wails()?.SavePreferences?.(prefs) ?? null,
+  updateContent: (c) => native()?.UpdateContent(c),
+  listFontFamilies: () => native()?.ListFontFamilies() ?? missing('ListFontFamilies'),
+  loadPreferences: () => native()?.LoadPreferences?.() ?? null,
+  savePreferences: (prefs) => native()?.SavePreferences?.(prefs) ?? null,
   resolveUnsavedChanges: () =>
-    wails()?.ResolveUnsavedChanges() ?? missing('ResolveUnsavedChanges'),
+    native()?.ResolveUnsavedChanges() ?? missing('ResolveUnsavedChanges'),
 }
