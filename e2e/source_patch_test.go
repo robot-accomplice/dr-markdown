@@ -1,6 +1,20 @@
 package e2e
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+// jsString renders a Go string as a JavaScript string literal, so a fixture
+// with newlines can be embedded in an evaluated expression without
+// hand-escaping.
+func jsString(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
 
 // probeCrepeJS creates a throwaway Crepe on a detached div and returns it.
 //
@@ -69,5 +83,131 @@ func TestRespellingLivesInTheSerializerNotTheTree(t *testing.T) {
 	if got.EntityValue != "&" {
 		t.Errorf("PREDICTION 2 REFUTED: `&amp;` parses to %q, not \"&\", so entity decoding is not "+
 			"a parse-time normalization and the tree is not respelling-invariant", got.EntityValue)
+	}
+}
+
+// structuralEquals is the whole design in one function: it must call two nodes
+// equal when they differ ONLY in where they came from, and unequal on any real
+// content difference. Driven as a pure module, with no editor at all.
+func TestStructuralEqualsIgnoresPositionAndNothingElse(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+	  const S = await import('/src/markdown/sourcepatch.js')
+	  const at = (o) => ({ start: { offset: o }, end: { offset: o + 1 } })
+	  return [
+	    String(S.structuralEquals(
+	      { type: 'text', value: 'a', position: at(0) },
+	      { type: 'text', value: 'a', position: at(99) })),
+	    String(S.structuralEquals(
+	      { type: 'text', value: 'a' },
+	      { type: 'text', value: 'b' })),
+	    String(S.structuralEquals(
+	      { type: 'heading', depth: 1, children: [{ type: 'text', value: 'x', position: at(2) }] },
+	      { type: 'heading', depth: 1, children: [{ type: 'text', value: 'x', position: at(7) }] })),
+	    String(S.structuralEquals(
+	      { type: 'heading', depth: 1, children: [] },
+	      { type: 'heading', depth: 2, children: [] })),
+	    String(S.structuralEquals({ type: 'a', children: [] }, { type: 'a' })),
+	    String(S.structuralEquals(null, null)),
+	    String(S.structuralEquals({ type: 'x' }, null)),
+	  ]
+	})()`, &got)
+
+	want := []string{"true", "false", "true", "false", "false", "true", "false"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %s, want %s", i, got[i], want[i])
+		}
+	}
+}
+
+// A naive positional comparison would mark every block after an edit as
+// changed, and re-splicing an untouched table is exactly the defect this
+// design exists to avoid. LCS is what keeps the blast radius at one block.
+func TestAlignMatchesUnchangedBlocksAcrossAnEdit(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got []string
+	evalJS(t, ctx, `(async () => {
+	  const S = await import('/src/markdown/sourcepatch.js')
+	  const n = (v) => ({ type: 'paragraph', value: v })
+	  const shape = (ops) => ops.map((o) =>
+	    o.type === 'match' ? 'M' + o.a.value : 'C[' +
+	      o.as.map((x) => x.value).join('') + '/' + o.bs.map((x) => x.value).join('') + ']').join(' ')
+	  return [
+	    shape(S.align([n('a'), n('b'), n('c')], [n('a'), n('B'), n('c')])),
+	    shape(S.align([n('a'), n('b')], [n('a'), n('b')])),
+	    shape(S.align([n('a'), n('b')], [n('a')])),
+	    shape(S.align([n('a')], [n('a'), n('b')])),
+	    shape(S.align([], [])),
+	  ]
+	})()`, &got)
+
+	want := []string{
+		"Ma C[b/B] Mc", // the edit is isolated; `a` and `c` still match
+		"Ma Mb",        // nothing changed
+		"Ma C[b/]",     // deletion: `as` populated, `bs` empty
+		"Ma C[/b]",     // insertion: `as` empty, `bs` populated
+		"",             // degenerate
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("case %d: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// The fixture is deliberately isolated: no frontmatter and no hard break, so
+// neither the frontmatter split nor the break-sentinel substitution fires and
+// offsets into the body equal offsets into the file. A failure here therefore
+// means the diff is wrong, not the translation.
+const patchFixture = "Intro paragraph with one word to change.\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+
+// With NO edit, every node is structurally equal, so nothing is spliced and the
+// original must come back untouched. That is the whole premise in one
+// assertion, and it needs no keystroke, no focus handling and no async
+// settling.
+//
+// It is meaningful precisely because the editor's own serialization of this
+// fixture is NOT byte-identical to it: the delimiter row comes back as
+// `| - | - |`. The test asserts that too, so a future editor that stopped
+// respelling would make this test explain itself rather than pass vacuously.
+func TestPatchWithNoEditReturnsTheOriginalBytes(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var got struct {
+		Serialized string `json:"serialized"`
+		Patched    string `json:"patched"`
+	}
+	evalJS(t, ctx, probeCrepeJS+`(async () => {
+	  const S = await import('/src/markdown/sourcepatch.js')
+	  const original = `+jsString(patchFixture)+`
+	  const { crepe, host } = await newProbeCrepe(original)
+	  const remark = crepe.editor.ctx.get('remark')
+	  const serialized = crepe.getMarkdown()
+	  const patched = S.patchPreservingSource(original, serialized, remark)
+	  await crepe.destroy().catch(() => {})
+	  host.remove()
+	  return { serialized, patched }
+	})()`, &got)
+
+	if got.Serialized == patchFixture {
+		t.Fatal("the editor no longer respells this fixture, so this test proves nothing. " +
+			"Pick a fixture the editor still rewrites, or retire the probe.")
+	}
+	if got.Patched != patchFixture {
+		t.Errorf("patch did not return the original bytes.\n got: %q\nwant: %q\n(editor produced %q)",
+			got.Patched, patchFixture, got.Serialized)
 	}
 }
