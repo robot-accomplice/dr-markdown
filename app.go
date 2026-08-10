@@ -92,7 +92,11 @@ type nativePort interface {
 	RevealPath(context.Context, string) error
 	ConfirmOverwriteChanged(context.Context, string) (string, error)
 	OpenExternalURL(context.Context, string) error
-	SubscribeFileDrop(context.Context)
+	// SubscribeFileDrop receives paths from the OS. Emitting them to the webview
+	// is EmitFilesDropped, deliberately separate: the two cross the boundary in
+	// opposite directions and are different mechanisms under any other host.
+	SubscribeFileDrop(context.Context, func(paths []string))
+	EmitFilesDropped(context.Context, []string)
 	ShowError(context.Context, string, string)
 	ConfirmUnsaved(context.Context) (string, error)
 	SetTitle(context.Context, string)
@@ -154,10 +158,16 @@ func (a *App) startup(ctx context.Context) {
 	defer a.reportPanic("startup")
 
 	a.ctx = ctx
-	// Wails resolves dropped files to real filesystem paths; the frontend's DOM
+	// The host resolves dropped files to real filesystem paths; the frontend's DOM
 	// drop event cannot. Subscribing through the native port keeps startup
-	// callable from tests that have no Wails runtime context.
-	a.native.SubscribeFileDrop(ctx)
+	// callable from tests that have no host runtime context.
+	//
+	// Receiving and forwarding are two calls on purpose. One takes paths FROM the
+	// OS, the other sends them TO the webview, and under a different host they are
+	// different mechanisms — a single fused call hid that.
+	a.native.SubscribeFileDrop(ctx, func(paths []string) {
+		a.native.EmitFilesDropped(ctx, paths)
+	})
 }
 
 // OpenResult is returned to the frontend when a document is opened.
@@ -626,10 +636,12 @@ func (wailsNative) SelectImageFile(ctx context.Context) (string, error) {
 
 // SubscribeFileDrop forwards Wails file-drop paths to the frontend, which
 // filters them to importable images.
-func (wailsNative) SubscribeFileDrop(ctx context.Context) {
-	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) {
-		runtime.EventsEmit(ctx, "files:dropped", paths)
-	})
+func (wailsNative) SubscribeFileDrop(ctx context.Context, onDrop func(paths []string)) {
+	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) { onDrop(paths) })
+}
+
+func (wailsNative) EmitFilesDropped(ctx context.Context, paths []string) {
+	runtime.EventsEmit(ctx, "files:dropped", paths)
 }
 
 // RevealPath shows the file in the platform's file browser rather than opening
