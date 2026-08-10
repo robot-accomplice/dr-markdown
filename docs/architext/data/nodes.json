@@ -128,13 +128,7 @@
       "sourcePaths": [
         "frontend/dist/index.html",
         "frontend/dist/src/app.js",
-        "frontend/dist/src/app.css",
-        "frontend/dist/src/markdown/tables.js",
-        "frontend/dist/src/markdown/fences.js",
-        "frontend/dist/src/markdown/images.js",
-        "frontend/dist/src/markdown/links.js",
-        "frontend/dist/src/markdown/text.js",
-        "frontend/dist/src/markdown/commands.js"
+        "frontend/dist/src/app.css"
       ],
       "runtime": "Embedded webview JavaScript",
       "interfaces": [
@@ -151,7 +145,8 @@
         "wysiwyg-editor",
         "raw-editor",
         "syntax-highlighter",
-        "diagram-renderer"
+        "diagram-renderer",
+        "markdown-domain"
       ],
       "dataHandled": [
         "markdown-document",
@@ -865,6 +860,66 @@
         "TestDirtyWithNoSyncedTabsForcesAPromptWithoutNamingAFile",
         "TestBaselineTracksTheLastReadOrWrite",
         "TestAppDoesNotDuplicateSessionState"
+      ]
+    },
+    {
+      "id": "markdown-domain",
+      "type": "module",
+      "name": "Markdown domain",
+      "summary": "Pure string-to-string markdown document logic: table geometry, fenced code, image tokens, link-scheme safety, line-ending conventions, and editor commands as document transforms.",
+      "responsibilities": [
+        "Locate a table in a document and rewrite its shape; every operation is a no-op when there is no table at the requested index",
+        "Read a fence's info string and rewrite a fence's language or its mermaid source",
+        "Parse and format image tokens in both markdown and <img> form, because CommonMark has no size syntax",
+        "Decide whether a link href is safe to assign, normalizing it exactly as the URL parser will before checking the scheme",
+        "Detect and apply a document's line-ending convention, and derive the title shown for a path",
+        "Apply an editor command to a document given the selection, returning the new document"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "frontend/dist/src/markdown/tables.js",
+        "frontend/dist/src/markdown/fences.js",
+        "frontend/dist/src/markdown/images.js",
+        "frontend/dist/src/markdown/links.js",
+        "frontend/dist/src/markdown/text.js",
+        "frontend/dist/src/markdown/commands.js"
+      ],
+      "runtime": "Embedded webview JavaScript",
+      "interfaces": [
+        "applyCommand",
+        "tableBounds",
+        "firstCodeFenceDescriptor",
+        "parseImageToken",
+        "safeLinkHref",
+        "detectLineEnding"
+      ],
+      "dependencies": [
+        "syntax-highlighter"
+      ],
+      "dataHandled": [
+        "markdown-document"
+      ],
+      "security": [
+        "safeLinkHref normalizes tabs, CR and LF out of a href before checking its scheme, because the check must refuse what the BROWSER navigates to rather than what the raw string looks like",
+        "It returns the href to assign rather than a boolean, so a caller cannot validate one string and use another"
+      ],
+      "observability": [
+        "e2e/markdown_unit_test.go \u2014 each module driven directly in one browser boot"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document"
+      ],
+      "relatedDecisions": [
+        "domain-ownership-and-boundaries"
+      ],
+      "knownRisks": [],
+      "verification": [
+        "TestTableOperations",
+        "TestFenceOperations",
+        "TestImageTokens",
+        "TestLinkSafety",
+        "TestDocumentTextConventions",
+        "TestCommandTransforms"
       ]
     }
   ]
