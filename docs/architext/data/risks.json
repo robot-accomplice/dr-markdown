@@ -51,7 +51,8 @@
         "e2e/fidelity_test.go and e2e/fidelity_survey_test.go both measure the behaviour and FAIL IN BOTH DIRECTIONS, so a fix that is not disclosed breaks the build as loudly as a regression",
         "The 49-construct survey pins the exact set, so a construct that starts or stops being rewritten is caught",
         "Raw mode preserves every affected construct and is the documented safe path",
-        "Source positions were proved reachable via ctx.get('remark') on 2026-08-09, so source-preserving editing is no longer closed on evidence; the transaction-to-source mapping remains unproven"
+        "Source positions were proved reachable via ctx.get('remark') on 2026-08-09, so source-preserving editing is no longer closed on evidence; the transaction-to-source mapping remains unproven",
+        "23-realistic-document.md exercises constructs IN COMBINATION rather than in isolation, and found on its first run what twenty-two atomic fixtures had not: a link reference definition preceded by other content gains a blank line"
       ],
       "relatedNodes": [
         "wysiwyg-editor",
@@ -121,11 +122,11 @@
     },
     {
       "id": "no-recorded-state-for-rca",
-      "title": "Panics are recorded now; the call that panicked still never returns",
+      "title": "Panics are recorded, and a panicking call now settles",
       "category": "operational",
       "severity": "low",
-      "status": "open",
-      "summary": "Closed for the frontend. `internal/eventlog` persists a structured trail stamped with `appVersion`, reachable from the webview through `bridge.recordEvent`, and every frontend failure surface now records into it rather than only warning to a console no production build can display: boot failure, preferences load and save, image import (ribbon and drop), replace and reveal, render failure, editor style application \u2014 the site that once hid a ReferenceError for two rounds of debugging \u2014 plus refused link schemes. A refusal is recorded once per distinct href, capped, because the log is trimmed and the refused href is attacker-controlled: recording on every render would let a document the app has already judged hostile evict the rest of the trail. Closed for panics too, as of 0.5.1. `App.reportPanic` records operation, message, stack and build version, shows a native dialog naming the operation, and then re-panics; `TestEveryBoundMethodReportsItsPanics` and `TestLifecycleCallbacksReportTheirPanics` pin it onto all 18 bound methods and onto startup, beforeClose and openFileFromOS. Re-panicking rather than recovering is deliberate: the guard runs during unwinding, so swallowing the panic would return the method's zero values and hand the frontend a nil error for a save that never touched the disk. Residual, and the reason this stays open: re-panicking preserves a Wails defect rather than fixing it. `dispatcher.ProcessMessage` recovers the panic and returns an empty result, `darwin/frontend.go` passes that empty string to `Frontend.Callback`, and the runtime's `Callback` throws on `JSON.parse(\"\")` before it reaches the pending callback — whose timeout is unarmed, because Wails only arms one when a caller passes a positive timeout. The frontend's promise therefore never settles and that operation is dead until restart. The dialog is the only channel that reports it, which is why the policy is record-and-be-loud rather than record-only. Still uncovered: a panic raised before the App and its log exist, in NewApp or inside wails.Run — deferred because there is no constructed trail to write to and no window to show a dialog on. As of the host boundary (2026-08-10) the residual has changed shape but not severity: the never-settling promise is dispatch behaviour of the host, and the host is now confined to host_wails.go behind hostPort, so how a panicking bound call reports back to the frontend became a choice a host adapter makes rather than an upstream defect the application inherits with no seam to fix it at. Nothing is fixed yet and #61 stays open — the current adapter still runs on Wails v2 and still loses the callback.",
+      "status": "closed",
+      "summary": "Closed for the frontend. `internal/eventlog` persists a structured trail stamped with `appVersion`, reachable from the webview through `bridge.recordEvent`, and every frontend failure surface now records into it rather than only warning to a console no production build can display: boot failure, preferences load and save, image import (ribbon and drop), replace and reveal, render failure, editor style application \u2014 the site that once hid a ReferenceError for two rounds of debugging \u2014 plus refused link schemes. A refusal is recorded once per distinct href, capped, because the log is trimmed and the refused href is attacker-controlled: recording on every render would let a document the app has already judged hostile evict the rest of the trail. Closed for panics too, as of 0.5.1. `App.reportPanic` records operation, message, stack and build version, shows a native dialog naming the operation, and then re-panics; `TestEveryBoundMethodReportsItsPanics` and `TestLifecycleCallbacksReportTheirPanics` pin it onto all 18 bound methods and onto startup, beforeClose and openFileFromOS. Re-panicking rather than recovering is deliberate: the guard runs during unwinding, so swallowing the panic would return the method's zero values and hand the frontend a nil error for a save that never touched the disk. Residual, and the reason this stays open: re-panicking preserves a Wails defect rather than fixing it. `dispatcher.ProcessMessage` recovers the panic and returns an empty result, `darwin/frontend.go` passes that empty string to `Frontend.Callback`, and the runtime's `Callback` throws on `JSON.parse(\"\")` before it reaches the pending callback \u2014 whose timeout is unarmed, because Wails only arms one when a caller passes a positive timeout. The frontend's promise therefore never settles and that operation is dead until restart. The dialog is the only channel that reports it, which is why the policy is record-and-be-loud rather than record-only. Still uncovered: a panic raised before the App and its log exist, in NewApp or inside wails.Run \u2014 deferred because there is no constructed trail to write to and no window to show a dialog on. As of the host boundary (2026-08-10) the residual has changed shape but not severity: the never-settling promise is dispatch behaviour of the host, and the host is now confined to host_wails.go behind hostPort, so how a panicking bound call reports back to the frontend became a choice a host adapter makes rather than an upstream defect the application inherits with no seam to fix it at. Nothing is fixed yet and #61 stays open \u2014 the current adapter still runs on Wails v2 and still loses the callback. CLOSED 2026-08-10 by own-the-host. The residual this record carried \u2014 a panicking bound call leaving the frontend promise unsettled forever, because the framework recovered the panic and discarded the callback (#61) \u2014 no longer exists: the dispatcher this project owns recovers, and REJECTS the promise with the panic's message. Verified by a host gate that calls a deliberately panicking bound method and asserts both that it rejects and that the dispatcher still answers afterwards. Two residuals remain and are tracked separately: a panic before the App exists has no trail to write to (#62), and a repeating panic can evict the context needed to diagnose it (#63).",
       "mitigations": [
         "Version identity ships in the bundle so a report can name the build",
         "internal/eventlog persists a structured, version-stamped trail beside the user log directory",
@@ -135,10 +136,11 @@
         "Coverage is pinned by source-parsing gates rather than by discipline: TestEveryBoundMethodReportsItsPanics and TestLifecycleCallbacksReportTheirPanics fail when a new method arrives unguarded",
         "Residual, recorded not dropped: a panicking bound call never settles its frontend promise, because Wails discards the callback message; the native dialog is the only report the user gets",
         "Residual, recorded not dropped: a panic before the App exists (NewApp, wails.Run) has no trail to write to",
-        "The dispatch behaviour that strands the promise is confined to host_wails.go behind hostPort, so a replacement adapter can settle the call without touching the application; TestOnlyTheHostFilesNameWails is what keeps that confinement true"
+        "The dispatch behaviour that strands the promise is confined to host_wails.go behind hostPort, so a replacement adapter can settle the call without touching the application; TestOnlyTheHostFilesNameWails is what keeps that confinement true",
+        "A panicking bound call rejects the frontend promise with the panic message, pinned by the -gates run (gate3_boom) which also asserts the dispatcher survives it"
       ],
       "relatedNodes": [
-        "wails-go-api",
+        "go-api",
         "frontend-shell",
         "host-boundary"
       ],
@@ -192,8 +194,8 @@
         "A file that will not open is contained and recorded as os-file.open-failed rather than taking the editor down or failing silently"
       ],
       "relatedNodes": [
-        "wails-go-api",
-        "wails-desktop-app"
+        "go-api",
+        "desktop-app"
       ],
       "relatedFlows": [
         "open-save-document"
