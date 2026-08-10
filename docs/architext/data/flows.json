@@ -222,10 +222,10 @@
         },
         {
           "id": "render-mermaid-block",
-          "from": "frontend-shell",
+          "from": "wysiwyg-editor",
           "to": "diagram-renderer",
           "action": "renderMermaidFence",
-          "summary": "Mermaid fenced blocks render as SVG diagrams in formatted and split preview surfaces.",
+          "summary": "Mermaid fenced blocks render as SVG diagrams. In the formatted surface the editor adapter draws every diagram in the document before the editor mounts, then hands them to the editor's code-block node view as block previews, so a diagram shows in place while its source stays editable behind a toggle. The split preview and print surfaces render the same SVG through the shell's own preview renderer.",
           "data": [
             "markdown-document"
           ]

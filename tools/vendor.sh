@@ -44,8 +44,51 @@ elif grep -q '/node/process.mjs' "$VENDOR/crepe.bundle.mjs"; then
   exit 1
 fi
 
+# esm.sh resolves the bare specifier `codemirror` inside the Crepe bundle to
+# CodeMirror *5* — a namespace of defineMode/defineMIME/registerHelper, which
+# has no `basicSetup` export because that is a v6 addition. Crepe's code-mirror
+# feature builds its extension set as `[keymap, fme.basicSetup, ...]`, so the
+# second entry is undefined, and CodeMirror's EditorState.create throws
+# "Cannot read properties of undefined (reading 'extension')".
+#
+# That throw happens inside the IntersectionObserver callback that upgrades a
+# code block, and only AFTER the node view has set `initialized = true`. So it
+# is never retried: every code block stays on its placeholder <pre>, inside a
+# `contenteditable="false"` wrapper, for the life of the document. Code blocks
+# were uneditable in Formatted mode from the day highlighting landed until this
+# patch (#77), which violates the rule the whole editor exists to serve.
+#
+# Dropping the undefined entry is the whole fix. Everything Crepe supplies
+# separately survives: the default keymap is a different entry, the highlight
+# style is a different entry, and languages load through the node view's own
+# loader. What is genuinely lost is what basicSetup alone carries — in-block
+# undo history, line numbers, autocompletion and bracket matching.
+#
+# Wiring the codemirror.bundle.mjs fetched below does NOT work and must not be
+# attempted again: it puts a second copy of @codemirror/state on the page, and
+# CodeMirror rejects the result with "Unrecognized extension value in extension
+# set". Measured, not assumed.
+if grep -q 'fme\.basicSetup' "$VENDOR/crepe.bundle.mjs"; then
+  sed -i.bak 's|fme\.basicSetup|[]|' "$VENDOR/crepe.bundle.mjs" && rm "$VENDOR/crepe.bundle.mjs.bak"
+  echo "patched out the undefined basicSetup extension in crepe.bundle.mjs"
+else
+  # Silence here would ship uneditable code blocks again, and the suite would
+  # stay green until someone tried to type. Fail instead: either upstream fixed
+  # the resolution (drop this patch) or the expression was minified to a new
+  # name (update the pattern).
+  echo "error: crepe.bundle.mjs no longer contains 'fme.basicSetup', so the" >&2
+  echo "       CodeMirror patch was not applied. Either esm.sh now resolves" >&2
+  echo "       codemirror to v6 and this patch is obsolete, or minification" >&2
+  echo "       renamed the binding. Check which, before committing this bundle:" >&2
+  echo "       an unpatched bundle makes every code block uneditable (#77)." >&2
+  exit 1
+fi
+
 # CodeMirror 6 meta-package: basic editing setup (~377 KB). No language packs
 # (see Global Constraints re: highlighting).
+#
+# NOTE: nothing imports this today, and the patch above records why it cannot be
+# used to repair the Crepe bundle. It is kept pending a decision on removal.
 fetch "https://esm.sh/codemirror@${CODEMIRROR_VERSION}/es2022/codemirror.bundle.mjs" \
   "$VENDOR/codemirror.bundle.mjs"
 
