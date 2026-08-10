@@ -173,9 +173,13 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 - Builds are unsigned and un-notarized, so macOS Gatekeeper and Windows SmartScreen will both warn. On macOS 15 and later, approve it under System Settings → Privacy & Security → Open Anyway.
 - **Windows and Linux are unbuilt.** The code is platform-aware and CI runs the full test suite on
   Linux, but only `tools/build-macos.sh` exists, so no Windows or Linux artifact is produced.
-- **A crash leaves no record.** There is no panic handler, so the one failure hardest to describe is
-  the one with nothing written down. Every non-crash failure is recorded in a version-stamped event
-  trail beside the preference store.
+- **A crash is recorded, but the operation that crashed does not recover.** Every method the frontend
+  calls, and the three Wails lifecycle callbacks, write a panic — operation, message, stack and build
+  version — into the version-stamped event trail beside the preference store, and show a dialog naming
+  the operation. The panic is then left to travel, so what happens next is unchanged: Wails recovers
+  panics inside bound-method dispatch, and the frontend call that triggered one never settles, so that
+  one operation stays dead until you restart. A panic in a lifecycle callback still ends the process,
+  and a panic raised before the app is constructed still leaves nothing behind.
 - Code-block hover/right-click language editing targets rendered fenced blocks; deeper cursor-aware block editing is still future work.
 - Direct PDF file generation is not implemented; PDF export uses the OS print dialog's Save as PDF path.
 - Images must be inserted into a saved document — an unsaved document has no location to resolve a portable relative asset path against, so the import is refused up front.
