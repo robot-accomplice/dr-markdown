@@ -20,7 +20,8 @@
             "wails-desktop-app",
             "frontend-shell",
             "wails-bridge",
-            "wails-go-api"
+            "wails-go-api",
+            "host-boundary"
           ]
         },
         {
@@ -155,7 +156,7 @@
       "id": "c4-component-native",
       "name": "Go API Components",
       "type": "c4-component",
-      "summary": "The Wails Go API delegates local file reads and atomic writes to Document IO, and holds no session state of its own \u2014 the open tabs, their dirty state and the on-disk baseline belong to the Document session.",
+      "summary": "The Go API delegates local file reads and atomic writes to Document IO, and holds no session state of its own \u2014 the open tabs, their dirty state and the on-disk baseline belong to the Document session. It reaches the operating system only through the Host boundary, which is what keeps the framework that supplies the window out of every other Go file.",
       "scopeNodeId": "wails-go-api",
       "lanes": [
         {
@@ -163,7 +164,8 @@
           "name": "Components",
           "nodeIds": [
             "document-io",
-            "document-session"
+            "document-session",
+            "host-boundary"
           ]
         }
       ]
