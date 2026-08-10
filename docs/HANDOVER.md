@@ -1,139 +1,133 @@
-# Handover — 2026-08-09
+# Handover — 2026-08-10
 
-State of play for whoever picks this up next. Written to be actionable without the conversation
-that produced it.
+State of play for whoever picks this up next. Written to be actionable without the conversation that
+produced it. Supersedes the 2026-08-09 handover entirely; that one described a `main` at v0.4.1 and
+three unmerged PRs, none of which is true now.
 
-## ~~Immediate: three PRs are stacked and unmerged~~ — DONE 2026-08-09
+## Where things stand
 
-All three merged into `develop` in the stated order:
+**v0.5.0 is released.** `main` is at the v0.5.0 tag, `develop` has nothing `main` lacks, and the
+[release](https://github.com/robot-accomplice/dr-markdown/releases/tag/v0.5.0) carries two macOS
+DMGs — universal (Intel + Apple Silicon) and arm64-only. Unsigned, un-notarized.
 
-| PR | Branch | What it does |
+It was the first release to clear the ABORT gate: **five of five GO**, after four consecutive rounds
+of five of five NO-GO. The record is `docs/releases/v0.5.0-abort.md` and it is worth reading before
+the next release, because it names four residuals that were shipped deliberately.
+
+## What v0.5.0 was for
+
+A data-corruption defect. A GFM footnote definition matched the shape of a link reference definition,
+so it was collected as one and re-appended on serialize while the editor also preserved it natively —
+and the appended copy was collected again on the next pass. **Files grew by one definition per save,
+without bound.** It shipped in 0.4.1 and survived review.
+
+It was found by a 49-construct survey, not by the round-trip corpus and not by reading the code. That
+is the most transferable fact in this document: **the corpus only ever contains what somebody already
+suspected.**
+
+## The four things that are actually open
+
+1. **Double-clicking a `.md` file does not open it** —
+   [#53](https://github.com/robot-accomplice/dr-markdown/issues/53), and the most user-visible defect
+   in the product. The bundle declares `CFBundleDocumentTypes`, so macOS routes the file to the app,
+   but nothing in `main.go` or `app.go` consumes the launch argument or the open-documents Apple
+   Event. You get an empty document. Found by installing the DMG, which four ABORT rounds never did.
+2. **No crash handler.** `recover()` appears nowhere. Every non-crash failure now lands in a
+   version-stamped event trail beside the preference store; a panic still leaves nothing. Small fix,
+   deliberately not made on a frozen release candidate.
+3. **Windows and Linux are unbuilt.** Only `tools/build-macos.sh` exists. CI runs the full suite on
+   Linux but produces no artifact. A release build matrix is real work — native runners, per-platform
+   packaging — not a flag.
+4. **The re-serialization class**, accepted since v0.4.0. 38 of 49 surveyed constructs round-trip
+   byte-identically and **nothing is deleted any more**, but a construct nobody has surveyed is still
+   respelled.
+
+## The architecture, after three refactor phases
+
+Everything below landed against `docs/decisions/2026-08-09-domain-ownership-and-boundaries.md`, an
+agreed design plus a clean-code audit. Every pre-existing test stayed green **and unchanged**
+throughout, which was the stated judging criterion.
+
+| unit | owns | was |
 | --- | --- | --- |
-| [#38](https://github.com/robot-accomplice/dr-markdown/pull/38) | `fix/link-reference-definitions` | Stops link reference definitions being deleted |
-| [#39](https://github.com/robot-accomplice/dr-markdown/pull/39) | `fix/stale-highlight-race` | Fixes a real render race (stale syntax highlight) |
-| [#40](https://github.com/robot-accomplice/dr-markdown/pull/40) | `fix/markdown-style-preservation` | Writes markdown back in the document's own style |
+| `frontend/dist/src/fidelity/` | six compensations behind **two ports** and one registry | five ad-hoc pairs on the editor adapter |
+| `frontend/dist/src/markdown/` | pure `string -> string` document logic, six modules | 360 lines inside `app.js` |
+| `internal/session` | tabs, dirty state, on-disk baseline | loose fields on the Wails binding surface |
+| `frontend/dist/src/editor.js` | the Crepe lifecycle, and nothing else — **118 lines**, from 286 | that plus five preservations |
 
-**The hazard this section understated:** #38 and #40 both hook `frontend/dist/src/editor.js`, so they
-**conflicted**, and GitHub reported all three `MERGEABLE` right up until #38 landed. A per-PR green
-check says nothing about a stack — `mergeable` is computed against `develop` as it is *now*.
-`git merge-tree --write-tree <a> <b>` answers it in advance without touching the working tree; use it
-before merging any stack here. The conflict itself was two import lines; the fixes compose cleanly
-(`#serialize` chains link-refs → alt-text → breaks over disjoint syntax) and `e2e/fidelity_test.go`
-passed unchanged with both present, which is the composition check doing its job.
+**Two ports, not one, and the distinction matters.** A `Preservation` runs *after* the serializer and
+puts captured bytes back. A `SerializerPolicy` runs *before* it and returns options. Forcing markdown
+style detection into the Preservation shape would mean a `restore` that does nothing.
 
-`main` is still at **v0.4.1**; `develop` is now ahead of it by the four fidelity fixes. The next
-release is a normal `develop` → `main` promotion; the mechanics are in the v0.4.1 history (bump
-`wails.json` **and** `appVersion` — a test fails on drift — then rebuild the artifact from the merge
-commit and verify with `strings` before attaching it).
+**Capture order and restore order are not reverses of each other**, and `fidelity/index.js` says so.
+`trailing` must capture first because it reads the original document — frontmatter splitting would
+otherwise hand it a body, and a file that is nothing but frontmatter has an empty body whose trailing
+run is not the file's.
 
-## Where the product actually stands
+## Facts that cost real time, and are not obvious from the code
 
-Released: **v0.4.0** (GA, 2026-08-08) and **v0.4.1** (2026-08-09). Both macOS/arm64 only, unsigned.
-
-The defining constraint is unchanged: **no Node toolchain**. The editor is a vendored Milkdown Crepe
-ESM bundle refreshed by `tools/vendor.sh`. Every fidelity fix therefore lives *outside* the bundle,
-in `frontend/dist/src/editor.js` and its helpers, so a vendor refresh cannot silently revert them.
-
-### The fidelity blocker: 4 of 5 closed
-
-v0.4.0 shipped over a **NO-GO from all five ABORT stations**, accepted by maintainer decision with
-disclosure as the mitigation. The full record is `docs/releases/v0.4.0-abort.md`; the decomposition
-is `docs/decisions/2026-08-08-markdown-fidelity-scope.md`.
-
-| # | Problem | Status |
-| --- | --- | --- |
-| 1 | Inline `<br>` deleted, joining words | **Fixed** (v0.4.1) |
-| 2 | CRLF rewritten to LF | **Fixed** (v0.4.1) |
-| 3 | Style respellings (bullets, fences, headings, breaks) | **Fixed** (PR #40) |
-| 4 | Link reference definitions deleted | **Fixed** (PR #38) |
-| 5 | One edit re-serializes the whole document | **Open — architectural** |
-
-Only #5 remains, and it is the one that makes the others a recurring category rather than a finite
-list: any construct nobody thought to test is still restyled on save.
-
-## ~~The single next question~~ — ANSWERED 2026-08-09: positions are available
-
-**Task #28: does the parser expose mdast source positions? Yes — via `remark`, not `parser`.**
-
-Probed against a live instance; full record and method in
-`docs/decisions/2026-08-08-markdown-fidelity-scope.md`.
-
-- `ctx.get('parser')` returns a **ProseMirror** document — `hasPosition: false`. The question named
-  the wrong slice, which is why it stayed open.
-- **`ctx.get('remark')` returns the live unified processor**, and `remark.parse(src)` yields **mdast
-  with full `position`** — `line`, `column` and `offset`, start and end, on every node down to the
-  deepest text leaf.
-
-The old spike's surviving finding — "no parser export, therefore no position data" — was true in its
-premise and wrong in its conclusion. The instance hands the processor over by string-addressable
-slice regardless of the export surface. **Both legs of the negative have now fallen; option (b) is no
-longer closed on evidence.**
-
-**Do not read that as "it works."** Source-preserving editing needs positions *and* a mapping from an
-editor transaction back to them. Only the first is established. **The next question is the mapping**,
-and it is not a small one. Two recorded limits for whoever takes it: slice names cannot be enumerated
-(string addressing only works if you already know the name), and positions are offsets into the
-*body*, so they need translating back through the frontmatter split and break sentinels.
-
-## Hard-won facts about this codebase
-
-Things that cost real time to learn and are not obvious from the code:
-
-- **`ctx.set` replaces a slice; the serializer holds a reference to the ORIGINAL object.** A
-  replacement is never read. Mutate the object the serializer already holds. Prefer mutating live
-  objects over swapping slices, and verify the *effect*, not the call.
-- **Crepe's `config` callbacks run before core slices exist.** Reading a slice there breaks boot
-  outright. Configure after `create()`.
-- **The `<br>` deletion was intentional upstream behaviour**, not a bug: Crepe writes `<br />` to
-  mark an empty paragraph and strips those spellings on parse. The match is case-sensitive, which is
-  why `<BR>` always survived — that asymmetry is what proved it was narrow rather than architectural.
+- **`ctx.set` replaces a slice; the serializer holds a reference to the ORIGINAL object.** Mutate what
+  the serializer already holds. Verify the *effect*, never the call.
+- **Crepe's `config` callbacks run before core slices exist.** Reading one there breaks boot outright —
+  a blank window, not an error. Configure after `create()`.
+- **mdast source positions ARE reachable**, via `ctx.get('remark')` — not `ctx.get('parser')`, which
+  returns ProseMirror nodes with no position data. The old spike concluded "no parser export, so no
+  positions"; the premise was true and the conclusion false. Source-preserving editing is therefore no
+  longer closed on evidence, but the transaction-to-source mapping is unproven and nothing depends on
+  it.
+- **Stripping link reference definitions to protect them does not work.** Without its definition
+  `[spec][s]` is not a link, so the serializer escapes it. One rewrite for another.
 - **Inline HTML is preserved.** `<b>`, `<span>`, `<kbd>`, comments and block `<div>` all round-trip
-  byte-identically. The v0.4.0 notes claimed otherwise and carry a dated correction.
-- **Stripping definitions to protect them does not work.** Without its definition `[spec][s]` is not
-  a link, so the serializer escapes it to `\[spec]\[s]`. One rewrite for another.
+  byte-identically.
 
 ## How to not get burned here
 
-This project has a documented history of tests that could not fail. Four separate instances were
-found and fixed: a round-trip corpus comparing a cached string to itself, an e2e helper that skipped
-the entire browser suite while `go test` printed `ok`, a font test hardcoding macOS paths that had
-only ever passed on its author's machine, and assertions reading the DOM before an async remount.
-
-Consequences for anyone working here:
-
 - **`e2e/` is the only coverage of the frontend.** `newTestBrowser` FAILS rather than skips when no
-  Chrome is found; `DRMD_SKIP_E2E` is the deliberate opt-out and must never be set in CI.
-- **`testdata/roundtrip/*.canonical.md` must survive byte-identically.** `e2e/fidelity_test.go`
-  records what is still rewritten and **fails when that changes in either direction** — if a fix
-  makes it go red, update it, that is the mechanism working.
-- **Probe edge cases before believing a fix.** Three of the fidelity fixes in this sequence
-  introduced a narrower bug of their own, each caught by probing shapes the fixture did not cover,
-  not by the fixture.
-- **Do not accept "flaky."** The one flake investigated in this sequence turned out to be a real
-  product defect that users could hit. Measure before and after (it was 4/20 → 0/20).
-- **Contain failures, but never make them invisible.** A `try/catch` logging only to `console.warn`
-  hid a `ReferenceError` for two rounds — production builds have no devtools. Route diagnostics
-  through the event trail (`bridge.recordEvent`).
-
-## Known open items, none blocking
-
-- **Hard links** are broken by atomic rename. Deliberate: the alternative is the non-atomic write
-  the package exists to prevent. Reasoning is in `internal/atomicfile/atomicfile.go`.
-- **Large files** are slow (~10 s for 280 KB) with no progress indicator and no cancel.
-- **Windows and Linux are unbuilt.** Only `tools/build-macos.sh` exists; the code is platform-aware
-  and CI runs on Linux, but no artifact is produced for either.
-- **Unsigned and un-notarized** — no Apple Developer account. Disclosed in the README with the
-  correct macOS 15+ approval path.
-- **Table padding** reflows around content changes; style options cannot express it.
+  Chrome is found. `DRMD_SKIP_E2E` is the deliberate opt-out and must never be set in CI.
+- **The suite launches one browser per test — 91 per run.** chromedp's 20s connect default was
+  exceeded twice on CI; it is raised to 60s in `newTestBrowser`. The real fix is fewer browsers: the
+  `fidelity_unit` and `markdown_unit` tests boot a whole browser only to `import()` a pure module and
+  could share one.
+- **Take the local gate FROM CI, never from memory.** It is
+  `gofmt -l . && go vet ./... && ./tools/verify-vendor.sh && go test ./... -count=1`. Eight commits
+  once passed a self-defined "vet + test" gate and went red on `gofmt`.
+- **Two gates fail in BOTH directions on purpose.** `e2e/fidelity_test.go` and
+  `e2e/fidelity_survey_test.go` record what is *still* rewritten, so a fix that is not also disclosed
+  in the README breaks the build. If one goes red after a fix, that is the mechanism working.
+- **`architext validate` checks schema, not truth.** Six risk records were found describing a codebase
+  that no longer existed, and validation passed on every one. Re-read them against the source on every
+  release pass.
+- **Verify the packaged app, not just the tests.** `wails dev` bridges the production Go bindings to a
+  browser, so the binding layer no automated gate covers can be driven directly — that is how v0.5.0
+  was confirmed to open a document, report clean, and survive two real saves byte-identically. And
+  **install the DMG**: doing that for the first time is what found #53.
 
 ## Ground rules that are enforced, not aspirational
 
-- Modified gitflow is **mandatory**: branch → PR to `develop` → PR to `main`. (One doc commit in this
-  session bypassed it and was flagged; don't repeat that.)
+- **Modified gitflow is mandatory**: branch → PR to `develop` → PR to `main`. Branch protection now
+  requires the `test` check and an up-to-date branch on both, so a red merge is no longer possible.
+  Expect a promotion PR to sit `BEHIND` until you merge `main` back into `develop` — that is the
+  merge-commit flow working, not a problem.
 - Only **robot-accomplice** credentials. `gh` defaults to the wrong account — pin it:
   `export GH_TOKEN=$(gh auth token --user robot-accomplice)`.
 - **No Claude/Anthropic attribution** in commits, PRs or artifacts.
+- **No Node toolchain.** Not for building, not for testing. `node --check` in CI is a syntax gate only.
 - Architext data under `docs/architext/data/**` is the reviewed source of truth and must be updated
-  when architecture, trust boundaries or release scope change. `architext validate` checks **schema,
-  not truth** — it passed for four commits while the data was stale, and that is exactly how it was
-  missed.
+  when architecture, trust boundaries or release scope change.
+
+## Release mechanics, in order
+
+1. Bump `wails.json` `productVersion` **and** `appVersion` together — `TestAppVersionMatchesWailsConfig`
+   fails on drift.
+2. Write the Release Truth record under `docs/architext/data/releases/`, then run `architext doctor .
+   --yes` to regenerate the counts rather than hand-writing them. It caught a miscount last time.
+   Reconcile and delete the `.bak` it leaves.
+3. Run the ABORT stations against the candidate and record the verdicts.
+4. `release/vX.Y.Z` → PR to `develop` → PR to `main`.
+5. **Rebuild the artifact from the merge commit**, not the release branch:
+   `tools/build-macos.sh --universal`. Verify with `lipo -archs` (expect `x86_64 arm64`) and
+   `PlistBuddy -c "Print :CFBundleShortVersionString"`.
+6. Install the DMG to `/Applications` and open a document with it before publishing.
+7. Tag, then `gh release create` with both DMGs.
+8. Update the [roboticus-site](https://github.com/robot-accomplice/roboticus-site) project card —
+   `src/lib/projects-data.ts` carries `currentVersion` and it went two releases stale last time.

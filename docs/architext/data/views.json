@@ -136,7 +136,7 @@
       "id": "c4-component",
       "name": "Frontend Shell Components",
       "type": "c4-component",
-      "summary": "The frontend shell coordinates the bridge, WYSIWYG editor, and raw editor around one active markdown buffer.",
+      "summary": "The frontend shell coordinates the bridge, the two editor surfaces and the pure markdown domain around one active markdown buffer. The shell owns the DOM; the markdown domain owns the document rules and has no DOM dependency at all.",
       "scopeNodeId": "frontend-shell",
       "lanes": [
         {
@@ -145,7 +145,8 @@
           "nodeIds": [
             "wails-bridge",
             "wysiwyg-editor",
-            "raw-editor"
+            "raw-editor",
+            "markdown-domain"
           ]
         }
       ]
@@ -154,14 +155,15 @@
       "id": "c4-component-native",
       "name": "Go API Components",
       "type": "c4-component",
-      "summary": "The Wails Go API delegates local file reads and atomic writes to Document IO.",
+      "summary": "The Wails Go API delegates local file reads and atomic writes to Document IO, and holds no session state of its own \u2014 the open tabs, their dirty state and the on-disk baseline belong to the Document session.",
       "scopeNodeId": "wails-go-api",
       "lanes": [
         {
           "id": "components",
           "name": "Components",
           "nodeIds": [
-            "document-io"
+            "document-io",
+            "document-session"
           ]
         }
       ]
