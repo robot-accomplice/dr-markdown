@@ -464,17 +464,20 @@
       "id": "wysiwyg-editor",
       "type": "module",
       "name": "WYSIWYG editor adapter",
-      "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown, suppresses initial normalization as a dirty edit, and runs the fidelity registry on the way in and out. It owns the editor lifecycle only; what is done to the user's bytes is owned by the fidelity domain.",
+      "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown, suppresses initial normalization as a dirty edit, and runs the fidelity registry on the way in and out. It owns the editor lifecycle only; what is done to the user's bytes is owned by the fidelity domain. Fenced code blocks belong to the vendored editor's own code-block node view, which renders, highlights and edits them; this adapter supplies that node view with the diagram preview for mermaid fences.",
       "responsibilities": [
         "Create and rebuild the formatted editor",
         "Emit user edits to the frontend shell",
         "Serialize markdown from Crepe",
-        "Run the fidelity registry: capture preservations from the document on build, apply serializer policies before the serializer runs, and restore preservations on serialize"
+        "Run the fidelity registry: capture preservations from the document on build, apply serializer policies before the serializer runs, and restore preservations on serialize",
+        "Configure the editor's code-block node view, supplying rendered mermaid diagrams as block previews",
+        "Draw every mermaid diagram in the document before the editor mounts, so a block preview is answered synchronously"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
         "frontend/dist/src/editor.js",
         "frontend/dist/src/fidelity/index.js",
+        "frontend/dist/src/markdown/fences.js",
         "frontend/dist/vendor/crepe.bundle.mjs"
       ],
       "runtime": "Embedded webview JavaScript",
@@ -573,10 +576,11 @@
       "id": "syntax-highlighter",
       "type": "module",
       "name": "Syntax highlighter adapter",
-      "summary": "A frontend adapter over vendored Highlight.js that normalizes language aliases and highlights markdown source plus fenced code blocks.",
+      "summary": "A frontend adapter over vendored Highlight.js that normalizes language aliases and highlights markdown source plus fenced code blocks. It does not highlight code inside the formatted editor: that surface belongs to the vendored editor's code-block node view, which highlights through CodeMirror, and running a second highlighter over it replaced nodes the node view owns and left code blocks uneditable (#77).",
       "responsibilities": [
         "Highlight markdown source for Raw and Split source overlays",
-        "Highlight fenced code blocks by declared backtick language",
+        "Highlight fenced code blocks by declared backtick language for the preview and print surfaces",
+        "Normalize language aliases so a fence's info string and a highlighter language id agree",
         "Escape unsupported languages without mutating markdown"
       ],
       "owner": "Project maintainers",
@@ -621,7 +625,7 @@
       "id": "diagram-renderer",
       "type": "module",
       "name": "Mermaid diagram renderer",
-      "summary": "A frontend adapter over vendored Mermaid that renders Mermaid source into SVG for assistant previews and markdown preview surfaces.",
+      "summary": "A frontend adapter over vendored Mermaid that renders Mermaid source into SVG for assistant previews, markdown preview surfaces, and the formatted editor's code-block previews.",
       "responsibilities": [
         "Initialize the vendored Mermaid runtime once",
         "Render Mermaid fenced-block source into SVG",
@@ -632,7 +636,8 @@
       "sourcePaths": [
         "frontend/dist/src/mermaid-renderer.js",
         "frontend/dist/vendor/mermaid.min.js",
-        "frontend/dist/src/app.js"
+        "frontend/dist/src/app.js",
+        "frontend/dist/src/editor.js"
       ],
       "runtime": "Embedded webview JavaScript",
       "interfaces": [
@@ -667,10 +672,11 @@
       "id": "vendored-editor-assets",
       "type": "module",
       "name": "Vendored editor assets",
-      "summary": "Bundled Crepe, Highlight.js, Mermaid, CodeMirror legacy bundle, and editor theme assets served from embedded frontend files.",
+      "summary": "Bundled Crepe, Highlight.js, Mermaid, CodeMirror legacy bundle, and editor theme assets served from embedded frontend files. The Crepe bundle is patched after download and so matches no upstream artifact, which is why tools/vendor-digests.txt is the only durable record of the bytes shipped.",
       "responsibilities": [
         "Provide editor, syntax-highlighting, and Mermaid runtime bundles without npm install at runtime",
-        "Provide theme CSS loaded by the WYSIWYG adapter"
+        "Provide theme CSS loaded by the WYSIWYG adapter",
+        "Patch the Crepe bundle's undefined CodeMirror basicSetup extension, which esm.sh leaves undefined because it resolves the bare specifier `codemirror` to v5; unpatched, every code block throws on mount and can never be edited (#77)"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
