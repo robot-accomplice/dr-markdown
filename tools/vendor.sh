@@ -5,7 +5,6 @@
 set -euo pipefail
 
 CREPE_VERSION="7.22.0"
-CODEMIRROR_VERSION="6.0.2"
 HIGHLIGHT_VERSION="11.11.1"
 MERMAID_VERSION="11.6.0"
 
@@ -61,13 +60,31 @@ fi
 # Dropping the undefined entry is the whole fix. Everything Crepe supplies
 # separately survives: the default keymap is a different entry, the highlight
 # style is a different entry, and languages load through the node view's own
-# loader. What is genuinely lost is what basicSetup alone carries — in-block
-# undo history, line numbers, autocompletion and bracket matching.
+# loader.
 #
-# Wiring the codemirror.bundle.mjs fetched below does NOT work and must not be
-# attempted again: it puts a second copy of @codemirror/state on the page, and
-# CodeMirror rejects the result with "Unrecognized extension value in extension
-# set". Measured, not assumed.
+# What is lost, measured in the built app rather than read off basicSetup's
+# feature list: line numbers and the fold gutter, bracket auto-closing, and
+# autocompletion. Undo is NOT lost — the node view forwards CodeMirror updates
+# into ProseMirror transactions, so the document's own history answers Cmd-Z
+# inside a code block. Multi-line editing, highlighting and the default keymap
+# all work.
+#
+# Supplying a replacement does NOT work and must not be attempted again, both
+# measured rather than assumed:
+#
+#   - Passing `extensions` through featureConfigs does not displace the broken
+#     default. Crepe CONCATENATES user extensions onto its own array, so the
+#     undefined entry survives.
+#   - Vendoring the `codemirror` meta-package separately and importing it puts a
+#     SECOND copy of @codemirror/state on the page, and CodeMirror rejects the
+#     result with "Unrecognized extension value in extension set". That bundle
+#     was fetched here for years, imported by nothing, and is now deleted.
+#
+# Nor can the fetch be fixed from here. @milkdown/crepe declares
+# `codemirror: ^6.0.1`, so this is an esm.sh resolution bug; ?deps= and ?alias=
+# are ignored because /es2022/crepe.bundle.mjs is a prebuilt artifact, and
+# jsdelivr's +esm build resolves correctly but emits 46 external imports, which
+# no self-contained, CSP-'self' asset server can load.
 if grep -q 'fme\.basicSetup' "$VENDOR/crepe.bundle.mjs"; then
   sed -i.bak 's|fme\.basicSetup|[]|' "$VENDOR/crepe.bundle.mjs" && rm "$VENDOR/crepe.bundle.mjs.bak"
   echo "patched out the undefined basicSetup extension in crepe.bundle.mjs"
@@ -83,14 +100,6 @@ else
   echo "       an unpatched bundle makes every code block uneditable (#77)." >&2
   exit 1
 fi
-
-# CodeMirror 6 meta-package: basic editing setup (~377 KB). No language packs
-# (see Global Constraints re: highlighting).
-#
-# NOTE: nothing imports this today, and the patch above records why it cannot be
-# used to repair the Crepe bundle. It is kept pending a decision on removal.
-fetch "https://esm.sh/codemirror@${CODEMIRROR_VERSION}/es2022/codemirror.bundle.mjs" \
-  "$VENDOR/codemirror.bundle.mjs"
 
 # Highlight.js common browser build: syntax highlighting for markdown source
 # overlays and language-tagged fenced code blocks.

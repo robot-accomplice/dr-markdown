@@ -672,7 +672,7 @@
       "id": "vendored-editor-assets",
       "type": "module",
       "name": "Vendored editor assets",
-      "summary": "Bundled Crepe, Highlight.js, Mermaid, CodeMirror legacy bundle, and editor theme assets served from embedded frontend files. The Crepe bundle is patched after download and so matches no upstream artifact, which is why tools/vendor-digests.txt is the only durable record of the bytes shipped.",
+      "summary": "Bundled Crepe, Highlight.js, Mermaid and editor theme assets served from embedded frontend files. The Crepe bundle is patched after download and so matches no upstream artifact, which is why tools/vendor-digests.txt is the only durable record of the bytes shipped. A standalone CodeMirror bundle was vendored here until 2026-08-10 and imported by nothing; it was removed once measurement showed it could not supply what the Crepe bundle is missing either.",
       "responsibilities": [
         "Provide editor, syntax-highlighting, and Mermaid runtime bundles without npm install at runtime",
         "Provide theme CSS loaded by the WYSIWYG adapter",
