@@ -1,5 +1,5 @@
 {
-  "currentReleaseId": "v0-6-0-own-the-host-and-editable-blocks",
+  "currentReleaseId": "v1-6-1-cosmetic-repair",
   "releases": [
     {
       "id": "initial-architext-buildout",
@@ -68,11 +68,32 @@
       "id": "v0-6-0-own-the-host-and-editable-blocks",
       "version": "0.6.0",
       "name": "Own the host, and make the editor editable",
-      "status": "in-progress",
+      "status": "complete",
       "posture": "on-track",
       "targetWindow": "Current milestone",
       "lastUpdated": "2026-08-25T00:00:00.000Z",
       "summary": "The release that removes the application framework and fixes the rule the editor exists to serve. Wails is gone from the running application: the window, the webview, the asset scheme, the native dialogs and the menu bar are AppKit and WebKit directly, behind hostPort, and a panicking bound call now REJECTS rather than leaving the frontend's await unsettled forever. Code blocks became editable in Formatted mode for the first time since syntax highlighting landed, and mermaid diagrams became editable at all. The cause was one undefined value: esm.sh resolves the bare specifier `codemirror` inside the vendored Crepe bundle to CodeMirror 5, which has no basicSetup, so EditorState.create threw inside the observer callback that upgrades a block, after the node view had set initialized = true, and never retried. Alongside that, the three editing surfaces were made to agree with each other, the floating contextual bar was removed in favour of controls on the blocks they act on, the ribbon stopped shipping the same command in two tabs, and continuous integration began compiling the code that actually ships."
+    },
+    {
+      "id": "v1-6-1-cosmetic-repair",
+      "version": "1.6.1",
+      "name": "Cosmetic repair",
+      "status": "in-progress",
+      "posture": "on-track",
+      "targetWindow": "Current milestone",
+      "lastUpdated": "2026-08-25T00:00:00.000Z",
+      "summary": "The first release scoped from USING the packaged application rather than from review findings or the issue tracker. v0.6.0's premortem carried one line a harness cannot close — install the DMG and use it — and closing it immediately returned a layout defect that five ABORT stations, the host gates and a 40-check screen walk had all passed over. This release carries that fix and the other cosmetic problems found the same way. Scope is deliberately open while the application is in use; items are added as they are found, not predicted.",
+      "counts": {
+        "features": 0,
+        "bugFixes": 1,
+        "workstreams": 1,
+        "blockers": 1,
+        "complete": 1,
+        "inProgress": 0,
+        "planned": 0,
+        "stretch": 0
+      },
+      "file": "v1-6-1-cosmetic-repair.json"
     }
   ]
 }

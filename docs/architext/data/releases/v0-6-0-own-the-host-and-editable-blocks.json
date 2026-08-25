@@ -2,12 +2,12 @@
   "id": "v0-6-0-own-the-host-and-editable-blocks",
   "version": "0.6.0",
   "name": "Own the host, and make the editor editable",
-  "status": "in-progress",
+  "status": "complete",
   "posture": "on-track",
   "summary": "The release that removes the application framework and fixes the rule the editor exists to serve. Wails is gone from the running application: the window, the webview, the asset scheme, the native dialogs and the menu bar are AppKit and WebKit directly, behind hostPort, and a panicking bound call now REJECTS rather than leaving the frontend's await unsettled forever. Code blocks became editable in Formatted mode for the first time since syntax highlighting landed, and mermaid diagrams became editable at all. The cause was one undefined value: esm.sh resolves the bare specifier `codemirror` inside the vendored Crepe bundle to CodeMirror 5, which has no basicSetup, so EditorState.create threw inside the observer callback that upgrades a block, after the node view had set initialized = true, and never retried. Alongside that, the three editing surfaces were made to agree with each other, the floating contextual bar was removed in favour of controls on the blocks they act on, the ribbon stopped shipping the same command in two tabs, and continuous integration began compiling the code that actually ships.",
   "targetWindow": "Current milestone",
   "lastUpdated": "2026-08-25T00:00:00.000Z",
-  "updateSource": "Release preparation, pre-ABORT",
+  "updateSource": "Released: tagged v0.6.0 at f82351b",
   "scope": {
     "required": [
       {
@@ -123,19 +123,6 @@
         "summary": "Found by driving the real application. Crepe's vendored theme @imports stylesheets from other npm packages by bare specifier, and vendor.sh never fetched them, so ProseMirror's own base editor stylesheet, the table styles, the gap cursor and the virtual cursor all 404ed silently -- while the editor ran with virtual-cursor-enabled and its styles absent. A failed @import throws nothing and logs nothing.",
         "evidence": [
           "host-gates",
-          "full-test-suite"
-        ]
-      },
-      {
-        "id": "settings-row-alignment",
-        "title": "A settings row's control lines up with the title that names it",
-        "kind": "bug-fix",
-        "status": "complete",
-        "summary": "Reported from real use of the packaged 0.6.0 build, against the Code Block dialog. Every .settings-row is a two-line label beside a control laid out with align-items: center, which centres the control against the whole label group rather than the title it names — measured at +9.0px. The row is top-aligned now, with the title and the control sharing one band (--row-band), so the description hangs below without pulling the control down. Central, not local: the dialog reuses .settings-row, so the same misalignment was in all 13 rows across the dialog and the Editor and Appearance settings. All now measure +0.0px. Two regressions the extended test caught before merge: the band rule out-specified .settings-toggle and STRETCHED the pill to 32px, and min-height on a content-box element grew the segmented control to 38px. A stretched pill still centres, so its size is asserted separately.",
-        "owner": "Project maintainers",
-        "workstreamId": "host",
-        "dependsOn": [],
-        "evidence": [
           "full-test-suite"
         ]
       }
