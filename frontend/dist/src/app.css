@@ -2508,3 +2508,64 @@ body.dark {
 #wysiwyg .ProseMirror > .ProseMirror-widget:first-child + * {
   margin-top: 0;
 }
+
+/* Document zoom, in the sense Word means it: the whole document gets closer,
+   proportions preserved.
+                                                                             .
+   `zoom` rather than `transform: scale`, because zoom takes part in LAYOUT.
+   Measured at 1.5: the host went 720px -> 1080px wide and the pane's
+   scrollHeight grew 759 -> 848, so the content can be scrolled to. A transform
+   paints at a new size while the parent still lays out the old one, so a
+   zoomed-in document overflows with nothing to scroll to — and it rasterises
+   text, where this stays a real layout at the new size and so stays crisp. */
+#editor-host {
+  zoom: var(--doc-zoom, 1);
+}
+
+/* Anchored to the pane, and deliberately OUTSIDE #editor-host: inside it the
+   control would zoom itself, shrinking as you zoomed out — smallest exactly
+   when it is hardest to hit. */
+.document-zoom {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 10px oklch(0.3 0.02 285 / 0.08);
+}
+
+.document-zoom button {
+  min-width: 26px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.document-zoom button[data-zoom-level] {
+  min-width: 46px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.document-zoom button:hover:not(:disabled) {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+/* The empty state has no document to zoom, and Raw is a source editor whose
+   size is the code-font setting rather than a page zoom. */
+body.app-empty .document-zoom {
+  display: none;
+}
