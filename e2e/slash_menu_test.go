@@ -40,8 +40,8 @@ func TestSlashMenuInsertsAnEditableCodeBlock(t *testing.T) {
 		t.Fatal("the formatted surface never mounted")
 	}
 
+	clickWhenVisible(t, ctx, "#wysiwyg .ProseMirror p")
 	if err := chromedp.Run(ctx,
-		chromedp.Click("#wysiwyg .ProseMirror p", chromedp.ByQuery),
 		chromedp.KeyEvent(kb.End),
 		chromedp.KeyEvent(kb.Enter),
 		chromedp.KeyEvent("/"),
@@ -66,9 +66,7 @@ func TestSlashMenuInsertsAnEditableCodeBlock(t *testing.T) {
 		t.Fatal("typing / in an empty block should open the slash menu with a Code item")
 	}
 
-	if err := chromedp.Run(ctx, chromedp.Click("#slash-code-item", chromedp.ByQuery)); err != nil {
-		t.Fatalf("choosing Code from the slash menu: %v", err)
-	}
+	clickWhenVisible(t, ctx, "#slash-code-item")
 
 	var after struct {
 		Before   string `json:"before"`

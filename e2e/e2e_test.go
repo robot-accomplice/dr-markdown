@@ -2997,3 +2997,52 @@ func TestFrontendReportsEveryTabWithItsOwnPath(t *testing.T) {
 		t.Fatalf("a tab's content was reported against another tab's path: %s", synced)
 	}
 }
+
+// clickWhenVisible waits for a selector to be present AND visible, then clicks
+// it under a deadline.
+//
+// chromedp.Click has NO timeout. It waits for a matching, visible node forever,
+// so an element that never becomes visible does not fail a test — it hangs the
+// whole package until the binary's 10-minute panic, and every other test's
+// result dies with it. That is exactly how
+// TestMermaidRendersAndStaysEditableInFormattedMode took CI down: 7 minutes
+// blocked in one Click, then `FAIL dr-markdown/e2e 600.011s` with no indication
+// of which assertion was even involved.
+//
+// The visibility check is separate from the click on purpose. chromedp's own
+// wait is silent about WHY it is waiting, and several affordances in this editor
+// are revealed on hover or mounted lazily on intersection — so "present but
+// zero-height" is a state worth naming in the failure rather than sitting in.
+func clickWhenVisible(t *testing.T, ctx context.Context, selector string) {
+	t.Helper()
+	visible := `(() => {
+		const e = document.querySelector(` + strconv.Quote(selector) + `)
+		if (!e) return false
+		const r = e.getBoundingClientRect()
+		return r.height > 0 && r.width > 0
+	})()`
+	if !waitForJS(t, ctx, visible) {
+		var present bool
+		evalJS(t, ctx, `document.querySelector(`+strconv.Quote(selector)+`) !== null`, &present)
+		if present {
+			t.Fatalf("%s is in the DOM but never became visible, so it cannot be clicked "+
+				"(hover-revealed, or lazily mounted and never intersected)", selector)
+		}
+		t.Fatalf("%s never appeared, so it cannot be clicked", selector)
+	}
+	tctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	if err := chromedp.Run(tctx, chromedp.Click(selector, chromedp.ByQuery)); err != nil {
+		t.Fatalf("clicking %s: %v", selector, err)
+	}
+}
+
+// sendKeysTo types into a selector under the same deadline, for the same reason.
+func sendKeysTo(t *testing.T, ctx context.Context, selector, keys string) {
+	t.Helper()
+	tctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	if err := chromedp.Run(tctx, chromedp.SendKeys(selector, keys, chromedp.ByQuery)); err != nil {
+		t.Fatalf("typing into %s: %v", selector, err)
+	}
+}
