@@ -25,10 +25,10 @@ func appWithEventLogIn(t *testing.T, dir string) (*App, *fakeNative) {
 	return app, native
 }
 
-// Wails recovers panics in bound method dispatch and turns them into a promise
-// rejection, so the app already survives one — silently. Nothing reaches the
-// event trail, and the Wails logger it does reach writes to a stream no
-// packaged-app user can read. A user who reports "it stopped saving" therefore
+// The host recovers panics in bound-method dispatch and rejects the frontend's
+// promise, so the app survives one — but silently, as far as the user is
+// concerned. Without this guard nothing reaches the event trail, and a log line
+// in a packaged build goes to a stream no user can read. A user who reports "it stopped saving" therefore
 // hands over no recorded state at all.
 //
 // Three things must happen, and the third is why this is not just a Record
@@ -65,7 +65,7 @@ func TestPanicIsRecordedAndShownAndStillPropagates(t *testing.T) {
 	}
 
 	if native.errorTitle == "" {
-		t.Error("the user was not told. The app keeps running after Wails recovers, " +
+		t.Error("the user was not told. The app keeps running after the host recovers, " +
 			"so an untold user edits on in a state the app no longer understands")
 	}
 	if !strings.Contains(native.errorMessage, "SaveDocument") {
@@ -93,11 +93,10 @@ func TestAnOperationThatDoesNotPanicRecordsNothing(t *testing.T) {
 }
 
 // Every method the frontend can call must carry the guard, and this test exists
-// because there is no way to install it centrally. Wails calls bound methods by
-// reflection, so there is no wrapper to hang it on; ErrorFormatter is not a seam
-// either, because a panic unwinds past the line that would call it
-// (internal/frontend/dispatcher/calls.go builds the callback message only after
-// the call returns normally).
+// because there is no way to install it centrally: bound methods are dispatched
+// by name through generated code, so there is no single wrapper to hang the guard
+// on, and a panic unwinds past any point that would format an error for the
+// caller.
 //
 // Partial coverage would be worse than none. The trail would carry panics from
 // the guarded methods and silence from the rest, and silence would read as
@@ -138,7 +137,7 @@ func TestEveryBoundMethodReportsItsPanics(t *testing.T) {
 	}
 }
 
-// The Wails lifecycle callbacks are not bound methods, so the dispatcher's
+// The lifecycle callbacks are not bound methods, so the dispatcher's
 // recover never sees them. A panic in one of these unwinds out of the goroutine
 // that called it and takes the process with it — the crash the app has always
 // had, with nothing written down. main.go registers each of these by name.

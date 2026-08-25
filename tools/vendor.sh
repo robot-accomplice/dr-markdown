@@ -31,7 +31,7 @@ fetch "https://esm.sh/@milkdown/crepe@${CREPE_VERSION}/es2022/crepe.bundle.mjs" 
   "$VENDOR/crepe.bundle.mjs"
 
 # esm.sh injects `import __Process$ from "/node/process.mjs"` (its Node
-# polyfill shim) into the bundle. That root-relative URL 404s under the Wails
+# polyfill shim) into the bundle. That root-relative URL 404s under the
 # asset server and would abort module loading entirely. The bundle's only use
 # is a guarded `typeof __Process$<"u"` check (lezer parse logging), so replace
 # the import with an inline undefined stub to keep the bundle self-contained.
@@ -43,7 +43,7 @@ if grep -q 'import __Process\$ from "/node/process.mjs";' "$VENDOR/crepe.bundle.
 elif grep -q '/node/process.mjs' "$VENDOR/crepe.bundle.mjs"; then
   # The shim is still there but no longer matches the pattern above. Skipping
   # the patch silently is not an option: the unpatched import 404s under the
-  # Wails asset server and aborts module loading, so the editor never mounts at
+  # app's asset scheme and aborts module loading, so the editor never mounts at
   # all — a total failure produced by a refresh that printed nothing.
   echo "error: crepe.bundle.mjs still references /node/process.mjs but the expected" >&2
   echo "       import statement did not match, so the patch was not applied." >&2
