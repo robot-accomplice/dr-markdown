@@ -8,6 +8,10 @@ common/latex.css
 common/link-tooltip.css
 common/list-item.css
 common/placeholder.css
+common/pm-gapcursor.css
+common/pm-tables.css
+common/pm-view.css
+common/pm-virtual-cursor.css
 common/prosemirror.css
 common/reset.css
 common/style.css
