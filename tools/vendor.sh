@@ -5,7 +5,6 @@
 set -euo pipefail
 
 CREPE_VERSION="7.22.0"
-CODEMIRROR_VERSION="6.0.2"
 HIGHLIGHT_VERSION="11.11.1"
 MERMAID_VERSION="11.6.0"
 
@@ -44,10 +43,63 @@ elif grep -q '/node/process.mjs' "$VENDOR/crepe.bundle.mjs"; then
   exit 1
 fi
 
-# CodeMirror 6 meta-package: basic editing setup (~377 KB). No language packs
-# (see Global Constraints re: highlighting).
-fetch "https://esm.sh/codemirror@${CODEMIRROR_VERSION}/es2022/codemirror.bundle.mjs" \
-  "$VENDOR/codemirror.bundle.mjs"
+# esm.sh resolves the bare specifier `codemirror` inside the Crepe bundle to
+# CodeMirror *5* — a namespace of defineMode/defineMIME/registerHelper, which
+# has no `basicSetup` export because that is a v6 addition. Crepe's code-mirror
+# feature builds its extension set as `[keymap, fme.basicSetup, ...]`, so the
+# second entry is undefined, and CodeMirror's EditorState.create throws
+# "Cannot read properties of undefined (reading 'extension')".
+#
+# That throw happens inside the IntersectionObserver callback that upgrades a
+# code block, and only AFTER the node view has set `initialized = true`. So it
+# is never retried: every code block stays on its placeholder <pre>, inside a
+# `contenteditable="false"` wrapper, for the life of the document. Code blocks
+# were uneditable in Formatted mode from the day highlighting landed until this
+# patch (#77), which violates the rule the whole editor exists to serve.
+#
+# Dropping the undefined entry is the whole fix. Everything Crepe supplies
+# separately survives: the default keymap is a different entry, the highlight
+# style is a different entry, and languages load through the node view's own
+# loader.
+#
+# What is lost, measured in the built app rather than read off basicSetup's
+# feature list: line numbers and the fold gutter, bracket auto-closing, and
+# autocompletion. Undo is NOT lost — the node view forwards CodeMirror updates
+# into ProseMirror transactions, so the document's own history answers Cmd-Z
+# inside a code block. Multi-line editing, highlighting and the default keymap
+# all work.
+#
+# Supplying a replacement does NOT work and must not be attempted again, both
+# measured rather than assumed:
+#
+#   - Passing `extensions` through featureConfigs does not displace the broken
+#     default. Crepe CONCATENATES user extensions onto its own array, so the
+#     undefined entry survives.
+#   - Vendoring the `codemirror` meta-package separately and importing it puts a
+#     SECOND copy of @codemirror/state on the page, and CodeMirror rejects the
+#     result with "Unrecognized extension value in extension set". That bundle
+#     was fetched here for years, imported by nothing, and is now deleted.
+#
+# Nor can the fetch be fixed from here. @milkdown/crepe declares
+# `codemirror: ^6.0.1`, so this is an esm.sh resolution bug; ?deps= and ?alias=
+# are ignored because /es2022/crepe.bundle.mjs is a prebuilt artifact, and
+# jsdelivr's +esm build resolves correctly but emits 46 external imports, which
+# no self-contained, CSP-'self' asset server can load.
+if grep -q 'fme\.basicSetup' "$VENDOR/crepe.bundle.mjs"; then
+  sed -i.bak 's|fme\.basicSetup|[]|' "$VENDOR/crepe.bundle.mjs" && rm "$VENDOR/crepe.bundle.mjs.bak"
+  echo "patched out the undefined basicSetup extension in crepe.bundle.mjs"
+else
+  # Silence here would ship uneditable code blocks again, and the suite would
+  # stay green until someone tried to type. Fail instead: either upstream fixed
+  # the resolution (drop this patch) or the expression was minified to a new
+  # name (update the pattern).
+  echo "error: crepe.bundle.mjs no longer contains 'fme.basicSetup', so the" >&2
+  echo "       CodeMirror patch was not applied. Either esm.sh now resolves" >&2
+  echo "       codemirror to v6 and this patch is obsolete, or minification" >&2
+  echo "       renamed the binding. Check which, before committing this bundle:" >&2
+  echo "       an unpatched bundle makes every code block uneditable (#77)." >&2
+  exit 1
+fi
 
 # Highlight.js common browser build: syntax highlighting for markdown source
 # overlays and language-tagged fenced code blocks.
