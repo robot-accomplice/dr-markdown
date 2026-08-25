@@ -1,0 +1,272 @@
+{
+  "id": "v0-6-0-own-the-host-and-editable-blocks",
+  "version": "0.6.0",
+  "name": "Own the host, and make the editor editable",
+  "status": "in-progress",
+  "posture": "on-track",
+  "summary": "The release that removes the application framework and fixes the rule the editor exists to serve. Wails is gone from the running application: the window, the webview, the asset scheme, the native dialogs and the menu bar are AppKit and WebKit directly, behind hostPort, and a panicking bound call now REJECTS rather than leaving the frontend's await unsettled forever. Code blocks became editable in Formatted mode for the first time since syntax highlighting landed, and mermaid diagrams became editable at all. The cause was one undefined value: esm.sh resolves the bare specifier `codemirror` inside the vendored Crepe bundle to CodeMirror 5, which has no basicSetup, so EditorState.create threw inside the observer callback that upgrades a block, after the node view had set initialized = true, and never retried. Alongside that, the three editing surfaces were made to agree with each other, the floating contextual bar was removed in favour of controls on the blocks they act on, the ribbon stopped shipping the same command in two tabs, and continuous integration began compiling the code that actually ships.",
+  "targetWindow": "Current milestone",
+  "lastUpdated": "2026-08-25T00:00:00.000Z",
+  "updateSource": "Release preparation, pre-ABORT",
+  "scope": {
+    "required": [
+      {
+        "id": "own-the-host",
+        "title": "Replace Wails with a host this project owns",
+        "kind": "refactor",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "host",
+        "summary": "Zero wailsapp modules remain; go.mod carries chromedp (tests only), golang.org/x/image and golang.org/x/sys. Binary 12.3MB to 10.4MB. app.go was not touched by the swap. It had to be ONE cutover: bridge.js degrades when the host is absent but throws when it is partial, several entries being native()?.Method(x) rather than native()?.Method?.(x), so no host could implement a subset. Four host defects were found on the way, none of which would have failed a test: a dropped DefaultButton let Return destroy a file, dispatch_async to the main queue is not serviced during a modal so any open dialog froze every pending reply, dispatch_sync held a cgo call open for the life of a dialog and made context.Context unhonourable, and there was no menu bar at all.",
+        "evidence": [
+          "host-gates",
+          "screen-walk",
+          "menu-check"
+        ]
+      },
+      {
+        "id": "code-blocks-editable",
+        "title": "Code blocks are editable in Formatted mode",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "editor",
+        "summary": "Shipped broken in v0.5.1 and blocked this release. esm.sh resolves `codemirror` to v5, whose namespace has no basicSetup, so Crepe built its CodeMirror extension set with an undefined entry. The throw happened inside the IntersectionObserver callback that upgrades a block and AFTER initialized = true, so it never retried and every block stayed a placeholder inside a contenteditable=false wrapper. Dropping the entry is the whole fix. Mermaid moved onto the same node view's preview hook and became editable in place for the first time. The gate types real keystrokes and requires them in the document's markdown, because every previous code-block test asserted presence and passed for the entire time the block was inert.",
+        "evidence": [
+          "full-test-suite",
+          "host-gates"
+        ]
+      },
+      {
+        "id": "surfaces-agree",
+        "title": "The three editing surfaces agree with each other",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "editor",
+        "summary": "The same fenced block rendered in three fonts, three tab widths and two palettes: formatted at generic monospace 15.5px tab-size 4 with CodeMirror's One Dark on a white background, split at JetBrains Mono 12.5px tab-size 8, raw the same but tab-size 2. There is one syntax palette now, as --code-* tokens that both Highlight.js and CodeMirror resolve. Tab indents in the raw editor instead of moving focus out of it. The first line no longer moves when heading format is applied: the heading's top margin was collapsing out of the editor entirely.",
+        "evidence": [
+          "full-test-suite"
+        ]
+      },
+      {
+        "id": "block-local-controls",
+        "title": "Per-block actions live on their block",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "editor",
+        "summary": "The floating contextual bar was document-scoped, not selection-scoped: for code and diagrams it appeared because the document CONTAINED one, and its language control resolved the FIRST matching fence, so it edited the wrong block whenever a document had two. Removed. Three of its four groups duplicated affordances the editor already provides, verified in the DOM rather than assumed. The in-block picker was also being clipped by an overflow rule copied from a construct that needs one, and the editor drew the vendored warm palette instead of the app's; both fixed at their source rather than per control.",
+        "evidence": [
+          "full-test-suite"
+        ]
+      },
+      {
+        "id": "ribbon-file-tab",
+        "title": "Remove Home, add File, stop duplicating commands",
+        "kind": "feature",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "shell",
+        "summary": "Home was a superset of Format and Insert, so two of five tabs taught the reader nothing new and every duplicated control had two places to be changed. It also carried a Share group with no controls, while the file operations had no ribbon home at all -- Save and Save As existed as hidden buttons present only to be a click target. File actions are wired by attribute rather than by id, which is why the ribbon had none of them.",
+        "evidence": [
+          "full-test-suite",
+          "screen-walk"
+        ]
+      },
+      {
+        "id": "document-zoom",
+        "title": "Document zoom",
+        "kind": "feature",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "shell",
+        "summary": "Word's sense of zoom: the whole document closer, proportions preserved. CSS zoom rather than transform, because zoom takes part in layout and the pane can be scrolled to reach content that has grown -- a transform paints at the new size while the parent lays out the old one, so a zoomed-in document overflows with nothing to scroll to.",
+        "evidence": [
+          "full-test-suite"
+        ]
+      },
+      {
+        "id": "brand-and-icon",
+        "title": "New icon and blue brand",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "shell",
+        "summary": "The icon is per-size artwork: the illustration from 64px up and the bold M-arrow at 16 and 32, because the illustration was measured unreadable below 48px and no care in the artwork survives 16px when one source is scaled ten ways. genicon draws the macOS squircle itself, so artwork only ever supplies the mark. The palette moved by HUE ONLY, 196 to 235, leaving every lightness and chroma untouched so no contrast relationship changed. That sweep exposed a latent coupling: the syntax palette read var(--accent), so a rebrand could degrade code legibility.",
+        "evidence": [
+          "full-test-suite",
+          "packaging"
+        ]
+      },
+      {
+        "id": "ci-compiles-what-ships",
+        "title": "CI compiles and packages the shipping product",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "verification",
+        "summary": "CI compiled none of the host. Every file implementing the window, webview, asset scheme, menu bar and dialogs is *_darwin.go and build constraints exclude all of them on Linux, so a deliberate type error in host_darwin.go left GOOS=linux go build exiting 0. There is a macos-latest job now that builds, vets, tests and PACKAGES, and verifies the bundle past what codesign checks. node --check also covered 6 of 19 frontend modules, missing the whole markdown domain and the whole fidelity layer.",
+        "evidence": [
+          "ci-darwin-job",
+          "packaging"
+        ]
+      },
+      {
+        "id": "editor-stylesheets",
+        "title": "Four editor stylesheets that never loaded",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "editor",
+        "summary": "Found by driving the real application. Crepe's vendored theme @imports stylesheets from other npm packages by bare specifier, and vendor.sh never fetched them, so ProseMirror's own base editor stylesheet, the table styles, the gap cursor and the virtual cursor all 404ed silently -- while the editor ran with virtual-cursor-enabled and its styles absent. A failed @import throws nothing and logs nothing.",
+        "evidence": [
+          "host-gates",
+          "full-test-suite"
+        ]
+      }
+    ],
+    "deferred": [
+      {
+        "id": "image-reveal-has-no-ui",
+        "title": "Reveal in Finder has no route in the UI",
+        "kind": "bug-fix",
+        "status": "deferred",
+        "owner": "Project maintainers",
+        "workstreamId": "shell",
+        "summary": "Deferred on scope. Removing the floating bar took Reveal with it, and it is the one image affordance no editor plugin can provide. The capability is intact behind the API -- revealSelectedImage is unchanged and runCommand('image-reveal') still routes to it -- so this is a menu item and an enablement rule, not lost behaviour. Tracked as #85, with the maintainer's direction recorded: it belongs in a named menu rather than a new floating surface.",
+        "evidence": [
+          "issue-85"
+        ]
+      },
+      {
+        "id": "fence-language-casing",
+        "title": "The picker writes a language's display name into the fence",
+        "kind": "bug-fix",
+        "status": "deferred",
+        "owner": "Project maintainers",
+        "workstreamId": "editor",
+        "summary": "Deferred on risk. The editor's own picker writes ```Python where every other route writes ```python. Markdown treats info strings case-insensitively so nothing renders differently and no content is lost. Both candidate fixes are non-trivial: supplying our own language list replaces the built-in 143 and loses their CodeMirror parsers, and normalizing on serialize would rewrite user-authored capitalised fences, which the fidelity survey would correctly fail. Asserted in e2e so it cannot drift unnoticed in either direction. Tracked as #78.",
+        "evidence": [
+          "issue-78"
+        ]
+      },
+      {
+        "id": "panic-trail-gaps",
+        "title": "Two gaps in the panic trail",
+        "kind": "bug-fix",
+        "status": "deferred",
+        "owner": "Project maintainers",
+        "workstreamId": "observability",
+        "summary": "Deferred on impact. A panic before the App exists leaves no trail (#62), and a repeating panic can evict the context needed to diagnose it (#63). Both are diagnostics gaps with no user-facing symptom, and the host gates confirm the primary case is fixed: a panicking bound call REJECTS rather than hanging.",
+        "evidence": [
+          "issue-62",
+          "issue-63",
+          "host-gates"
+        ]
+      },
+      {
+        "id": "basicsetup-extras",
+        "title": "What dropping basicSetup costs",
+        "kind": "chore",
+        "status": "deferred",
+        "owner": "Project maintainers",
+        "workstreamId": "editor",
+        "summary": "Deferred as acceptable. Patching out the undefined extension loses what basicSetup alone carries: line numbers and the fold gutter, bracket auto-closing, and autocompletion. Measured in the built app rather than read off the package's feature list -- undo is NOT lost, because the node view forwards CodeMirror updates into ProseMirror transactions and the document's own history answers Cmd-Z inside a code block. The mis-resolution cannot be fixed at the fetch: crepe declares codemirror ^6.0.1, so this is an esm.sh bug, and jsdelivr's build resolves correctly but emits 46 external imports no CSP-'self' asset server can load.",
+        "evidence": [
+          "host-gates"
+        ]
+      }
+    ]
+  },
+  "workstreams": [
+    {
+      "id": "host",
+      "name": "The application's own host",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Everything the application asks of the OS.",
+      "itemIds": [
+        "own-the-host"
+      ]
+    },
+    {
+      "id": "editor",
+      "name": "The editing surfaces",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "What the document looks like and whether it can be edited.",
+      "itemIds": [
+        "code-blocks-editable",
+        "surfaces-agree",
+        "block-local-controls",
+        "editor-stylesheets"
+      ]
+    },
+    {
+      "id": "shell",
+      "name": "The shell around the document",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Ribbon, chrome, zoom and brand.",
+      "itemIds": [
+        "ribbon-file-tab",
+        "document-zoom",
+        "brand-and-icon"
+      ]
+    },
+    {
+      "id": "verification",
+      "name": "What the gates actually check",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Making the pipeline judge the product that ships.",
+      "itemIds": [
+        "ci-compiles-what-ships"
+      ]
+    },
+    {
+      "id": "observability",
+      "name": "Diagnosing failures after the fact",
+      "owner": "Project maintainers",
+      "status": "planned",
+      "posture": "on-track",
+      "progress": 0,
+      "summary": "Recorded state sufficient to root-cause a failure.",
+      "itemIds": [
+        "panic-trail-gaps"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "wysiwyg-reserialization-class",
+      "title": "The WYSIWYG surface still re-serializes the whole document",
+      "severity": "high",
+      "status": "accepted",
+      "summary": "Carried forward unchanged. The editor parses to ProseMirror's model and re-serializes everything, so a construct nobody surveyed is still respelled. 38 of 49 surveyed constructs round-trip byte-identically and nothing is deleted. Only source-preserving editing would close the class. Disclosed in the README caution and measured by two tests that fail in both directions."
+    }
+  ],
+  "milestones": [],
+  "dependencies": [],
+  "evidence": [
+    "full-test-suite",
+    "host-gates",
+    "screen-walk",
+    "menu-check",
+    "packaging",
+    "ci-darwin-job",
+    "issue-85",
+    "issue-78",
+    "issue-62",
+    "issue-63"
+  ]
+}
