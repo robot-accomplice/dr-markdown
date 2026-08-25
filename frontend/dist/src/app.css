@@ -1,9 +1,9 @@
 :root {
-  --accent: oklch(0.52 0.09 196);
-  --accent-hover: oklch(0.42 0.09 196);
-  --accent-wash: oklch(0.955 0.025 196);
-  --accent-wash-border: oklch(0.85 0.055 196);
-  --accent-ink: oklch(0.32 0.055 196);
+  --accent: oklch(0.52 0.09 235);
+  --accent-hover: oklch(0.42 0.09 235);
+  --accent-wash: oklch(0.955 0.025 235);
+  --accent-wash-border: oklch(0.85 0.055 235);
+  --accent-ink: oklch(0.32 0.055 235);
   --panel: #fff;
   --chrome: oklch(0.985 0.002 285);
   --canvas: oklch(0.975 0.003 285);
@@ -1625,9 +1625,21 @@ body.split-mode #editor-host {
   background: oklch(0.78 0.08 196 / 0.35);
 }
 
+/* The syntax palette is deliberately INDEPENDENT of the brand accent, and
+   these two rules are where that was not true.
+                                                                             .
+   `.hljs-section`/`.hljs-title` read `var(--accent)`, and `.hljs-keyword`
+   carried the accent's literal value, so moving the brand hue from teal to
+   blue dragged both with it — landing them within 15 degrees of
+   `.hljs-link`/`.hljs-variable` at hue 250, where keywords, titles and variable
+   names stop being distinguishable from one another in highlighted code.
+                                                                             .
+   Both are pinned to the palette's own hue instead. A rebrand should not be
+   able to degrade code legibility, and the coupling that let it is the defect,
+   not the hue that exposed it. */
 .hljs-section,
 .hljs-title {
-  color: var(--accent);
+  color: oklch(0.52 0.09 196);
   font-weight: 700;
 }
 
