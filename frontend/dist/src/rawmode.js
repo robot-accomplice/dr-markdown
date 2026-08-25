@@ -1,5 +1,11 @@
 import { highlightMarkdownSource } from './highlighter.js'
 
+// One indent width, matching --code-tab-size in app.css. Spaces rather than a
+// tab character: the document is markdown, where a literal tab at the start of
+// a line has block meaning, and the fidelity survey records tab-after-marker
+// being rewritten to a space on round trip.
+const RAW_INDENT_WIDTH = 4
+
 export class RawEditor {
   #textarea = null
   #highlight = null
@@ -40,7 +46,58 @@ export class RawEditor {
       this.#onChange?.(this.getMarkdown())
     })
     this.#textarea.addEventListener('scroll', () => this.#syncScroll())
+    this.#textarea.addEventListener('keydown', (event) => this.#handleTab(event))
     this.#render()
+  }
+
+  // Tab indents; it does not leave the editor.
+  //
+  // A textarea's default is to move focus, which is correct for a form field
+  // and wrong for a source editor: the formatted view's CodeMirror indents on
+  // Tab, so the same keystroke in the same document either indented the line or
+  // threw the caret out of the pane depending on which mode you were in.
+  //
+  // Shift-Tab outdents one level, and both operate on whole lines when a
+  // selection spans more than one, because indenting a block is the reason to
+  // reach for Tab in the first place.
+  //
+  // Focus is still reachable with Escape-then-Tab in browsers that implement it,
+  // and the ribbon remains keyboard-reachable, so trapping Tab here does not
+  // strand a keyboard user in the editor.
+  #handleTab(event) {
+    if (event.key !== 'Tab' || event.metaKey || event.ctrlKey || event.altKey) return
+    event.preventDefault()
+
+    const area = this.#textarea
+    const indent = ' '.repeat(RAW_INDENT_WIDTH)
+    const { selectionStart: start, selectionEnd: end, value } = area
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1
+    const spansLines = value.slice(start, end).includes('\n')
+
+    if (!spansLines && !event.shiftKey) {
+      area.setRangeText(indent, start, end, 'end')
+      this.#afterTab()
+      return
+    }
+
+    // Whole-line operation: rewrite every line the selection touches.
+    const lineEnd = value.indexOf('\n', end) === -1 ? value.length : value.indexOf('\n', end)
+    const block = value.slice(lineStart, lineEnd)
+    const lines = block.split('\n')
+    const changed = lines.map((line) => {
+      if (!event.shiftKey) return indent + line
+      // Outdent removes up to one indent's worth of leading space, and no more,
+      // so a line indented with fewer spaces is not pulled past column zero.
+      const match = line.match(new RegExp('^ {1,' + RAW_INDENT_WIDTH + '}'))
+      return match ? line.slice(match[0].length) : line
+    })
+    area.setRangeText(changed.join('\n'), lineStart, lineEnd, 'select')
+    this.#afterTab()
+  }
+
+  #afterTab() {
+    this.#render()
+    this.#onChange?.(this.getMarkdown())
   }
 
   getMarkdown() {
