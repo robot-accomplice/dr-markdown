@@ -226,6 +226,33 @@
         "edit-markdown-document",
         "open-save-document"
       ]
+    },
+    {
+      "id": "editor-owns-code-blocks",
+      "status": "accepted",
+      "title": "Let the vendored editor own fenced code blocks",
+      "context": "Code blocks could not be edited in Formatted mode, which contradicts the rule the editor exists to serve, and they shipped that way in v0.5.1. The cause was measured rather than inferred: esm.sh resolves the bare specifier `codemirror` inside the Crepe bundle to CodeMirror 5, whose namespace has no `basicSetup` export, so the code-block node view built its CodeMirror extension set with an undefined entry and EditorState.create threw. The throw happened inside the IntersectionObserver callback that upgrades a block, after the node view had already set `initialized = true`, so it was never retried and every block stayed on a placeholder inside a `contenteditable=\"false\"` wrapper. The app had compensated by drawing its own static chrome and Highlight.js output over that placeholder, which made the block look deliberate.",
+      "decision": "Patch the vendored bundle to drop the undefined extension, and let the editor's own code-block node view render, highlight and edit fenced blocks. Remove the app's in-editor code-block pass entirely. Supply mermaid diagrams to that node view through its preview hook, so a diagram renders in place and its source stays editable behind a toggle. Keep the app's shell for the preview and print surfaces, where nothing else draws the block.",
+      "consequences": [
+        "Code blocks are editable in Formatted mode, verified by a gate that types real keystrokes and requires them in the document's markdown rather than asserting an element exists.",
+        "Mermaid diagrams became editable in place for the first time; previously they rendered but could only be changed by leaving Formatted mode, which was the same rule violation in a different construct.",
+        "A whole class of race disappeared. The app's pass and the node view both mutated the same DOM, so whichever ran second won, and the block was left either inert or undecorated.",
+        "The language picker, copy button and language list are the editor's, so the app's hover language tool and right-click language menu were removed. The contextual controls bar remains a second route to the same change.",
+        "KNOWN DEVIATION: the editor's picker writes a language's DISPLAY name into the fence, so choosing Python through it produces \"```Python\" where every other route in this app writes \"```python\". Markdown treats info strings case-insensitively so nothing renders differently, but it is inconsistent with the normalization this project applies everywhere else. Asserted in e2e/code_block_language_test.go so it cannot drift unnoticed.",
+        "Wiring the separately vendored codemirror.bundle.mjs was measured and REFUTED as a repair: it puts a second copy of @codemirror/state on the page and CodeMirror rejects the result with \"Unrecognized extension value in extension set\". That bundle had been fetched and digest-pinned while imported by nothing, and was deleted once it was shown to have no possible use.",
+        "The mis-resolution cannot be fixed at the fetch either. @milkdown/crepe declares `codemirror: ^6.0.1`, so this is an esm.sh bug; ?deps= and ?alias= are ignored because the es2022 path is a prebuilt artifact, and jsdelivr's +esm build resolves correctly but emits 46 external imports, which no self-contained CSP-'self' asset server can load.",
+        "What the dropped extension carried, measured in the built app rather than read off basicSetup's feature list: line numbers and the fold gutter, bracket auto-closing, and autocompletion are gone. Undo is NOT gone — the node view forwards CodeMirror updates into ProseMirror transactions, so the document's own history answers Cmd-Z inside a code block. Multi-line editing, highlighting and the default keymap all work."
+      ],
+      "relatedNodes": [
+        "wysiwyg-editor",
+        "syntax-highlighter",
+        "diagram-renderer",
+        "vendored-editor-assets"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
     }
   ]
 }

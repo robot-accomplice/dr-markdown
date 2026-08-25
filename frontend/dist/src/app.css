@@ -1336,14 +1336,39 @@ body.split-mode #editor-host {
    editor and code-block backgrounds warm — measured rgb(255,253,251),
    rgb(255,248,244) and a 60%-alpha warm grey on the `pre`. The brief's
    palette is neutral throughout (`panel #fff`, `chrome oklch(0.985 0.002
-   285)`), so the card was reading peach next to a cool-white outline panel.
-   The .code-block-shell already supplies the box; these just stop tinting it. */
+   285)`), so the card was reading peach next to a cool-white outline panel. */
 #wysiwyg .milkdown {
   background: var(--panel);
 }
 
-#wysiwyg .milkdown-code-block,
 #wysiwyg .ProseMirror pre {
+  background: transparent;
+}
+
+/* The editor's own code block IS the box now, so it carries the box's design
+   rather than being flattened underneath one.
+                                                                             .
+   These rules used to read `background: transparent`, because the app drew a
+   `.code-block-shell` over the top and the tint underneath only had to be
+   cancelled. The app stopped drawing that shell — replacing the editor's node
+   is what left code blocks uneditable (#77) — so cancelling the tint without
+   replacing the surface left a borderless, radius-less block with a peach
+   CodeMirror inside it. Measured: block background rgba(0,0,0,0), border none,
+   radius 0, `.cm-editor` rgb(255,248,244).
+                                                                             .
+   Values are the shell's, so a code block looks the same in Formatted mode as
+   it does in preview and print. `#wysiwyg .milkdown-code-block` is (1,1,0) and
+   so beats the vendored `.milkdown *` reset, which is (0,1,0) and loads last. */
+#wysiwyg .milkdown-code-block {
+  margin: 0 0 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+#wysiwyg .milkdown-code-block .cm-editor,
+#wysiwyg .milkdown-code-block .cm-gutters {
   background: transparent;
 }
 
