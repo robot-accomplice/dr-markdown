@@ -1,0 +1,60 @@
+{
+  "id": "v1-6-1-cosmetic-repair",
+  "version": "1.6.1",
+  "name": "Cosmetic repair",
+  "status": "in-progress",
+  "posture": "on-track",
+  "summary": "The first release scoped from USING the packaged application rather than from review findings or the issue tracker. v0.6.0's premortem carried one line a harness cannot close — install the DMG and use it — and closing it immediately returned a layout defect that five ABORT stations, the host gates and a 40-check screen walk had all passed over. This release carries that fix and the other cosmetic problems found the same way. Scope is deliberately open while the application is in use; items are added as they are found, not predicted.",
+  "targetWindow": "Current milestone",
+  "lastUpdated": "2026-08-25T00:00:00.000Z",
+  "updateSource": "Scoped from use of the packaged v0.6.0 build",
+  "scope": {
+    "required": [
+      {
+        "id": "settings-row-alignment",
+        "title": "A settings row's control lines up with the title that names it",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Reported from real use of the packaged 0.6.0 build, against the Code Block dialog. Every .settings-row is a two-line label beside a control laid out with align-items: center, which centres the control against the whole label group rather than the title it names — measured at +9.0px. The row is top-aligned now, with the title and the control sharing one band (--row-band), so the description hangs below without pulling the control down. Central, not local: the dialog reuses .settings-row, so the same misalignment was in all 13 rows across the dialog and the Editor and Appearance settings. All now measure +0.0px. Two regressions the extended test caught before merge: the band rule out-specified .settings-toggle and STRETCHED the pill from 20px to 32px, and min-height on a content-box element grew the segmented control to 38px. A stretched pill still centres, so the offset assertion passed it — its size is asserted separately.",
+        "owner": "Project maintainers",
+        "workstreamId": "cosmetic",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ]
+      }
+    ],
+    "planned": [],
+    "stretch": [],
+    "deferred": [],
+    "outOfScope": []
+  },
+  "workstreams": [
+    {
+      "id": "cosmetic",
+      "name": "What the application looks like in use",
+      "owner": "Project maintainers",
+      "status": "in-progress",
+      "posture": "on-track",
+      "progress": 0,
+      "summary": "Defects found by using the packaged application, which the automated surface cannot see.",
+      "itemIds": [
+        "settings-row-alignment"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "wysiwyg-reserialization-class",
+      "title": "The WYSIWYG surface still re-serializes the whole document",
+      "severity": "high",
+      "status": "accepted",
+      "summary": "Carried forward unchanged from v0.6.0. The editor parses to ProseMirror's model and re-serializes everything, so a construct nobody surveyed is still respelled. Only source-preserving editing would close the class. This is recorded here because the version number moves to 1.x, which reads as a maturity claim this blocker contradicts; the version was chosen by the maintainer with that stated."
+    }
+  ],
+  "milestones": [],
+  "dependencies": [],
+  "evidence": [
+    "full-test-suite"
+  ]
+}
