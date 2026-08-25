@@ -989,77 +989,6 @@ body.right-panel-hidden #outline-panel .panel-restore {
   padding: 34px 0;
 }
 
-#contextual-controls-root {
-  position: absolute;
-  top: 14px;
-  left: 18px;
-  right: 18px;
-  z-index: 4;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.contextual-controls {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  max-width: calc(100% - 24px);
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
-  pointer-events: auto;
-}
-
-.contextual-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 38px;
-  padding: 5px 8px;
-  border-right: 1px solid var(--line);
-}
-
-.contextual-group:last-child {
-  border-right: 0;
-}
-
-.contextual-group h2 {
-  margin: 0 2px 0 0;
-  color: var(--muted-2);
-  font: 700 10px/1 var(--mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.contextual-group button,
-.contextual-group select,
-.contextual-group input[type='text'] {
-  height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--panel);
-  color: var(--ink);
-  font: 650 12px/1 var(--ui-font);
-}
-
-.contextual-group input[type='text'] {
-  min-width: 148px;
-  padding: 0 9px;
-}
-
-.contextual-group button {
-  padding: 0 10px;
-}
-
-.contextual-group select {
-  min-width: 132px;
-  padding: 0 26px 0 9px;
-}
-
 #wysiwyg table.selected-block,
 #wysiwyg .mermaid-render.selected-block,
 #wysiwyg img.selected-block {
@@ -1088,12 +1017,6 @@ body.raw-mode #document-region,
 body.split-mode #document-region {
   overflow: hidden;
   padding: 0;
-}
-
-body.raw-mode #contextual-controls-root,
-body.split-mode #contextual-controls-root,
-body.app-empty #contextual-controls-root {
-  display: none;
 }
 
 #print-root {
@@ -2486,4 +2409,41 @@ body.dark {
     writing-mode: vertical-rl;
     text-orientation: mixed;
   }
+}
+
+/* The diagram's own Edit control, inside the rendered preview.
+                                                                             .
+   Scoped under `#wysiwyg` to out-specify the vendored `.milkdown *` reset,
+   which is (0,1,0) and loads at runtime after this file. Sized and coloured to
+   sit with the copy and preview-toggle buttons the editor already draws on a
+   code block, because that is the design language a reader has already been
+   taught — this is the same kind of per-block action, not a new idiom. */
+#wysiwyg .mermaid-render {
+  position: relative;
+}
+
+#wysiwyg .mermaid-render .diagram-edit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+#wysiwyg .mermaid-render:hover .diagram-edit,
+#wysiwyg .mermaid-render .diagram-edit:focus-visible {
+  opacity: 1;
+}
+
+#wysiwyg .mermaid-render .diagram-edit:hover {
+  border-color: var(--accent-wash-border);
+  background: var(--accent-wash);
+  color: var(--accent);
 }
