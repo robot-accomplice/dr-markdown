@@ -85,10 +85,10 @@
       "summary": "The first release scoped from USING the packaged application rather than from review findings alone. v0.6.0's premortem carried one line a harness cannot close — install the DMG and use it — and closing it immediately returned a layout defect that five ABORT stations, the host gates and a 40-check screen walk had all passed over. This release carries that fix and clears the standing defect backlog: every open issue that is a defect rather than a roadmap milestone. Two of those defects were created by the v0.6.0 work itself — a UI route the contextual-bar removal took away, and a harness check that cannot fail — which is the argument for closing them here rather than carrying them further.",
       "counts": {
         "features": 0,
-        "bugFixes": 6,
+        "bugFixes": 7,
         "workstreams": 2,
         "blockers": 1,
-        "complete": 1,
+        "complete": 2,
         "inProgress": 0,
         "planned": 5,
         "stretch": 0
