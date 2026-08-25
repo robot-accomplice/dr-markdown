@@ -32,10 +32,14 @@ const (
 )
 
 var (
-	tealTop = color.RGBA{17, 94, 89, 255}   // gradient start (darker)
-	tealBot = color.RGBA{15, 118, 110, 255} // gradient end (lighter)
+	// Sampled from build/icon-artwork.png so the banner, the app icon and the
+	// in-app mark are one colour rather than three that were matched by eye.
+	// The banner is the accent as a FIELD, where the icon is the accent as a
+	// mark on its light tile; both are the same hue family.
+	tealTop = color.RGBA{20, 60, 84, 255}  // gradient start (darker)
+	tealBot = color.RGBA{30, 83, 113, 255} // gradient end (#1e5371, the artwork's stroke navy)
 	white   = color.RGBA{255, 255, 255, 255}
-	tint    = color.RGBA{153, 246, 228, 255} // light teal tint for tagline
+	tint    = color.RGBA{175, 223, 247, 255} // #afdff7, the artwork's tile, for the tagline
 )
 
 // The mark's design-space bounding box, including stroke caps. Shared by

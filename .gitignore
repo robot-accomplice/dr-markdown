@@ -1,6 +1,9 @@
 .superpowers/
 /build/*
 !build/appicon.png
+# The icon illustration is a BUILD INPUT, not a build output: tools/genicon
+# reads it to produce the iconset, so it has to be committed.
+!build/icon-artwork.png
 !build/darwin/
 /bin
 /dr-markdown

@@ -74,12 +74,15 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 echo "==> icon"
 # The directory MUST be named <name>.iconset; iconutil rejects a bare
 # ".iconset", which has no name before the extension.
+#
+# genicon writes every slot itself rather than this script scaling one source
+# ten ways, because the icon is DIFFERENT artwork at different sizes: the
+# stethoscope illustration from 64px up, and the bold M-arrow at 16 and 32,
+# where the illustration was measured to be an unreadable smudge. Scaling one
+# source would force that detail to survive 16px, which it cannot.
 ICONSET="build/icon.iconset"
-rm -rf "$ICONSET"; mkdir -p "$ICONSET"
-for size in 16 32 128 256 512; do
-    sips -z $size $size build/appicon.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    sips -z $((size*2)) $((size*2)) build/appicon.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-done
+rm -rf "$ICONSET"
+go run ./tools/genicon -artwork build/icon-artwork.png -iconset "$ICONSET"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/iconfile.icns"
 rm -rf "$ICONSET"
 
