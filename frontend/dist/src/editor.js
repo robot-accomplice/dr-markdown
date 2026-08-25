@@ -1,10 +1,11 @@
 // WysiwygEditor wraps the vendored Milkdown Crepe bundle.
-import { Crepe } from '../vendor/crepe.bundle.mjs'
+import { Crepe, indentUnit } from '../vendor/crepe.bundle.mjs'
 import { bridge } from './bridge.js'
 import { capturePreservations, restorePreservations, detectSerializerOptions } from './fidelity/index.js'
 import { renderMermaidDiagram } from './mermaid-renderer.js'
 import { normalizeLanguage } from './highlighter.js'
 import { mermaidFenceSources } from './markdown/fences.js'
+import { INDENT } from './indent.js'
 
 // Crepe's code-mirror node view will show a rendered preview in place of a
 // block's source whenever renderPreview returns an element, and offers a toggle
@@ -186,6 +187,12 @@ export class WysiwygEditor {
       featureConfigs: {
         [Crepe.Feature.Placeholder]: { text: 'Start writing…', mode: 'block' },
         [Crepe.Feature.CodeMirror]: {
+          // Tab indents by the same amount here as it does in raw mode.
+          // CodeMirror's own default is two spaces and raw mode's is four, so
+          // without this the same keystroke on the same document produced
+          // different text depending on the mode. The facet is exported by
+          // tools/vendor.sh precisely so this decision lives here.
+          extensions: [indentUnit.of(INDENT)],
           renderPreview: renderCodeBlockPreview,
           // Only blocks that produce a preview are affected, and mermaid is the
           // only one that does — so a diagram opens as a diagram, and every

@@ -1,10 +1,5 @@
 import { highlightMarkdownSource } from './highlighter.js'
-
-// One indent width, matching --code-tab-size in app.css. Spaces rather than a
-// tab character: the document is markdown, where a literal tab at the start of
-// a line has block meaning, and the fidelity survey records tab-after-marker
-// being rewritten to a space on round trip.
-const RAW_INDENT_WIDTH = 4
+import { INDENT, INDENT_WIDTH } from './indent.js'
 
 export class RawEditor {
   #textarea = null
@@ -69,7 +64,7 @@ export class RawEditor {
     event.preventDefault()
 
     const area = this.#textarea
-    const indent = ' '.repeat(RAW_INDENT_WIDTH)
+    const indent = INDENT
     const { selectionStart: start, selectionEnd: end, value } = area
     const lineStart = value.lastIndexOf('\n', start - 1) + 1
     const spansLines = value.slice(start, end).includes('\n')
@@ -88,7 +83,7 @@ export class RawEditor {
       if (!event.shiftKey) return indent + line
       // Outdent removes up to one indent's worth of leading space, and no more,
       // so a line indented with fewer spaces is not pulled past column zero.
-      const match = line.match(new RegExp('^ {1,' + RAW_INDENT_WIDTH + '}'))
+      const match = line.match(new RegExp('^ {1,' + INDENT_WIDTH + '}'))
       return match ? line.slice(match[0].length) : line
     })
     area.setRangeText(changed.join('\n'), lineStart, lineEnd, 'select')
