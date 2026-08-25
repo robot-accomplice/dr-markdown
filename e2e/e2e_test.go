@@ -1245,7 +1245,7 @@ func TestRibbonTabSwitcherShowsBackedPanels(t *testing.T) {
 		tab     string
 		command string
 	}{
-		{tab: "home", command: "bold"},
+		{tab: "format", command: "bold"},
 		{tab: "insert", command: "table"},
 		{tab: "view", command: "theme"},
 	} {
@@ -1278,11 +1278,14 @@ func TestRibbonCompletionCommandsAreBacked(t *testing.T) {
 	} } ; 'ok'`, &res)
 	evalJS(t, ctx, "window.__app.setMarkdown('# Ribbon Completion\\n').then(() => 'ok')", &res)
 
-	var homeCommands bool
+	// The insert commands live in the Insert tab alone now. They used to be in
+	// Home as well, which is why Home was removed: it was a superset of Insert
+	// and Format, so two of five tabs taught the reader nothing new.
+	var insertCommands bool
 	evalJS(t, ctx, `['link','image','table','code-block','math','mermaid'].every((command) =>
-		document.querySelector('[data-ribbon-panel="home"] [data-command="' + command + '"]'))`, &homeCommands)
-	if !homeCommands {
-		t.Fatal("Home ribbon should expose the backed Insert command set")
+		document.querySelector('[data-ribbon-panel="insert"] [data-command="' + command + '"]'))`, &insertCommands)
+	if !insertCommands {
+		t.Fatal("the Insert ribbon should expose the backed Insert command set")
 	}
 
 	evalJS(t, ctx, "window.__app.activateRibbonTab('insert'); 'ok'", &res)
@@ -1343,6 +1346,10 @@ func TestCurrentScreenHasNoDecorativeEnabledControls(t *testing.T) {
 				button.dataset.outlineTab ||
 				button.dataset.panelToggle ||
 				button.dataset.exportToggle ||
+				// data-file-action is how New/Open/Save/Save As are wired: by
+				// attribute rather than by id, because they now appear in the File
+				// tab, the rail and the empty state, and an id names one element.
+				button.dataset.fileAction ||
 				button.dataset.helpToggle ||
 				button.dataset.shortcutsToggle ||
 				button.id ||
