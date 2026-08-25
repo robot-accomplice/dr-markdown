@@ -1,17 +1,20 @@
-# Handover — 2026-08-10 (rev 5)
+# Handover — 2026-08-10 (rev 6)
 
 State of play for whoever picks this up next. Written to be actionable without the conversation that
 produced it.
 
-Rev 5 covers one long day with one large outcome and one blocked release: **Wails is gone from the
-running application**, and **v0.6.0 could not ship** because code blocks were not editable.
+Rev 6 closes the day rev 5 could not: **Wails is gone from the running application**, and **the
+release blocker is fixed**. Two PRs are open, both CLEAN with CI green, and nothing is in flight.
 
-> **Amended 2026-08-10 (rev 5.1).** The blocker is fixed by
-> [#79](https://github.com/robot-accomplice/dr-markdown/pull/79). Two of the three "measurements"
-> recorded below under the release blocker were **false**, and both pointed away from the cause —
-> they are corrected in place rather than removed, because a later session trusting this file is the
-> whole point of it. The proposed direction (write a ProseMirror NodeView) was also wrong and was not
-> needed. See that section for what the cause actually was.
+**Nothing here has been verified in the real macOS application.** Everything about the code-block
+fix is verified in headless Chrome. Given this project's own repeated lesson — every defect that
+mattered was found by a person using the app while the suite stayed green — the first thing worth
+doing is opening a document and typing into a code block and a mermaid diagram.
+
+> **Two claims rev 5 recorded as measured fact were false**, and both pointed away from the cause.
+> They are corrected in place under the release blocker rather than deleted, because a later session
+> trusting this file is the whole point of it, and because the error has a shape worth keeping
+> visible: a true observation carrying a false conclusion.
 
 ## The rule that governs everything below
 
@@ -31,13 +34,35 @@ not.
 
 ## Start here
 
-**The blocker is fixed.** [#77](https://github.com/robot-accomplice/dr-markdown/issues/77) is
-resolved by [#79](https://github.com/robot-accomplice/dr-markdown/pull/79) on `fix/code-blocks-editable`,
-which is open against `develop` with CI green. Start by merging that, then this PR (#74), then finish
-the release ceremony below.
+Two PRs are open against `develop`, both **CLEAN with CI green**. Merge order does not matter — it
+was trial-merged both ways and the outcome is identical:
+
+1. **[#79](https://github.com/robot-accomplice/dr-markdown/pull/79) `fix/code-blocks-editable`** —
+   the release blocker. Two commits.
+2. **[#74](https://github.com/robot-accomplice/dr-markdown/pull/74) `refactor/own-the-host-cutover`** —
+   the host replacement. Seven commits. This is the branch this file lives on, so **rev 6 only
+   reaches `develop` when #74 merges**; if you merge #79 first, `develop` still shows rev 4 for a
+   while. That is expected, not drift.
+
+Then the release ceremony below.
+
+**Expect ONE conflict, whichever order you choose.** Measured with `git merge-tree`, not guessed:
+the first PR merges clean and the second conflicts on **`docs/architext/data/decisions.json` and
+nothing else**. Both PRs append a decision to the end of the same array — #74 adds `own-the-host`,
+#79 adds `editor-owns-code-blocks` — so the two edits land on the same closing lines.
+
+**The resolution is to keep both entries.** They document different decisions and neither supersedes
+the other. Run `architext validate .` afterwards; it catches a malformed array or a dangling id
+reference, which is the realistic way to get this wrong.
+
+**A second trap:** #79's body says `Closes #77`, but the repository's default branch is `main`, so
+merging into `develop` will **not** auto-close it. Close
+[#77](https://github.com/robot-accomplice/dr-markdown/issues/77) by hand, or let it close when
+`develop` reaches `main`. Same for #61 and #57 against #74.
 
 The ceremony was halted at 3 of 7 while the blocker stood, because finishing it would have meant
-writing a Release Truth record asserting a readiness that was not true.
+writing a Release Truth record asserting a readiness that was not true. **That is still the reason
+it is not finished here** — see the ceremony section for what has to be true first.
 
 ## The release blocker — FIXED, see [#79](https://github.com/robot-accomplice/dr-markdown/pull/79)
 
@@ -122,11 +147,11 @@ in the document's markdown.
 | [#72](https://github.com/robot-accomplice/dr-markdown/pull/72) | Paste survives a clipboard the platform refuses |
 | [#73](https://github.com/robot-accomplice/dr-markdown/pull/73) | the release gate and the elimination inventory |
 
-## The open PR: the host replacement
+## Open PR 1 of 2: the host replacement
 
 **[#74](https://github.com/robot-accomplice/dr-markdown/pull/74) `refactor/own-the-host-cutover`,
-CLEAN, 5 commits ahead of `develop`.** Complete and verified; unmerged because the release it belongs
-to is blocked.
+CLEAN, 7 commits ahead of `develop`.** Complete and verified; unmerged only because the release it
+belongs to had not cleared its blocker.
 
 **Wails is gone from the running application.** `go.mod` carries chromedp (tests only),
 `golang.org/x/image` and `golang.org/x/sys`. Zero `wailsapp` modules. Binary 12.3MB → 10.4MB.
@@ -169,6 +194,65 @@ checks across the 2026-08-06 screen inventory. All pass, including from inside t
 **None of it runs in CI.** It drives a native window, chromedp cannot see it, and there is no macOS
 runner. Every *Go* test is untagged and runs on Linux; the host gates are a manual step on a Mac.
 
+## Open PR 2 of 2: code blocks are editable
+
+**[#79](https://github.com/robot-accomplice/dr-markdown/pull/79) `fix/code-blocks-editable`, CLEAN,
+2 commits ahead of `develop`.** Branched from `develop`, not from #74, so it carries none of the host
+work and can merge on its own.
+
+The cause and the two false measurements are recorded under the release blocker above. What the fix
+does:
+
+- **`tools/vendor.sh` drops the undefined extension** from the Crepe bundle, and **fails loudly** if
+  its anchor ever stops matching. Silence there would ship uneditable code blocks again while the
+  suite stayed green, which is exactly how this defect survived a release.
+- **The app's in-editor code-block pass is deleted, not rewritten.** Once the node view can mount, it
+  renders, highlights and edits the block itself and brings a searchable 143-language picker and a
+  copy button. The app's pass had been replacing nodes the node view owns.
+- **Mermaid moved onto the same node view's preview hook**, so a diagram renders in place *and* its
+  source stays editable behind a toggle. It was never editable before — the same rule violation as
+  #77 in a different construct. Diagrams are drawn before the editor mounts, because the node view
+  mounts a **copy** of any element handed to it and filling one in afterwards writes to a detached
+  node.
+- **The block carries its own surface now.** Cancelling the vendored warm tint without replacing the
+  box left a borderless, radius-less block with a peach CodeMirror inside it, and every existing test
+  stayed green through it.
+- **`codemirror.bundle.mjs` is deleted** — 377KB, digest-pinned, imported by nothing, and measured
+  incapable of supplying what the Crepe bundle was missing.
+
+### What dropping `basicSetup` actually costs
+
+Measured in the built app, **not** read off the package's feature list — the first write-up of this
+got it wrong that way:
+
+- **Lost:** line numbers and the fold gutter, bracket auto-closing, autocompletion.
+- **NOT lost:** undo. The node view forwards CodeMirror updates into ProseMirror transactions, so the
+  document's own history answers ⌘Z inside a code block. Multi-line editing, highlighting and the
+  default keymap all work.
+
+### The alternatives, all measured and all worse
+
+- **esm.sh cannot be steered.** `?deps=codemirror@6.0.2` and `?alias=` return byte-identical output,
+  because `/es2022/crepe.bundle.mjs` is a prebuilt artifact. `@milkdown/crepe@7.22.0` declares
+  `codemirror: ^6.0.1`, so **this is an esm.sh resolution bug, not a Crepe bug** — worth reporting
+  upstream.
+- **jsdelivr's `+esm` build resolves it correctly** and carries a real `basicSetup` — but emits **46
+  external imports**, which no self-contained, CSP-`'self'`, offline application can load. Adopting
+  it means vendoring 46 transitive modules with rewritten paths: a vendoring project, not a fetch.
+- **If only bracket auto-closing is wanted**, the tractable route is exporting `closeBrackets` from
+  the vendored bundle in `vendor.sh` and appending it through `featureConfigs.extensions`. Appending
+  works — only the undefined entry was ever broken. Same minified-name drift risk as the patch that
+  is already there, so it is worth doing only if the gap actually bites.
+
+### The gate that was missing, and why it matters more than the fix
+
+Every code-block test asserted **presence** — a language label, a Copy button, a highlighted span —
+and every one passed for the entire time the block underneath was inert, because **none of them ever
+typed**. The new gates type real keystrokes and require the characters to come back out of the
+document's markdown; the mermaid gate requires the diagram to render *and* take an edit; and a
+geometry gate covers the block surface, which is the only kind of check that can fail for the
+peach-block regression above.
+
 ## Packaging works
 
 `tools/build-macos.sh` replaces `wails build`, which no longer exists in this tree: compile, bundle,
@@ -185,15 +269,32 @@ and refuted** — both `net.Listen` sites in Wails v3 sit behind the `server` an
 the TCP claim should not be derived a third time. `no-recorded-state-for-rca` is closed. README
 rewritten, screenshots regenerated, `architext validate` passes.
 
-## The remaining ceremony, deliberately not done
+## The remaining ceremony, and why it is still not done
 
-1. **Release Truth record + `VERSION` bump** — `VERSION` still reads `0.5.1`.
-2. **Close resolved issues.** [#61](https://github.com/robot-accomplice/dr-markdown/issues/61) and
-   [#57](https://github.com/robot-accomplice/dr-markdown/issues/57) are genuinely fixed and should
-   close **when #74 merges**, not before.
-3. **ABORT stations.**
-4. **roboticus-site** project card — `src/lib/projects-data.ts` carries `currentVersion`.
-5. Rebuild from the merge commit, install the DMG, open a document before publishing.
+The blocker is gone, but a release record is a claim about a build that exists and has been run.
+**None of the following is true yet**, which is the justification for leaving all of it:
+
+0. **Drive the real application.** Nothing about the code-block fix has been seen outside headless
+   Chrome. Open a document; type into a code block; toggle a mermaid diagram to its source and edit
+   it; change a block's language from the picker. This is step zero because it is the step that has
+   caught every defect that mattered on this project.
+1. **Merge both PRs.** Neither is merged, so `develop` has neither the host replacement nor the fix.
+2. **Release Truth record + `VERSION` bump** — `VERSION` still reads `0.5.1`, and
+   `docs/architext/data/releases/` still has `currentReleaseId: v0-5-1-arrival-and-crash-visibility`.
+   **Deliberately not written here.** Every record in that directory describes a release that
+   happened; writing a v0.6.0 record now would assert a readiness that does not exist yet — the same
+   thing rev 5 refused to do for the same reason. Write it after step 0 and step 1, from what the
+   built application actually did.
+3. **Close resolved issues by hand.** [#61](https://github.com/robot-accomplice/dr-markdown/issues/61)
+   and [#57](https://github.com/robot-accomplice/dr-markdown/issues/57) are fixed by #74;
+   [#77](https://github.com/robot-accomplice/dr-markdown/issues/77) by #79. GitHub will not
+   auto-close any of them on a merge into `develop`, because the default branch is `main`.
+4. **Recheck [#75](https://github.com/robot-accomplice/dr-markdown/issues/75) rather than closing
+   it.** It was guessed to share #77's cause. That guess is now checkable: if the block-edit `+` menu
+   still does nothing once #79 is in, the cause is something else and the guess was never evidence.
+5. **ABORT stations.**
+6. **roboticus-site** project card — `src/lib/projects-data.ts` carries `currentVersion`.
+7. Rebuild from the merge commit, install the DMG, open a document before publishing.
 
 ## Issues opened today
 
@@ -230,6 +331,22 @@ modal it was describing; a backtick in a Go comment terminated a raw string, so 
 reported the previous run's results; and a walk that raced `boot()` reported 39 failures as
 application defects. **Prove the instrument before believing a negative** is already in this
 project's lessons. It cost four rounds anyway.
+
+**Rev 6 adds the other half of that lesson: prove the instrument before believing a negative, and
+prove a CLAIM before recording it as a measurement.** Rev 5 wrote down three measurements under the
+release blocker. Two were false, and both were false in the same way — a correct observation with an
+inferred conclusion attached, published as one fact. "No CodeMirror is mounted" was a true count; "so
+that feature never did this job" was a guess, and the truth was that it crashed. "A plain `<pre>`
+inside contenteditable" was a true reading of the wrong element; "so it is very likely editable
+already" was never tested by the one action that would have settled it in five seconds — typing into
+it.
+
+Both survived review for the same reason the three corrections in rev 4 did: **a reviewer checks the
+facts, finds them correct, and passes.** When recording a measurement, write the observation and the
+inference as separate sentences, and mark which one was driven.
+
+The concrete cost: a proposal to write a ProseMirror NodeView, which would have rebuilt from scratch
+what the vendored node view already does, to work around a crash caused by one undefined value.
 
 ## Ground rules that are enforced, not aspirational
 
