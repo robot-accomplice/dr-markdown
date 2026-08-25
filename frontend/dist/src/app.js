@@ -7,7 +7,7 @@ import { renderMermaidDiagram } from './mermaid-renderer.js'
 import { containsTable } from './markdown/tables.js'
 import {
   firstCodeFenceLanguage, firstCodeFenceDescriptor, rewriteCodeFenceLanguage,
-  containsMermaidDiagram, rewriteMermaidFenceSource, fencedLanguages,
+  containsMermaidDiagram, rewriteMermaidFenceSource,
 } from './markdown/fences.js'
 import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
 import { safeLinkHref } from './markdown/links.js'
@@ -594,8 +594,8 @@ function handleRenderedBlockSelection(event) {
     if (tableIndex < 0) return
     state.editorContext = { blockType: 'table', tableIndex }
   } else if (diagram) {
-    const diagramFenceIndex = Number(diagram.dataset.diagramFenceIndex)
-    if (!Number.isInteger(diagramFenceIndex)) return
+    const diagramFenceIndex = renderedCodeBlockIndex(diagram)
+    if (diagramFenceIndex < 0) return
     state.editorContext = { blockType: 'diagram', diagramFenceIndex }
   } else {
     return
@@ -604,12 +604,32 @@ function handleRenderedBlockSelection(event) {
   refreshContextualControls(activeDoc())
 }
 
+// Which fenced block, counting from the top of the document, a node inside the
+// formatted surface belongs to.
+//
+// This is the index every fence rewrite in this app takes — `rewriteMermaidFenceSource`
+// and `rewriteCodeFenceLanguage` both count ALL fences, mermaid or not — so it
+// has to be the position among all code blocks, not among the diagrams.
+//
+// The editor renders one `.milkdown-code-block` per fenced block in document
+// order, and it keeps that element whether the block is showing its diagram or
+// its source. Counting them is therefore exact where the previous approach was
+// not: the app used to stamp the index onto the diagram element it drew itself,
+// which stopped being possible when the editor took ownership of the block, and
+// counting only the rendered diagrams would have shifted every index the moment
+// one block was toggled to source.
+function renderedCodeBlockIndex(node) {
+  const block = node.closest('.milkdown-code-block')
+  if (!block) return -1
+  return Array.from(els.wysiwyg.querySelectorAll('.milkdown-code-block')).indexOf(block)
+}
+
 function refreshRenderedBlockSelection() {
   els.wysiwyg.querySelectorAll('table').forEach((table, index) => {
     table.classList.toggle('selected-block', state.editorContext.blockType === 'table' && state.editorContext.tableIndex === index)
   })
   els.wysiwyg.querySelectorAll('.mermaid-render').forEach((diagram) => {
-    diagram.classList.toggle('selected-block', state.editorContext.blockType === 'diagram' && Number(diagram.dataset.diagramFenceIndex) === state.editorContext.diagramFenceIndex)
+    diagram.classList.toggle('selected-block', state.editorContext.blockType === 'diagram' && renderedCodeBlockIndex(diagram) === state.editorContext.diagramFenceIndex)
   })
   els.wysiwyg.querySelectorAll('img').forEach((image, index) => {
     image.classList.toggle('selected-block', state.editorContext.blockType === 'image' && state.editorContext.imageIndex === index)
@@ -813,8 +833,15 @@ async function mountMarkdown(md) {
 let renderGeneration = 0
 let renderQueue = Promise.resolve()
 
-// Every WYSIWYG render runs the same three passes; keeping them together stops
+// Every WYSIWYG render runs the same two passes; keeping them together stops
 // a new call site from silently skipping one (imported images did exactly that).
+//
+// Code blocks used to be a third pass here, rewriting the editor's own nodes to
+// add highlighting and chrome. They are not any more: the editor's code-mirror
+// node view renders, highlights and edits them itself, and draws mermaid
+// diagrams through the preview hook in editor.js. The pass had to go, not just
+// become redundant — it replaced nodes the node view owns, so whichever ran
+// second won, and the block was left either inert or undecorated (#77).
 function renderWysiwyg(md) {
   const generation = ++renderGeneration
   const superseded = () => generation !== renderGeneration
@@ -824,8 +851,6 @@ function renderWysiwyg(md) {
     // rather than rebuild the editor twice for a result nobody will see.
     if (superseded()) return
     await wysiwyg.setMarkdown(els.wysiwyg, md)
-    if (superseded()) return
-    await highlightFormattedCodeBlocks(md)
     if (superseded()) return
     await resolveImageAssets(els.wysiwyg)
   })
@@ -1624,50 +1649,6 @@ async function refreshSplitPreview(md) {
   await resolveImageAssets(els.splitPreview)
 }
 
-async function highlightFormattedCodeBlocks(md) {
-  if (!md.includes('```')) return
-  const languages = fencedLanguages(md)
-  const blocks = await waitForFormattedCodeElements(languages.length)
-  for (const [index, code] of blocks.entries()) {
-    // The markdown wins. `waitForFormattedCodeElements` waits for the right
-    // NUMBER of code elements, not for their attributes to catch up, so the
-    // element's `language-*` class can still be the one from before the edit.
-    // Reading it first made a language change render the previous language
-    // roughly one time in six — markdown on disk is this project's source of
-    // truth, and it is what was just authoritatively changed.
-    const language = languages[index] || languageFromElement(code) || ''
-    const fenceIndex = index
-    if (normalizeLanguage(language) === 'mermaid') {
-      const source = code.textContent
-      const rendered = document.createElement('div')
-      rendered.className = 'mermaid-render'
-      rendered.dataset.language = 'mermaid'
-      rendered.dataset.diagramFenceIndex = String(fenceIndex)
-      rendered.innerHTML = await renderMermaidDiagram(source)
-      code.closest('pre')?.replaceWith(rendered)
-      continue
-    }
-    code.dataset.language = language
-    if (language) code.classList.add(`language-${normalizeLanguage(language)}`)
-    code.innerHTML = highlightCode(code.textContent, language)
-    wrapCodeBlock(code, language, fenceIndex)
-  }
-}
-
-async function waitForFormattedCodeElements(expectedCount) {
-  for (let attempt = 0; attempt < 12; attempt++) {
-    await new Promise((resolve) => requestAnimationFrame(resolve))
-    const blocks = Array.from(els.wysiwyg.querySelectorAll('pre code'))
-    if (blocks.length >= expectedCount) return blocks
-  }
-  return Array.from(els.wysiwyg.querySelectorAll('pre code'))
-}
-
-
-function languageFromElement(code) {
-  return Array.from(code.classList).find((name) => name.startsWith('language-'))?.replace(/^language-/, '') || ''
-}
-
 async function renderMarkdownPreview(md) {
   const nodes = []
   const lines = md.split('\n')
@@ -1748,14 +1729,6 @@ function codeBlockElement(source, language = '', fenceIndex = null) {
   pre.append(code)
   figure.append(header, pre)
   return figure
-}
-
-function wrapCodeBlock(code, language = '', fenceIndex = null) {
-  const pre = code.closest('pre')
-  if (!pre || pre.closest('.code-block-shell')) return
-  const source = code.textContent
-  const shell = codeBlockElement(source, language, fenceIndex)
-  pre.replaceWith(shell)
 }
 
 function codeLanguageTool(fenceIndex, language) {

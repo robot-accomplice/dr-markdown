@@ -566,10 +566,22 @@ func TestFencedCodeBlocksUseDeclaredLanguageHighlighting(t *testing.T) {
 		t.Fatal("split preview fenced code block should highlight using its declared language")
 	}
 
+	// The formatted surface highlights through the editor's own code-mirror node
+	// view now, not through a Highlight.js pass the app ran over the editor's
+	// DOM. So the tokens are CodeMirror's generated highlight classes rather
+	// than `.hljs-*`, and the block settles asynchronously: the node view paints
+	// a placeholder first and mounts CodeMirror when the block comes into view.
 	evalJS(t, ctx, "window.__app.setMode('wysiwyg').then(() => 'ok')", &res)
+	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .cm-content') !== null`) {
+		t.Fatal("formatted fenced code block should mount an editable code surface")
+	}
 	var wysiwygCodeHighlighted bool
-	evalJS(t, ctx, `document.querySelector('#wysiwyg pre code .hljs-keyword') !== null ||
-		document.querySelector('#wysiwyg pre .hljs-keyword') !== null`, &wysiwygCodeHighlighted)
+	evalJS(t, ctx, `(() => {
+		const content = document.querySelector('#wysiwyg .cm-content')
+		const language = document.querySelector('#wysiwyg .milkdown-code-block .language-button')
+		return content.querySelectorAll('span[class]').length > 0 &&
+			language?.textContent.trim().startsWith('js')
+	})()`, &wysiwygCodeHighlighted)
 	if !wysiwygCodeHighlighted {
 		t.Fatal("formatted fenced code block should highlight using its declared language")
 	}
@@ -648,17 +660,25 @@ func TestFencedCodeBlocksRenderDesignChrome(t *testing.T) {
 		t.Fatal("split preview code blocks should render language/copy chrome around highlighted code")
 	}
 
+	// In the formatted surface the chrome is the editor's own, not a shell the
+	// app injected: a language button that opens a searchable picker, and a copy
+	// button, wrapped around a live CodeMirror instead of a static <pre>. The
+	// app stopped drawing its own because doing so replaced nodes the node view
+	// owns, which is what left code blocks uneditable (#77).
 	evalJS(t, ctx, "window.__app.setMode('wysiwyg').then(() => 'ok')", &res)
+	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .milkdown-code-block .copy-button') !== null`) {
+		t.Fatal("formatted code blocks should render the editor's language/copy chrome")
+	}
 	var formattedChrome bool
 	evalJS(t, ctx, `(() => {
-		const block = document.querySelector('#wysiwyg .code-block-shell[data-language="javascript"]')
+		const block = document.querySelector('#wysiwyg .milkdown-code-block')
 		return block &&
-			block.querySelector('.code-block-language')?.textContent === 'javascript' &&
-			block.querySelector('.code-block-copy')?.textContent === 'Copy' &&
-			block.querySelector('pre code .hljs-keyword') !== null
+			block.querySelector('.language-button')?.textContent.trim().startsWith('javascript') &&
+			block.querySelector('.copy-button') !== null &&
+			block.querySelector('.cm-content') !== null
 	})()`, &formattedChrome)
 	if !formattedChrome {
-		t.Fatal("formatted code blocks should render language/copy chrome around highlighted code")
+		t.Fatal("formatted code blocks should render language/copy chrome around an editable code surface")
 	}
 }
 
@@ -694,17 +714,17 @@ func TestCodeBlockAssistantInsertsSelectedLanguageFromFormattedMode(t *testing.T
 		t.Fatalf("code assistant did not insert selected language fence: %q", md)
 	}
 
-	var highlighted bool
-	evalJS(t, ctx, `new Promise((resolve) => {
-		const done = () => document.querySelector('#wysiwyg .code-block-shell[data-language="javascript"] pre code .hljs-keyword') !== null ||
-			document.querySelector('#wysiwyg pre code[data-language="javascript"] .hljs-keyword') !== null ||
-			document.querySelector('#wysiwyg pre[data-language="javascript"] .hljs-keyword') !== null
-		const check = () => done() ? resolve(true) : setTimeout(check, 25)
-		setTimeout(() => resolve(done()), 1500)
-		check()
-	})`, &highlighted)
-	if !highlighted {
-		t.Fatal("inserted code block should highlight immediately in formatted mode")
+	// An inserted block must arrive ready to type into, which is the whole point
+	// of the insert. Before #77 it arrived as an empty grey box that swallowed
+	// keystrokes, and no test noticed because none of them typed.
+	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .cm-content[contenteditable="true"]') !== null`) {
+		t.Fatal("inserted code block should be editable in formatted mode")
+	}
+	var ready bool
+	evalJS(t, ctx, `document.querySelector('#wysiwyg .milkdown-code-block .language-button')
+		?.textContent.trim().startsWith('javascript') === true`, &ready)
+	if !ready {
+		t.Fatal("inserted code block should carry the language chosen in the assistant")
 	}
 }
 
@@ -805,10 +825,13 @@ func TestMermaidBlocksRenderAsDiagrams(t *testing.T) {
 		t.Fatal("split preview should render Mermaid diagrams instead of showing a mermaid code block")
 	}
 
+	// The diagram is drawn by the editor's code-block preview hook, which runs
+	// when the node view mounts CodeMirror — one frame after the surface itself,
+	// because that mounting is driven by an IntersectionObserver. The diagram's
+	// SVG is primed before the editor builds, so it appears complete rather than
+	// popping in, but the block it lives in still arrives asynchronously.
 	evalJS(t, ctx, "window.__app.setMode('wysiwyg').then(() => 'ok')", &res)
-	var formattedRendered bool
-	evalJS(t, ctx, `document.querySelector('#wysiwyg .mermaid-render svg') !== null`, &formattedRendered)
-	if !formattedRendered {
+	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .mermaid-render svg') !== null`) {
 		t.Fatal("formatted mode should render Mermaid diagrams")
 	}
 }
@@ -2455,13 +2478,16 @@ func TestContextualDocumentControlsManageBlocksInPlace(t *testing.T) {
 	if !strings.Contains(md, "```python\nconst answer = 42") {
 		t.Fatalf("contextual code language control did not update the fenced language: %q", md)
 	}
-	highlighted := waitForJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-language="python"]') !== null`)
-	if !highlighted {
+	// The formatted surface must catch up with the markdown. The block's
+	// language is now shown by the editor's own language button rather than by
+	// a shell the app injected.
+	refreshed := waitForJS(t, ctx, `Array.from(document.querySelectorAll('#wysiwyg .milkdown-code-block .language-button'))
+		.some((button) => button.textContent.trim().startsWith('python'))`)
+	if !refreshed {
 		var rendered string
 		evalJS(t, ctx, `JSON.stringify({
 			md: window.__app.getMarkdown(),
-			languages: Array.from(document.querySelectorAll('#wysiwyg .code-block-shell')).map((block) => block.dataset.language),
-			preCount: document.querySelectorAll('#wysiwyg pre code').length,
+			languages: Array.from(document.querySelectorAll('#wysiwyg .milkdown-code-block .language-button')).map((button) => button.textContent.trim()),
 			text: document.getElementById('wysiwyg').textContent.slice(0, 240)
 		})`, &rendered)
 		t.Fatalf("formatted surface should refresh after contextual code language changes, got rendered languages %q", rendered)
@@ -2546,6 +2572,12 @@ func TestContextualDiagramAssistantTargetsSelectedRenderedDiagram(t *testing.T) 
 	}, "\n")
 	var res string
 	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
+	// Both diagrams are drawn by the editor's preview hook when their blocks
+	// mount, which happens a frame after the surface itself. Selecting the
+	// second one before it exists picked `undefined` and failed inside the eval.
+	if !waitForJS(t, ctx, `document.querySelectorAll('#wysiwyg .mermaid-render').length === 2`) {
+		t.Fatal("both mermaid fences should render as diagrams in formatted mode")
+	}
 	evalJS(t, ctx, `document.querySelectorAll('#wysiwyg .mermaid-render')[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); 'ok'`, &res)
 	evalJS(t, ctx, `document.querySelector('[data-context-command="diagram-assistant"]').click(); 'ok'`, &res)
 
@@ -2573,80 +2605,6 @@ func TestContextualDiagramAssistantTargetsSelectedRenderedDiagram(t *testing.T) 
 	}
 	if strings.Count(md, "```mermaid") != 2 {
 		t.Fatalf("diagram edit should replace, not append, mermaid fences:\n%s", md)
-	}
-}
-
-func TestExistingCodeBlockLanguageCanBeChangedFromBlockTools(t *testing.T) {
-	ctx, cancel := newTestBrowser(t)
-	defer cancel()
-	url := serveFrontend(t)
-	bootApp(t, ctx, url)
-
-	fixture := strings.Join([]string{
-		"# Code Blocks",
-		"",
-		"```javascript",
-		"const first = 1",
-		"```",
-		"",
-		"```text",
-		"second = 2",
-		"```",
-		"",
-	}, "\n")
-	var res string
-	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
-
-	var rightClickSuppressed bool
-	evalJS(t, ctx, `(() => {
-		const second = document.querySelectorAll('#wysiwyg .code-block-shell')[1]
-		const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
-		second.dispatchEvent(event)
-		return event.defaultPrevented && document.querySelector('[data-code-assistant][data-code-edit-index="1"]') !== null
-	})()`, &rightClickSuppressed)
-	if !rightClickSuppressed {
-		t.Fatal("right-clicking an existing code block should suppress the browser menu and open the language dialog for that block")
-	}
-
-	evalJS(t, ctx, `(() => {
-		const select = document.querySelector('[data-code-language]')
-		select.value = 'python'
-		select.dispatchEvent(new Event('change', { bubbles: true }))
-		document.querySelector('[data-code-action="apply"]').click()
-		return 'ok'
-	})()`, &res)
-	var md string
-	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
-	if !strings.Contains(md, "```javascript\nconst first = 1") || !strings.Contains(md, "```python\nsecond = 2") {
-		t.Fatalf("right-click language edit should target only the second code block: %q", md)
-	}
-
-	// Applying a language change remounts the WYSIWYG surface asynchronously,
-	// so the shell this asserts on does not exist yet when the apply click
-	// returns. Reading the DOM straight after made the test fail about one run
-	// in three — a real race in the TEST, not in the app, and the same shape as
-	// the empty-state assertions fixed earlier.
-	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-code-fence-index="0"] [data-code-language-tool]') !== null`) {
-		t.Fatal("existing code blocks should expose a hover language tool")
-	}
-
-	evalJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell[data-code-fence-index="0"] [data-code-language-tool]').click(); 'ok'`, &res)
-	var firstDialog bool
-	evalJS(t, ctx, `document.querySelector('[data-code-assistant][data-code-edit-index="0"]') !== null`, &firstDialog)
-	if !firstDialog {
-		t.Fatal("hover language tool should open the language dialog for the clicked block")
-	}
-
-	evalJS(t, ctx, `(() => {
-		const select = document.querySelector('[data-code-language]')
-		select.value = 'go'
-		select.dispatchEvent(new Event('change', { bubbles: true }))
-		document.querySelector('[data-code-action="apply"]').click()
-		return 'ok'
-	})()`, &res)
-	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
-	if !strings.Contains(md, "```go\nconst first = 1") || !strings.Contains(md, "```python\nsecond = 2") {
-		t.Fatalf("hover language edit should target only the clicked code block: %q", md)
 	}
 }
 
