@@ -7,9 +7,17 @@ import (
 	"testing"
 )
 
-// hostFiles are the only Go files permitted to name the host framework. Keep
-// this list short: every entry is a file a replacement has to rewrite.
-var hostFiles = map[string]bool{"host_wails.go": true}
+// hostFiles are the only Go files permitted to reach the operating system
+// directly. Keep this list short: every entry is a file a port to another
+// platform has to rewrite.
+var hostFiles = map[string]bool{
+	"host_darwin.go":           true,
+	"host_lifecycle_darwin.go": true,
+	"harness_darwin.go":        true,
+	"walk_darwin.go":           true,
+	"modal_check_darwin.go":    true,
+	"host_unsupported.go":      true,
+}
 
 // The point of the boundary is that swapping the host is a leaf change. That is
 // only true while the host stays confined, and "confined" is a claim that decays
@@ -17,12 +25,15 @@ var hostFiles = map[string]bool{"host_wails.go": true}
 //
 // This is also the measurement the A/B/C decision rests on: whatever these files
 // weigh is what a replacement costs to write.
-func TestOnlyTheHostFilesNameWails(t *testing.T) {
-	// Split so this file does not contain the literal string it searches for.
-	// Spelling it whole made the detector match itself on its first run — and
+func TestOnlyTheHostFilesReachTheOperatingSystem(t *testing.T) {
+	// cgo is the marker now that no framework is imported. Reaching AppKit means
+	// importing "C", so a file that does is by definition part of the host.
+	//
+	// Split so this file does not contain the literal it searches for. Spelling
+	// it whole made the previous detector match ITSELF on its first run, and
 	// exempting this file instead would have dropped every other _test.go from
-	// scope, which is where a stray host import is most likely to slip in.
-	needle := "wailsapp" + "/wails"
+	// scope — which is exactly where a stray host dependency slips in.
+	needle := "import " + `"C"`
 
 	var offenders []string
 	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
@@ -52,9 +63,9 @@ func TestOnlyTheHostFilesNameWails(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(offenders) > 0 {
-		t.Errorf("these files import the host framework from outside the boundary:\n  %s\n"+
+		t.Errorf("these files reach the operating system from outside the boundary:\n  %s\n"+
 			"Move the dependency behind hostPort, or add the file to hostFiles and accept "+
-			"that a replacement must rewrite it.", strings.Join(offenders, "\n  "))
+			"that a port to another platform must rewrite it.", strings.Join(offenders, "\n  "))
 	}
 }
 

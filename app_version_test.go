@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"regexp"
 	"testing"
@@ -27,35 +26,5 @@ func TestAppVersionComesFromTheVersionFile(t *testing.T) {
 	}
 	if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(appVersion) {
 		t.Errorf("appVersion %q is not a semver triple; the bundle and the event trail both carry this verbatim", appVersion)
-	}
-}
-
-// wails.json carries its own copy of the version because the framework's build
-// reads it, so while that file exists it has to be checked against the source.
-//
-// DELETE THIS TEST WITH wails.json. It is the only part of version identity
-// that Wails owns; the control above does not depend on the framework and must
-// survive it.
-func TestWailsConfigMatchesTheVersionFile(t *testing.T) {
-	data, err := os.ReadFile("wails.json")
-	if os.IsNotExist(err) {
-		t.Skip("wails.json is gone; delete this test with it")
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var config struct {
-		Info struct {
-			ProductVersion string `json:"productVersion"`
-		} `json:"info"`
-	}
-	if err := json.Unmarshal(data, &config); err != nil {
-		t.Fatal(err)
-	}
-	if config.Info.ProductVersion != appVersion {
-		t.Errorf("version drift: wails.json says %q, VERSION says %q. "+
-			"The bundle and the event log would disagree about which build this is.",
-			config.Info.ProductVersion, appVersion)
 	}
 }

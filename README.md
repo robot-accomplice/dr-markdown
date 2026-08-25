@@ -4,12 +4,20 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/robot-accomplice/dr-markdown)](go.mod)
-[![Wails v2.13](https://img.shields.io/badge/Wails-v2.13.0-red.svg)](https://wails.io)
+[![Dependencies](https://img.shields.io/badge/runtime%20dependencies-none-success.svg)](#architecture)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%C2%B7%20Linux%20planned-lightgrey.svg)](#building--installing-macos)
 [![Node.js](https://img.shields.io/badge/Node.js-not%20required-success.svg)](#architecture)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/robot-accomplice/dr-markdown/issues)
 
-Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell (Wails) with a real editing surface — Milkdown Crepe on ProseMirror, CodeMirror for raw mode — vendored as self-contained ESM bundles.
+Dr. Markdown is a native WYSIWYG markdown editor. It pairs a Go shell — AppKit and WebKit directly, with no application framework — to a real editing surface: Milkdown Crepe on ProseMirror, CodeMirror for raw mode, vendored as self-contained ESM bundles.
+
+As of v0.6.0 the running application has **no third-party dependency at all.** The window, the webview, the asset scheme, the menu bar and every native dialog are written against the system frameworks. `go.mod` carries chromedp for the tests and two `golang.org/x` modules; nothing else ships.
+
+## What this is for
+
+**WYSIWYG is the defining purpose of this editor.** Everything in Formatted mode must be editable in
+place. If a construct renders but cannot be edited there, that is a defect — not a design choice.
+Recorded as a project rule in `docs/architext/data/rules.json`.
 
 > ## ⚠️ Caution: WYSIWYG editing rewrites your file
 >
@@ -116,13 +124,20 @@ but no artifact is produced for either — see [Known limitations](#known-limita
 Prerequisites:
 
 - Go 1.26+
-- Wails CLI v2.13.0: `go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0`
+- Xcode command line tools (cgo builds against AppKit and WebKit)
 - Chrome (for the chromedp-based e2e tests)
-- macOS (only for the packaging step)
+- macOS (Windows and Linux have no host — see [Known limitations](#known-limitations))
 
 ```sh
-go test ./...   # unit + round-trip corpus + e2e
-wails dev       # live-reload development build
+go test ./...        # unit + round-trip corpus + e2e
+go run .             # run the app
+
+# Host verification. These drive a real native window, so they cannot run in
+# CI and are a manual step on a Mac.
+go run . -gates      # boot, bound call, panic rejection, events, drop, round trip
+go run . -walk       # 40 checks across the whole UI surface
+go run . -menu       # the menu bar exists and steals no editor shortcut
+go run . -doc FILE   # run any markdown file through the editor and diff it
 ```
 
 ## Building & installing (macOS)
@@ -146,7 +161,10 @@ To run it anyway: open it once, dismiss the warning, then go to **System Setting
 
 Three layers, no Node anywhere:
 
-1. **Go shell** — Wails v2 window, native dialogs, atomic file I/O, dirty-state guards.
+1. **Go shell** — an `NSWindow` and `WKWebView` built directly on AppKit and WebKit, with native
+   dialogs, atomic file I/O and dirty-state guards. Everything the application asks of the operating
+   system goes through one interface, `hostPort`; only `host_darwin.go` and `host_darwin.m` reach the
+   OS, and a test enforces that by refusing any other file that imports `"C"`.
 2. **Vendored ESM bundles** — Milkdown Crepe and CodeMirror, pre-bundled once and committed; the app loads them as-is.
 3. **Hand-written app JS** — the glue: mode switching, load/save plumbing, dirty tracking.
 
@@ -157,7 +175,7 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 | Component | Version |
 | --- | --- |
 | Go | 1.26.5 |
-| Wails | v2.13.0 |
+| Application framework | none |
 | Milkdown Crepe | 7.22.0 |
 | CodeMirror | 6.0.2 |
 | Highlight.js | 11.11.1 |
@@ -171,17 +189,21 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 - Saving replaces the file via an atomic rename, which breaks hard links to it. Extended attributes such as Finder tags are preserved, and a read-only file is refused rather than replaced.
 - Large documents are slow: roughly 4 s to open a 140 KB file and 10 s for 280 KB, with no progress indicator and no way to cancel. There is no size limit.
 - Builds are unsigned and un-notarized, so macOS Gatekeeper and Windows SmartScreen will both warn. On macOS 15 and later, approve it under System Settings → Privacy & Security → Open Anyway.
-- **Windows and Linux are unbuilt.** The code is platform-aware and CI runs the full test suite on
-  Linux, but only `tools/build-macos.sh` exists, so no Windows or Linux artifact is produced.
+- **Windows and Linux have no host.** The package compiles everywhere and CI runs the full suite on
+  Linux, but `host_unsupported.go` refuses at startup off macOS. Neither platform was ever built
+  before either. A Linux host is the cheaper of the two — WebKitGTK is a C API that maps closely onto
+  what macOS needed — while Windows is dominated by WebView2's COM interop.
 - **A crash is recorded, but the operation that crashed does not recover.** Every method the frontend
-  calls, and the three Wails lifecycle callbacks, write a panic — operation, message, stack and build
+  calls, and the three host lifecycle callbacks, write a panic — operation, message, stack and build
   version — into the version-stamped event trail beside the preference store, and show a dialog naming
   the operation. Every panic is recorded; the dialog appears **once per session**, because a panic on a
   path the editor calls repeatedly would otherwise put the app behind a modal you cannot type past.
-  The panic is then left to travel, so what happens next is unchanged: Wails recovers
-  panics inside bound-method dispatch, and the frontend call that triggered one never settles, so that
-  one operation stays dead until you restart. A panic in a lifecycle callback still ends the process,
-  and a panic raised before the app is constructed still leaves nothing behind.
+  **A panicking call now settles.** The dispatcher recovers the panic and rejects the frontend's
+  promise with its message, so the caller sees an error instead of waiting forever — that was
+  [#61](https://github.com/robot-accomplice/dr-markdown/issues/61), which could not be fixed while the
+  dispatch belonged to a framework. A panic in a lifecycle callback still ends the process, and a
+  panic raised before the app is constructed still leaves nothing behind
+  ([#62](https://github.com/robot-accomplice/dr-markdown/issues/62)).
 - Code-block hover/right-click language editing targets rendered fenced blocks; deeper cursor-aware block editing is still future work.
 - Direct PDF file generation is not implemented; PDF export uses the OS print dialog's Save as PDF path.
 - Images must be inserted into a saved document — an unsaved document has no location to resolve a portable relative asset path against, so the import is refused up front.

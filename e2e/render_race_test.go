@@ -71,11 +71,11 @@ func TestAFailedRenderDoesNotWedgeLaterRenders(t *testing.T) {
 	var res string
 	evalJS(t, ctx, `(() => {
 		globalThis.__recorded = []
-		globalThis.go = { main: { App: {
+		globalThis.drmd = { native: {
 			LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 			RecordClientEvent: async (e) => { globalThis.__recorded.push(e) },
 			SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-		} } }
+		} } 
 		return 'ok'
 	})()`, &res)
 

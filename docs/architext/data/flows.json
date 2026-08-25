@@ -4,7 +4,7 @@
       "id": "app-boot",
       "name": "Application boot",
       "status": "implemented",
-      "summary": "Wails embeds frontend assets, creates the Go app binding, loads persisted preferences through the bridge, and mounts the editor shell with a blank in-memory document.",
+      "summary": "the host embeds frontend assets, creates the Go app binding, loads persisted preferences through the bridge, and mounts the editor shell with a blank in-memory document.",
       "trigger": "User launches Dr. Markdown",
       "actors": [
         "macos-user"
@@ -13,17 +13,17 @@
         {
           "id": "start-app",
           "from": "macos-user",
-          "to": "wails-desktop-app",
+          "to": "desktop-app",
           "action": "launchApplication",
-          "summary": "The user launches the Wails application.",
+          "summary": "The user launches the the host application.",
           "data": []
         },
         {
           "id": "bind-go-api",
-          "from": "wails-desktop-app",
-          "to": "wails-go-api",
+          "from": "desktop-app",
+          "to": "go-api",
           "action": "bindAppApi",
-          "summary": "Wails binds the Go App object and startup hook.",
+          "summary": "the host binds the Go App object and startup hook.",
           "data": [
             "dirty-state"
           ]
@@ -31,7 +31,7 @@
         {
           "id": "load-preferences",
           "from": "frontend-shell",
-          "to": "wails-bridge",
+          "to": "native-bridge",
           "action": "loadPreferences",
           "summary": "The frontend asks for persisted settings and recent documents before applying runtime settings.",
           "data": [
@@ -41,7 +41,7 @@
         },
         {
           "id": "read-preferences",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "preference-store",
           "action": "load",
           "summary": "The Go API loads the JSON preference envelope from the user's config directory.",
@@ -52,7 +52,7 @@
         },
         {
           "id": "mount-shell",
-          "from": "wails-desktop-app",
+          "from": "desktop-app",
           "to": "frontend-shell",
           "action": "serveEmbeddedAssets",
           "summary": "The embedded frontend assets mount the shell and blank document state.",
@@ -78,10 +78,10 @@
         "Recent documents render on the start screen when native storage has entries"
       ],
       "failureBehavior": [
-        "Wails logs startup/build errors in dev mode"
+        "the host logs startup/build errors in dev mode"
       ],
       "observability": [
-        "Wails dev output",
+        "the host dev output",
         "TestEditorBoots"
       ],
       "verification": [
@@ -93,7 +93,7 @@
       "id": "open-save-document",
       "name": "Open and save document",
       "status": "implemented",
-      "summary": "The frontend calls the Wails bridge, the Go API uses native dialogs or a recent path, Document IO reads or atomically writes markdown files, and the preference store records recents.",
+      "summary": "The frontend calls the native bridge, the Go API uses native dialogs or a recent path, Document IO reads or atomically writes markdown files, and the preference store records recents.",
       "trigger": "User opens or saves a markdown document",
       "actors": [
         "macos-user"
@@ -102,7 +102,7 @@
         {
           "id": "request-file-operation",
           "from": "frontend-shell",
-          "to": "wails-bridge",
+          "to": "native-bridge",
           "action": "callDocumentOperation",
           "summary": "The shell requests open, save, save-as, or unsaved-change resolution.",
           "data": [
@@ -113,10 +113,10 @@
         },
         {
           "id": "invoke-native-api",
-          "from": "wails-bridge",
-          "to": "wails-go-api",
+          "from": "native-bridge",
+          "to": "go-api",
           "action": "invokeBoundMethod",
-          "summary": "The bridge calls a bound Go method through Wails.",
+          "summary": "The bridge calls a bound Go method through the host.",
           "data": [
             "markdown-document",
             "local-file-path",
@@ -125,7 +125,7 @@
         },
         {
           "id": "read-or-write-file",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "document-io",
           "action": "readOrWriteMarkdown",
           "summary": "The Go API reads selected files or atomically writes saved content.",
@@ -136,7 +136,7 @@
         },
         {
           "id": "record-recent-document",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "preference-store",
           "action": "recordRecent",
           "summary": "Successful open and save operations move the path to the top of the recent document list.",
@@ -147,7 +147,7 @@
         },
         {
           "id": "return-document-state",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "frontend-shell",
           "action": "returnResult",
           "summary": "The shell updates document path, content, dirty state, file rail, and title state.",
@@ -184,7 +184,7 @@
       "id": "edit-markdown-document",
       "name": "Edit markdown document",
       "status": "implemented",
-      "summary": "The frontend shell maintains in-memory documents, routes ribbon/template interactions, renders backed assistant previews, and pushes dirty/content updates to the Wails API.",
+      "summary": "The frontend shell maintains in-memory documents, routes ribbon/template interactions, renders backed assistant previews, and pushes dirty/content updates to the the host API.",
       "trigger": "User types or invokes a backed editor command",
       "actors": [
         "macos-user"
@@ -253,7 +253,7 @@
         {
           "id": "push-dirty",
           "from": "frontend-shell",
-          "to": "wails-bridge",
+          "to": "native-bridge",
           "action": "pushDirtyAndContent",
           "summary": "The shell pushes dirty state immediately and content after debounce.",
           "data": [
@@ -404,7 +404,7 @@
         {
           "id": "load-installed-fonts",
           "from": "frontend-shell",
-          "to": "wails-bridge",
+          "to": "native-bridge",
           "action": "listFontFamilies",
           "summary": "The shell asks the native app for installed font family names before rendering font controls.",
           "data": [
@@ -413,17 +413,17 @@
         },
         {
           "id": "invoke-font-api",
-          "from": "wails-bridge",
-          "to": "wails-go-api",
+          "from": "native-bridge",
+          "to": "go-api",
           "action": "invokeListFontFamilies",
-          "summary": "The bridge calls the Wails-bound font listing method.",
+          "summary": "The bridge calls the the host-bound font listing method.",
           "data": [
             "installed-font-family"
           ]
         },
         {
           "id": "discover-fonts",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "font-discovery",
           "action": "listFamilies",
           "summary": "The Go API reads system and user font directories and normalizes family names.",
@@ -433,7 +433,7 @@
         },
         {
           "id": "return-installed-fonts",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "frontend-shell",
           "action": "returnFontFamilies",
           "summary": "The Go API returns sorted font family names discovered from system and user font directories.",
@@ -467,7 +467,7 @@
         {
           "id": "persist-settings-draft",
           "from": "frontend-shell",
-          "to": "wails-bridge",
+          "to": "native-bridge",
           "action": "savePreferences",
           "summary": "The shell sends the saved preference envelope to the native app.",
           "data": [
@@ -477,7 +477,7 @@
         },
         {
           "id": "write-preferences",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "preference-store",
           "action": "save",
           "summary": "The Go API writes settings, raw options, and existing recents to the JSON preference file.",
@@ -499,7 +499,7 @@
       ],
       "guarantees": [
         "Settings controls are backed by runtime behavior",
-        "Code font options come from native installed-font discovery when Wails bindings are available",
+        "Code font options come from native installed-font discovery when the host bindings are available",
         "Document and code font preferences apply to rendered editor surfaces",
         "Backed preferences survive app relaunch",
         "Cancel does not apply draft preferences",
@@ -548,7 +548,7 @@
         {
           "id": "call-import-bridge",
           "from": "frontend-shell",
-          "to": "wails-bridge",
+          "to": "native-bridge",
           "action": "importImage",
           "summary": "The shell calls the import binding with the document path.",
           "data": [
@@ -557,8 +557,8 @@
         },
         {
           "id": "check-document-saved",
-          "from": "wails-go-api",
-          "to": "wails-go-api",
+          "from": "go-api",
+          "to": "go-api",
           "action": "requireSavedDocument",
           "summary": "The Go API rejects unsaved documents before opening a picker.",
           "kind": "decision",
@@ -568,7 +568,7 @@
         },
         {
           "id": "reject-unsaved-document",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "macos-user",
           "action": "showNativeError",
           "summary": "An unsaved document is refused with a native error dialog.",
@@ -578,7 +578,7 @@
         },
         {
           "id": "select-image-file",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "macos-user",
           "action": "selectImageFile",
           "summary": "A saved document opens the native image picker; a dropped file skips it.",
@@ -590,7 +590,7 @@
         },
         {
           "id": "copy-asset",
-          "from": "wails-go-api",
+          "from": "go-api",
           "to": "image-asset-manager",
           "action": "importForDocument",
           "summary": "The asset manager copies the image into the document asset folder.",
@@ -616,7 +616,7 @@
         {
           "id": "resolve-render-source",
           "from": "frontend-shell",
-          "to": "wails-bridge",
+          "to": "native-bridge",
           "action": "loadImageAsset",
           "summary": "Each rendered image resolves its relative path through the asset loader.",
           "data": [
