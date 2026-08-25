@@ -4,10 +4,8 @@ import { RawEditor } from './rawmode.js'
 import { bridge } from './bridge.js'
 import { escapeHtml, highlightCode, highlightMarkdownSource, normalizeLanguage } from './highlighter.js'
 import { renderMermaidDiagram } from './mermaid-renderer.js'
-import { containsTable } from './markdown/tables.js'
 import {
-  firstCodeFenceLanguage, firstCodeFenceDescriptor, rewriteCodeFenceLanguage,
-  containsMermaidDiagram, rewriteMermaidFenceSource,
+  firstCodeFenceDescriptor, rewriteCodeFenceLanguage, rewriteMermaidFenceSource,
 } from './markdown/fences.js'
 import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
 import { safeLinkHref } from './markdown/links.js'
@@ -131,7 +129,6 @@ const els = {
   helpRoot: document.getElementById('help-root'),
   exportRoot: document.getElementById('export-root'),
   printRoot: document.getElementById('print-root'),
-  contextualControlsRoot: document.getElementById('contextual-controls-root'),
   workspace: document.getElementById('workspace'),
   fileRail: document.getElementById('file-rail'),
   fileList: document.getElementById('file-list'),
@@ -576,11 +573,14 @@ function syncActiveState() {
     'app-empty',
     Boolean(doc && !doc.started && doc.markdown.trim() === '' && state.mode === 'wysiwyg')
   )
-  refreshContextualControls(doc)
 }
 
 function handleRenderedBlockSelection(event) {
   if (state.mode !== 'wysiwyg') return
+  // Delegated, because the editor's node view mounts a COPY of the preview
+  // element the app hands it, and a listener attached to the original is not
+  // on the copy that is clicked.
+  if (event.target.closest?.('[data-diagram-edit]')) return handleDiagramEditRequest(event)
   const table = event.target.closest?.('#wysiwyg table')
   const diagram = event.target.closest?.('#wysiwyg .mermaid-render')
   const image = event.target.closest?.('#wysiwyg img')
@@ -601,7 +601,20 @@ function handleRenderedBlockSelection(event) {
     return
   }
   refreshRenderedBlockSelection()
-  refreshContextualControls(activeDoc())
+}
+
+// The diagram's own Edit control, announced from inside the rendered preview.
+//
+// The preview element belongs to the app (editor.js hands it to the node view),
+// so the button lives on the block it edits rather than in a bar floating over
+// the document. The fence index is resolved from where the click came from, so
+// it always targets THAT diagram — the floating bar resolved the first matching
+// fence in the document, which edited the wrong block whenever there were two.
+function handleDiagramEditRequest(event) {
+  const diagramFenceIndex = renderedCodeBlockIndex(event.target)
+  if (diagramFenceIndex < 0) return
+  state.editorContext = { blockType: 'diagram', diagramFenceIndex }
+  openDiagramAssistant({ editFenceIndex: diagramFenceIndex })
 }
 
 // Which fenced block, counting from the top of the document, a node inside the
@@ -634,113 +647,6 @@ function refreshRenderedBlockSelection() {
   els.wysiwyg.querySelectorAll('img').forEach((image, index) => {
     image.classList.toggle('selected-block', state.editorContext.blockType === 'image' && state.editorContext.imageIndex === index)
   })
-}
-
-function refreshContextualControls(doc) {
-  const md = doc?.markdown ?? ''
-  els.contextualControlsRoot.replaceChildren()
-  if (!doc || !doc.started || state.mode !== 'wysiwyg' || md.trim() === '') return
-
-  const hasTable = containsTable(md)
-  const codeLanguage = firstCodeFenceLanguage(md, { excludeMermaid: true })
-  const hasDiagram = containsMermaidDiagram(md)
-  // Image controls are block-local: they only appear once an image is the
-  // selected block, so they can never act on an unselected sibling.
-  const selectedImage = state.editorContext.blockType === 'image'
-    ? selectedImageToken(md, state.editorContext.imageIndex)
-    : null
-  if (!hasTable && !codeLanguage && !hasDiagram && !selectedImage) return
-
-  const toolbar = document.createElement('div')
-  toolbar.className = 'contextual-controls'
-  toolbar.dataset.contextualControls = 'true'
-  toolbar.setAttribute('aria-label', 'Contextual document controls')
-  if (hasTable) toolbar.append(contextualGroup('table', 'Table', [
-    contextualButton('table-add-row', 'Row +'),
-    contextualButton('table-remove-row', 'Row -'),
-    contextualButton('table-add-column', 'Column +'),
-    contextualButton('table-remove-column', 'Column -'),
-    contextualButton('table-align-left', 'Left'),
-    contextualButton('table-align-center', 'Center'),
-    contextualButton('table-align-right', 'Right'),
-    contextualButton('table-delete', 'Delete'),
-  ]))
-  if (codeLanguage) toolbar.append(contextualCodeGroup(codeLanguage))
-  if (hasDiagram) toolbar.append(contextualGroup('diagram', 'Mermaid Diagram', [
-    contextualButton('diagram-assistant', 'Diagram assistant'),
-  ]))
-  if (selectedImage) toolbar.append(contextualGroup('image', 'Image', [
-    contextualImageWidth(parseImageToken(selectedImage.text).width),
-    contextualImageAlt(parseImageToken(selectedImage.text).alt),
-    contextualButton('image-replace', 'Replace'),
-    contextualButton('image-reveal', 'Reveal'),
-    contextualButton('image-delete', 'Delete'),
-  ]))
-  els.contextualControlsRoot.replaceChildren(toolbar)
-}
-
-function contextualGroup(name, label, controls) {
-  const group = document.createElement('section')
-  group.className = 'contextual-group'
-  group.dataset.contextGroup = name
-  const heading = document.createElement('h2')
-  heading.textContent = label
-  group.append(heading, ...controls)
-  return group
-}
-
-function contextualButton(command, label) {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.dataset.contextCommand = command
-  button.textContent = label
-  button.addEventListener('click', () => {
-    if (command === 'diagram-assistant') openDiagramAssistant({ editFenceIndex: state.editorContext.diagramFenceIndex })
-    else runCommand(command)
-  })
-  return button
-}
-
-function contextualImageWidth(width) {
-  const select = document.createElement('select')
-  select.dataset.contextImageWidth = 'true'
-  select.setAttribute('aria-label', 'Image width')
-  select.title = 'Image width'
-  for (const [value, label] of IMAGE_WIDTH_PRESETS) {
-    const option = document.createElement('option')
-    option.value = value
-    option.textContent = label
-    option.selected = value === width
-    select.append(option)
-  }
-  select.addEventListener('change', () => setImageWidth(select.value))
-  return select
-}
-
-function contextualImageAlt(alt) {
-  const input = document.createElement('input')
-  input.type = 'text'
-  input.dataset.contextImageAlt = 'true'
-  input.value = alt
-  input.placeholder = 'Alt text'
-  input.setAttribute('aria-label', 'Image alt text')
-  input.title = 'Image alt text'
-  input.addEventListener('change', () => setImageAltText(input.value))
-  return input
-}
-
-function contextualCodeGroup(language) {
-  const select = document.createElement('select')
-  select.dataset.contextCodeLanguage = 'true'
-  for (const [value, label] of codeLanguages) {
-    const option = document.createElement('option')
-    option.value = value
-    option.textContent = label
-    option.selected = value === normalizeLanguage(language)
-    select.append(option)
-  }
-  select.addEventListener('change', () => updateCodeBlockLanguage(select.value))
-  return contextualGroup('code', 'Code Block', [select])
 }
 
 // Marks the active document as started, so the placeholder gives way.
@@ -1227,16 +1133,6 @@ function applyBlockStyle(style) {
 
 
 
-
-async function updateCodeBlockLanguage(language) {
-  await persistCurrentEditorText()
-  startEditing()
-  const doc = activeDoc()
-  const target = firstCodeFenceDescriptor(doc.markdown, { excludeMermaid: true })
-  doc.markdown = rewriteCodeFenceLanguage(doc.markdown, target?.index, language)
-  await mountMarkdown(doc.markdown)
-  markEdited(doc.markdown)
-}
 
 
 
@@ -1768,14 +1664,6 @@ function inlineMarkdownNodes(text) {
 
 
 // Preset widths in CSS pixels; "Original" clears the width entirely.
-const IMAGE_WIDTH_PRESETS = [
-  ['', 'Original'],
-  ['200', 'Small (200)'],
-  ['400', 'Medium (400)'],
-  ['600', 'Large (600)'],
-  ['800', 'Extra large (800)'],
-]
-
 
 
 
