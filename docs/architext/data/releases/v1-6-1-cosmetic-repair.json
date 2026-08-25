@@ -87,6 +87,19 @@
           "issue-85"
         ],
         "summary": "GitHub #85, created by the v0.6.0 contextual-bar removal. Every other control in the bar's image group was duplication of what the editor already provides; Reveal was not, because it is a desktop capability that calls through to the host and no editor plugin can provide it. The capability is intact behind the API and still works when invoked; what it no longer has is anything to click. The awkwardness is that the image block is entirely vendored, unlike the mermaid preview the Diagram assistant was relocated onto, so appending to its operation group means injecting into DOM the node view owns and rebuilds. The app now builds its own menu bar, which is a route the bar-era options did not have."
+      },
+      {
+        "id": "tab-indent-agrees",
+        "title": "Tab indents by the same amount in every mode",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Reported from real use. Measured on one document: Tab inserted 4 spaces in raw and 2 in the formatted view's code blocks. Neither was wrong alone — raw used the app's own constant, and the formatted view is CodeMirror, whose indentUnit facet defaults to two — but nothing connected them, so the same keystroke on the same document produced different text depending on the mode, which split view makes routine. Both now read frontend/dist/src/indent.js. tools/vendor.sh exports CodeMirror's facet so the decision lives in app code rather than in a shell script that rewrites a vendored artifact, and it DISCOVERS the minified name from the facet's own definition rather than hardcoding it, because the name is chosen by the minifier and the definition is not."
       }
     ],
     "planned": [],
@@ -107,12 +120,13 @@
       "owner": "Project maintainers",
       "status": "in-progress",
       "posture": "on-track",
-      "progress": 33,
+      "progress": 50,
       "summary": "Defects a person meets while using the packaged application.",
       "itemIds": [
         "settings-row-alignment",
         "fence-casing",
-        "image-reveal-route"
+        "image-reveal-route",
+        "tab-indent-agrees"
       ]
     },
     {
