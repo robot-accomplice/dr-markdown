@@ -34,35 +34,30 @@ not.
 
 ## Start here
 
-Two PRs are open against `develop`, both **CLEAN with CI green**. Merge order does not matter — it
-was trial-merged both ways and the outcome is identical:
+**[#79](https://github.com/robot-accomplice/dr-markdown/pull/79) is MERGED.** `develop` carries the
+code-block fix. **One PR remains:**
 
-1. **[#79](https://github.com/robot-accomplice/dr-markdown/pull/79) `fix/code-blocks-editable`** —
-   the release blocker. Two commits.
-2. **[#74](https://github.com/robot-accomplice/dr-markdown/pull/74) `refactor/own-the-host-cutover`** —
-   the host replacement. Seven commits. This is the branch this file lives on, so **rev 6 only
-   reaches `develop` when #74 merges**; if you merge #79 first, `develop` still shows rev 4 for a
-   while. That is expected, not drift.
+**[#74](https://github.com/robot-accomplice/dr-markdown/pull/74) `refactor/own-the-host-cutover`** —
+the host replacement. It has been **updated onto the post-#79 `develop`**, so it is current: the one
+conflict this predicted did occur, in `docs/architext/data/decisions.json` and nothing else, because
+both PRs appended a decision to the end of the same array. It was resolved by keeping both entries —
+`own-the-host` and `editor-owns-code-blocks` — and `architext validate` passes.
+
+That merge is also the first time the host replacement and the code-block fix have existed together.
+The full local gate was run on the combined tree, not just on each half.
 
 Then the release ceremony below.
 
-**Expect ONE conflict, whichever order you choose.** Measured with `git merge-tree`, not guessed:
-the first PR merges clean and the second conflicts on **`docs/architext/data/decisions.json` and
-nothing else**. Both PRs append a decision to the end of the same array — #74 adds `own-the-host`,
-#79 adds `editor-owns-code-blocks` — so the two edits land on the same closing lines.
-
-**The resolution is to keep both entries.** They document different decisions and neither supersedes
-the other. Run `architext validate .` afterwards; it catches a malformed array or a dangling id
-reference, which is the realistic way to get this wrong.
-
-**A second trap:** #79's body says `Closes #77`, but the repository's default branch is `main`, so
-merging into `develop` will **not** auto-close it. Close
-[#77](https://github.com/robot-accomplice/dr-markdown/issues/77) by hand, or let it close when
-`develop` reaches `main`. Same for #61 and #57 against #74.
+**A trap when #74 lands:** GitHub will not auto-close the issues these PRs fix, because the
+repository's default branch is `main` and both PRs target `develop`. Close
+[#77](https://github.com/robot-accomplice/dr-markdown/issues/77) (fixed, already on `develop`),
+[#61](https://github.com/robot-accomplice/dr-markdown/issues/61) and
+[#57](https://github.com/robot-accomplice/dr-markdown/issues/57) (fixed by #74) by hand, or let them
+close when `develop` reaches `main`.
 
 The ceremony was halted at 3 of 7 while the blocker stood, because finishing it would have meant
 writing a Release Truth record asserting a readiness that was not true. **That is still the reason
-it is not finished here** — see the ceremony section for what has to be true first.
+it is not finished** — see the ceremony section for what has to be true first.
 
 ## The release blocker — FIXED, see [#79](https://github.com/robot-accomplice/dr-markdown/pull/79)
 
@@ -147,11 +142,11 @@ in the document's markdown.
 | [#72](https://github.com/robot-accomplice/dr-markdown/pull/72) | Paste survives a clipboard the platform refuses |
 | [#73](https://github.com/robot-accomplice/dr-markdown/pull/73) | the release gate and the elimination inventory |
 
-## Open PR 1 of 2: the host replacement
+## The open PR: the host replacement
 
-**[#74](https://github.com/robot-accomplice/dr-markdown/pull/74) `refactor/own-the-host-cutover`,
-CLEAN, 7 commits ahead of `develop`.** Complete and verified; unmerged only because the release it
-belongs to had not cleared its blocker.
+**[#74](https://github.com/robot-accomplice/dr-markdown/pull/74) `refactor/own-the-host-cutover`.**
+Complete and verified, updated onto the post-#79 `develop`. Unmerged only because the release it
+belongs to had not cleared its blocker; that blocker is now gone.
 
 **Wails is gone from the running application.** `go.mod` carries chromedp (tests only),
 `golang.org/x/image` and `golang.org/x/sys`. Zero `wailsapp` modules. Binary 12.3MB → 10.4MB.
@@ -194,11 +189,11 @@ checks across the 2026-08-06 screen inventory. All pass, including from inside t
 **None of it runs in CI.** It drives a native window, chromedp cannot see it, and there is no macOS
 runner. Every *Go* test is untagged and runs on Linux; the host gates are a manual step on a Mac.
 
-## Open PR 2 of 2: code blocks are editable
+## MERGED: code blocks are editable
 
-**[#79](https://github.com/robot-accomplice/dr-markdown/pull/79) `fix/code-blocks-editable`, CLEAN,
-2 commits ahead of `develop`.** Branched from `develop`, not from #74, so it carries none of the host
-work and can merge on its own.
+**[#79](https://github.com/robot-accomplice/dr-markdown/pull/79) `fix/code-blocks-editable`, merged
+into `develop`.** It was branched from `develop` rather than from #74, so it carried none of the host
+work and merged on its own.
 
 The cause and the two false measurements are recorded under the release blocker above. What the fix
 does:
@@ -278,7 +273,7 @@ The blocker is gone, but a release record is a claim about a build that exists a
    Chrome. Open a document; type into a code block; toggle a mermaid diagram to its source and edit
    it; change a block's language from the picker. This is step zero because it is the step that has
    caught every defect that mattered on this project.
-1. **Merge both PRs.** Neither is merged, so `develop` has neither the host replacement nor the fix.
+1. **Merge #74.** #79 is already on `develop`; the host replacement is not.
 2. **Release Truth record + `VERSION` bump** — `VERSION` still reads `0.5.1`, and
    `docs/architext/data/releases/` still has `currentReleaseId: v0-5-1-arrival-and-crash-visibility`.
    **Deliberately not written here.** Every record in that directory describes a release that
