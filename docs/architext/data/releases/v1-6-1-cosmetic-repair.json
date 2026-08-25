@@ -100,6 +100,19 @@
           "full-test-suite"
         ],
         "summary": "Reported from real use. Measured on one document: Tab inserted 4 spaces in raw and 2 in the formatted view's code blocks. Neither was wrong alone — raw used the app's own constant, and the formatted view is CodeMirror, whose indentUnit facet defaults to two — but nothing connected them, so the same keystroke on the same document produced different text depending on the mode, which split view makes routine. Both now read frontend/dist/src/indent.js. tools/vendor.sh exports CodeMirror's facet so the decision lives in app code rather than in a shell script that rewrites a vendored artifact, and it DISCOVERS the minified name from the facet's own definition rather than hardcoding it, because the name is chosen by the minifier and the definition is not."
+      },
+      {
+        "id": "diagram-dialog-bounds",
+        "title": "The diagram assistant's preview and fields stay inside their boxes",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Reported from real use. Two defects in one dialog, both measured. The field inputs had width:100% plus 9px padding and a 1px border on a content-box element, so a 240px column held a 260px input that ran underneath the preview beside it. Separately the preview's SVG was bounded in width but not height, and place-items: center on an item taller than its box overflows BOTH ways — the diagram sat 9px out of the top and 9px out of the bottom, and the clipped top could not be scrolled to. Fixed with box-sizing on the input, max-height on the SVG, and `safe` centring so an item that does not fit falls back to start alignment instead of being centred out of view. This is the second content-box overflow found this release; see the note on adopting a global border-box."
       }
     ],
     "planned": [],
@@ -120,13 +133,14 @@
       "owner": "Project maintainers",
       "status": "in-progress",
       "posture": "on-track",
-      "progress": 50,
+      "progress": 60,
       "summary": "Defects a person meets while using the packaged application.",
       "itemIds": [
         "settings-row-alignment",
         "fence-casing",
         "image-reveal-route",
-        "tab-indent-agrees"
+        "tab-indent-agrees",
+        "diagram-dialog-bounds"
       ]
     },
     {
