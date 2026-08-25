@@ -17,11 +17,12 @@
         "status": "complete",
         "owner": "Project maintainers",
         "workstreamId": "host",
-        "summary": "Zero wailsapp modules remain; go.mod carries chromedp (tests only), golang.org/x/image and golang.org/x/sys. Binary 12.3MB to 10.4MB. app.go was not touched by the swap. It had to be ONE cutover: bridge.js degrades when the host is absent but throws when it is partial, several entries being native()?.Method(x) rather than native()?.Method?.(x), so no host could implement a subset. Four host defects were found on the way, none of which would have failed a test: a dropped DefaultButton let Return destroy a file, dispatch_async to the main queue is not serviced during a modal so any open dialog froze every pending reply, dispatch_sync held a cgo call open for the life of a dialog and made context.Context unhonourable, and there was no menu bar at all.",
+        "summary": "Zero wailsapp modules remain; go.mod carries chromedp (tests only), golang.org/x/image and golang.org/x/sys. Binary 12.3MB to 10.4MB. app.go was not touched by the swap. It had to be ONE cutover: bridge.js degrades when the host is absent but throws when it is partial, several entries being native()?.Method(x) rather than native()?.Method?.(x), so no host could implement a subset. Four host defects were found on the way, none of which would have failed a test: a dropped DefaultButton let Return destroy a file, dispatch_async to the main queue is not serviced during a modal so any open dialog froze every pending reply, dispatch_sync held a cgo call open for the life of a dialog and made context.Context unhonourable, and there was no menu bar at all. Removing the framework also removed a HIGH-severity advisory by deletion rather than upgrade: github.com/labstack/echo/v4 was an indirect dependency of Wails and carries an encoded-slash route bypass exposing static files. The module count went from 37 to 10.",
         "evidence": [
           "host-gates",
           "screen-walk",
-          "menu-check"
+          "menu-check",
+          "dependabot-alert-15"
         ]
       },
       {
@@ -267,6 +268,7 @@
     "issue-85",
     "issue-78",
     "issue-62",
-    "issue-63"
+    "issue-63",
+    "dependabot-alert-15"
   ]
 }
