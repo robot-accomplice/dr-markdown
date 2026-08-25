@@ -124,7 +124,16 @@
       "title": "An exit path from Wails",
       "status": "planned",
       "priority": "critical",
-      "summary": "Replace Wails with a hand-written host. Measured 2026-08-10: a working macOS host is 486 lines including its own test harness, against 241 for the boundary it replaces and 5,116 for Wails' macOS layer, with a panicking bound call REJECTING rather than hanging (#61). Raised to critical by a maintainer release gate: no further release ships until every vestige of Wails is eliminated. Two facts govern sequencing. The host is ONE CUTOVER, not a migration \u2014 bridge.js degrades when the host is absent but throws when it is partial, so no host can implement a subset. And packaging is the unmeasured item on the critical path: tools/build-macos.sh delegates bundle assembly, Info.plist templating, icon embedding and DMG creation to `wails build`, none of which the spike covered. Version identity must move off wails.json, with its drift gate, before that file is deleted. Full inventory: docs/decisions/2026-08-10-host-replacement.md."
+      "summary": "Replace Wails with a hand-written host. Measured 2026-08-10: a working macOS host is 486 lines including its own test harness, against 241 for the boundary it replaces and 5,116 for Wails' macOS layer, with a panicking bound call REJECTING rather than hanging (#61). Raised to critical by a maintainer release gate: no further release ships until every vestige of Wails is eliminated. Two facts govern sequencing. The host is ONE CUTOVER, not a migration — bridge.js degrades when the host is absent but throws when it is partial, so no host can implement a subset. And packaging is the unmeasured item on the critical path: tools/build-macos.sh delegates bundle assembly, Info.plist templating, icon embedding and DMG creation to `wails build`, none of which the spike covered. Version identity must move off wails.json, with its drift gate, before that file is deleted. Full inventory: docs/decisions/2026-08-10-host-replacement.md."
+    },
+    {
+      "id": "default-markdown-handler",
+      "kind": "feature",
+      "section": "Desktop Integration",
+      "title": "Offer to become the default .md application",
+      "status": "planned",
+      "priority": "medium",
+      "summary": "Offer once, on first launch, to make Dr. Markdown the default application for .md and .markdown. The bundle already declares CFBundleDocumentTypes and UTImportedTypeDeclarations, so the app appears under Open With today and simply never becomes the default; no code calls Launch Services. Asked at first launch rather than \"during install\" because there is no installer -- distribution is a DMG with a drag-to-/Applications symlink. Claims the UTI net.daringfireball.markdown, covering both extensions the bundle advertises, via LSSetDefaultRoleHandlerForContentType: the NSWorkspace equivalent is macOS 12+ and the deployment target is 11.0, so it would need a version gate plus this call as the fallback anyway. Three guards: already the default, already answered, and running from a mounted disk image -- the last because setting the handler to a bundle under /Volumes points every future double-click at a volume that will be unmounted. Decision recorded in docs/decisions/2026-08-25-default-markdown-handler.md, with one question left open for the implementer to answer by driving the built app: whether recent macOS shows its own consent dialog, which would make our prompt the second one."
     }
   ]
 }
