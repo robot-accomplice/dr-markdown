@@ -2507,6 +2507,7 @@ body.dark {
 #wysiwyg .ProseMirror > :first-child,
 #wysiwyg .ProseMirror > .ProseMirror-widget:first-child + * {
   margin-top: 0;
+}
 
 /* Document zoom, in the sense Word means it: the whole document gets closer,
    proportions preserved.
