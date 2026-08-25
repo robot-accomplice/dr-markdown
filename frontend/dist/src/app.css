@@ -22,6 +22,31 @@
   --ui: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --mono: var(--code-font);
   --serif: "Newsreader", Georgia, serif;
+
+  /* ONE syntax palette, for both highlighters.
+                                                                             .
+     Code is rendered by two different engines: Highlight.js in Raw and Split,
+     and CodeMirror inside the formatted editor. They had no colours in common.
+     The vendored CodeMirror ships One Dark, and app.css suppressed that theme's
+     dark BACKGROUND while leaving its foreground alone — so the formatted view
+     drew One Dark's purple keywords and grey text on a white block, while the
+     same code was teal on white two panes away.
+                                                                             .
+     These are the values the .hljs-* rules already used. tools/vendor.sh now
+     rewrites One Dark's colour constants to reference them, so the two engines
+     resolve the same variables rather than being matched by eye. */
+  --code-ink: var(--ink);
+  --code-keyword: oklch(0.52 0.09 196);
+  --code-string: oklch(0.52 0.12 145);
+  --code-variable: oklch(0.5 0.13 250);
+  --code-number: oklch(0.55 0.13 60);
+  --code-comment: oklch(0.6 0.01 285);
+
+  /* One tab width for every surface. Measured before this existed: the
+     formatted editor rendered tab-size 4, the split preview 8, and the raw
+     editor 2 — the same document indenting three different ways depending on
+     which pane you were looking at. */
+  --code-tab-size: 4;
 }
 
 html,
@@ -1532,38 +1557,38 @@ body.split-mode #editor-host {
    not the hue that exposed it. */
 .hljs-section,
 .hljs-title {
-  color: oklch(0.52 0.09 196);
+  color: var(--code-keyword);
   font-weight: 700;
 }
 
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-built_in {
-  color: oklch(0.52 0.09 196);
+  color: var(--code-keyword);
 }
 
 .hljs-string,
 .hljs-attr,
 .hljs-symbol {
-  color: oklch(0.52 0.12 145);
+  color: var(--code-string);
 }
 
 .hljs-link,
 .hljs-variable,
 .hljs-name {
-  color: oklch(0.5 0.13 250);
+  color: var(--code-variable);
 }
 
 .hljs-number,
 .hljs-literal,
 .hljs-meta {
-  color: oklch(0.55 0.13 60);
+  color: var(--code-number);
 }
 
 .hljs-comment,
 .hljs-quote,
 .hljs-punctuation {
-  color: oklch(0.6 0.01 285);
+  color: var(--code-comment);
 }
 
 .markdown-marker {
@@ -2417,6 +2442,71 @@ body.dark {
   background: var(--accent-wash);
   color: var(--accent);
 }
+
+/* Code typography, identical in every surface.
+                                                                             .
+   Measured before this rule existed, for one fenced block viewed three ways:
+                                                                             .
+     formatted   font `monospace`      15.5px   tab-size 4
+     split       font JetBrains Mono   12.5px   tab-size 8
+     raw         font JetBrains Mono   12.5px   tab-size 2
+                                                                             .
+   The formatted editor's CodeMirror never received --code-font at all, so it
+   fell back to the generic monospace family, three points larger than the same
+   code one pane away. And the same document indented three different ways.
+                                                                             .
+   Scoped under #wysiwyg to out-specify the vendored theme, which styles
+   .cm-content from a stylesheet CodeMirror injects at runtime. */
+#wysiwyg .cm-editor,
+#wysiwyg .cm-content,
+#wysiwyg .cm-line {
+  font-family: var(--code-font);
+  font-variant-ligatures: var(--code-ligatures);
+  font-feature-settings: var(--code-font-features);
+  font-size: 12.5px;
+  tab-size: var(--code-tab-size);
+}
+
+#wysiwyg .cm-content,
+#wysiwyg .cm-line {
+  color: var(--code-ink);
+}
+
+#raw textarea,
+#raw .source-highlight,
+.code-block-shell code,
+.code-block-shell pre {
+  tab-size: var(--code-tab-size);
+}
+
+/* The document's first block starts where the pane's padding says, whatever it
+   is formatted as.
+                                                                             .
+   A heading's top margin collapsed OUT of the editor. `.ProseMirror` and
+   `.milkdown` both have zero margin, padding and border, so neither contains a
+   child's margin; `#wysiwyg`'s 52px padding stopped it going further, which is
+   why it surfaced as the whole editor sitting lower rather than as space inside
+   it. Measured, for a one-block document: a paragraph started 53px from the top
+   of the pane, an h1 85px, an h2 81px, an h3 77px — so applying a heading to
+   the first line MOVED it.
+                                                                             .
+   `flow-root` makes the editor contain its children's margins, which is what a
+   block formatting context is for and stops any future first child leaking one
+   the same way. That alone would keep the editor still while leaving the
+   heading's margin as a gap inside it, so the first block's own top margin is
+   dropped too — the space above the first line is the pane's padding, and one
+   thing should own it.
+                                                                             .
+   Both selectors are needed: ProseMirror renders a widget decoration as the
+   first child, so the first CONTENT block is usually the second element, and is
+   the first only when no widget is present. */
+#wysiwyg .ProseMirror {
+  display: flow-root;
+}
+
+#wysiwyg .ProseMirror > :first-child,
+#wysiwyg .ProseMirror > .ProseMirror-widget:first-child + * {
+  margin-top: 0;
 
 /* Document zoom, in the sense Word means it: the whole document gets closer,
    proportions preserved.
