@@ -40,8 +40,14 @@ func TestDiagramAssistantTargetsTheDiagramItWasOpenedFrom(t *testing.T) {
 		t.Fatalf("opening the assistant from the second diagram: %v", err)
 	}
 
-	var editIndex bool
-	evalJS(t, ctx, `document.querySelector('[data-diagram-assistant][data-diagram-edit-index="1"]') !== null`, &editIndex)
+	// Polled, not sampled. chromedp's click returns when the CDP command
+	// completes, which does not mean the page's handler has run — so on a loaded
+	// runner this read the DOM before the assistant existed and reported "no
+	// assistant opened" for a click that worked. It passed eight consecutive
+	// local runs and failed on CI, which is the signature of a race in the TEST
+	// rather than a defect in the app, and the harness already carries this
+	// warning for assertions that follow an action.
+	editIndex := waitForJS(t, ctx, `document.querySelector('[data-diagram-assistant][data-diagram-edit-index="1"]') !== null`)
 	if !editIndex {
 		var got string
 		evalJS(t, ctx, `(() => { const a = document.querySelector('[data-diagram-assistant]');
