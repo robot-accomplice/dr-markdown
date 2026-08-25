@@ -1,0 +1,17 @@
+# Generated documentation images are binary and DERIVED.
+#
+# git cannot merge a PNG, so while every UI-facing pull request was required to
+# regenerate all five README screenshots, any two concurrent UI branches
+# conflicted on all five by construction — which happened on three separate pull
+# requests in one day. The rule now names release preparation as the single
+# writer (docs/architext/data/rules.json), and marking these binary means git
+# reports a clash plainly instead of attempting a textual merge and producing a
+# corrupt image.
+#
+# When one does conflict, do not pick a side: both are stale relative to the
+# merged UI. Take either, then run `go run ./tools/screenshots` and commit the
+# regenerated result.
+docs/assets/screenshots/*.png binary
+docs/assets/banner.png        binary
+build/appicon.png             binary
+build/icon-artwork.png        binary
