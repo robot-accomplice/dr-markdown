@@ -101,6 +101,44 @@ else
   exit 1
 fi
 
+# The vendored CodeMirror ships the One Dark theme, and its colour constants are
+# baked into the bundle as hex literals. app.css suppresses that theme's dark
+# BACKGROUND so a code block sits on the app's own surface — which left One
+# Dark's foreground alone, drawing purple keywords and grey text on white, while
+# the same code two panes away was teal. Two highlighters, no colours in common.
+#
+# So the constants are rewritten to reference this app's syntax tokens. They are
+# emitted straight into the stylesheet CodeMirror injects, so a var() resolves
+# there exactly as it would anywhere else, and it also means the formatted
+# editor follows the theme instead of ignoring it.
+#
+# Backgrounds go to `transparent` rather than to a token: the block already
+# supplies its own surface, and painting another one over it is what made the
+# code area read as a different colour from its own card.
+patch_colour() {
+    local const="$1" replacement="$2" label="$3"
+    if ! grep -q "$const" "$VENDOR/crepe.bundle.mjs"; then
+        echo "error: crepe.bundle.mjs no longer contains $const ($label)." >&2
+        echo "       The One Dark palette moved, so the formatted editor would go" >&2
+        echo "       back to drawing a dark theme's colours on a light surface." >&2
+        exit 1
+    fi
+    sed -i.bak "s|$const|$replacement|g" "$VENDOR/crepe.bundle.mjs" && rm "$VENDOR/crepe.bundle.mjs.bak"
+}
+
+patch_colour '"#abb2bf"' '"var(--code-ink)"'      "foreground"
+patch_colour '"#c678dd"' '"var(--code-keyword)"'  "keyword"
+patch_colour '"#98c379"' '"var(--code-string)"'   "string"
+patch_colour '"#61afef"' '"var(--code-variable)"' "function name"
+patch_colour '"#e06c75"' '"var(--code-variable)"' "variable"
+patch_colour '"#d19a66"' '"var(--code-number)"'   "number"
+patch_colour '"#56b6c2"' '"var(--code-keyword)"'  "operator"
+patch_colour '"#7d8799"' '"var(--code-comment)"'  "comment"
+patch_colour '"#282c34"' '"transparent"'          "editor background"
+patch_colour '"#21252b"' '"transparent"'          "gutter background"
+patch_colour '"#528bff"' '"var(--accent)"'        "cursor"
+echo "remapped the vendored One Dark palette to the app's syntax tokens"
+
 # Highlight.js common browser build: syntax highlighting for markdown source
 # overlays and language-tagged fenced code blocks.
 fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@${HIGHLIGHT_VERSION}/build/highlight.min.js" \
