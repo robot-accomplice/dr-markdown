@@ -41,7 +41,7 @@
     <section id="ribbon" aria-label="Editor ribbon">
       <div class="ribbon-tabs-row">
         <nav class="ribbon-tabs" aria-label="Ribbon tabs">
-          <button class="active" type="button" data-ribbon-tab="home">Home</button>
+          <button class="active" type="button" data-ribbon-tab="file">File</button>
           <button type="button" data-ribbon-tab="insert">Insert</button>
           <button type="button" data-ribbon-tab="format">Format</button>
           <button type="button" data-ribbon-tab="view">View</button>
@@ -59,7 +59,42 @@
       </div>
 
       <div class="ribbon-panels">
-        <section class="ribbon-panel" data-ribbon-panel="home" aria-label="Home">
+        <section class="ribbon-panel" data-ribbon-panel="file" aria-label="File">
+          <div class="ribbon-group">
+            <div class="ribbon-controls labelled">
+              <button data-file-action="new" aria-label="New document" title="New document" data-collapse-glyph="+" type="button"><span class="button-label">New</span></button>
+              <button data-file-action="open" aria-label="Open a file" title="Open a file" data-collapse-glyph="⌥" type="button"><span class="button-label">Open</span></button>
+              <button data-file-action="save" aria-label="Save" title="Save" data-collapse-glyph="↓" type="button"><span class="button-label">Save</span></button>
+              <button data-file-action="save-as" aria-label="Save As" title="Save As" data-collapse-glyph="⇪" type="button"><span class="button-label">Save As</span></button>
+            </div>
+            <h2>Document</h2>
+          </div>
+          <div class="ribbon-separator"></div>
+          <div class="ribbon-group">
+            <div class="ribbon-controls labelled">
+              <button data-export-toggle="true" aria-label="Export" title="Export" data-collapse-glyph="↗" type="button"><span class="button-label">Export ▾</span></button>
+            </div>
+            <h2>Share</h2>
+          </div>
+        </section>
+
+        <section class="ribbon-panel" data-ribbon-panel="insert" aria-label="Insert" hidden>
+          <div class="ribbon-group">
+            <div class="ribbon-controls labelled">
+              <button data-command="link" aria-label="Link" title="Link" type="button"><svg class="ribbon-icon"><use href="#icon-link"></use></svg><span class="button-label">Link</span></button>
+              <button id="btn-insert-menu" aria-label="Insert block" title="Insert block" type="button"><span class="mono">+</span><span class="button-label">Insert block</span></button>
+              <button data-command="code-block" aria-label="Code block" title="Code block" type="button"><svg class="ribbon-icon"><use href="#icon-code-block"></use></svg><span class="button-label">Code block</span></button>
+              <button data-command="image" aria-label="Image" title="Image" type="button"><span class="mono">▧</span><span class="button-label">Image</span></button>
+              <button data-command="table" aria-label="Table" title="Table" type="button"><svg class="ribbon-icon"><use href="#icon-table"></use></svg><span class="button-label">Table</span></button>
+              <button data-command="math" aria-label="Math block" title="Math block" type="button"><span class="serif">Σx</span><span class="button-label">Math block</span></button>
+              <button data-command="mermaid" aria-label="Mermaid diagram" title="Mermaid diagram" type="button"><svg class="ribbon-icon"><use href="#icon-diagram"></use></svg><span class="button-label">Mermaid diagram</span></button>
+              <button data-command="hr" aria-label="Horizontal rule" title="Horizontal rule" type="button"><span class="mono">——</span><span class="button-label">Horizontal rule</span></button>
+            </div>
+            <h2>Insert Block</h2>
+          </div>
+        </section>
+
+        <section class="ribbon-panel" data-ribbon-panel="format" aria-label="Format" hidden>
           <div class="ribbon-group">
             <div class="ribbon-controls">
               <select id="block-style" title="Paragraph style">
@@ -76,7 +111,6 @@
             </div>
             <h2>Structure</h2>
           </div>
-          <div class="ribbon-separator"></div>
           <div class="ribbon-group">
             <div class="ribbon-controls compact">
               <button data-command="bold" class="glyph serif" title="Bold (Ctrl/Cmd+B)" type="button">B</button>
@@ -87,7 +121,6 @@
             </div>
             <h2>Text</h2>
           </div>
-          <div class="ribbon-separator"></div>
           <div class="ribbon-group">
             <div class="ribbon-controls compact">
               <button data-command="bullet-list" class="icon-lines bullets" title="Bullet List" type="button"></button>
@@ -96,52 +129,6 @@
               <button data-command="quote" class="glyph serif" title="Quote" type="button">”</button>
             </div>
             <h2>Lists &amp; Quotes</h2>
-          </div>
-          <div class="ribbon-separator"></div>
-          <div class="ribbon-group grow">
-            <div class="ribbon-controls labelled">
-              <button data-command="link" aria-label="Link" title="Link" type="button"><svg class="ribbon-icon"><use href="#icon-link"></use></svg><span class="button-label">Link</span></button>
-              <button data-command="image" aria-label="Image" title="Image" type="button"><span class="mono">▧</span><span class="button-label">Image</span></button>
-              <button data-command="table" aria-label="Table" title="Table" type="button"><svg class="ribbon-icon"><use href="#icon-table"></use></svg><span class="button-label">Table</span></button>
-              <button data-command="code-block" aria-label="Code" title="Code" type="button"><svg class="ribbon-icon"><use href="#icon-code-block"></use></svg><span class="button-label">Code</span></button>
-              <button data-command="math" aria-label="Math" title="Math" type="button"><span class="serif">Σx</span><span class="button-label">Math</span></button>
-              <button data-command="mermaid" aria-label="Diagram" title="Diagram" type="button"><svg class="ribbon-icon"><use href="#icon-diagram"></use></svg><span class="button-label">Diagram</span></button>
-            </div>
-            <h2>Insert</h2>
-          </div>
-          <div class="ribbon-separator"></div>
-          <div class="ribbon-group">
-            <div class="ribbon-controls labelled">
-              <button data-export-toggle="true" aria-label="Export" title="Export" data-collapse-glyph="↗" type="button"><span class="button-label">Export ▾</span></button>
-            </div>
-            <h2>Share</h2>
-          </div>
-        </section>
-
-        <section class="ribbon-panel" data-ribbon-panel="insert" aria-label="Insert" hidden>
-          <div class="ribbon-group">
-            <div class="ribbon-controls labelled">
-              <button id="btn-insert-menu" aria-label="Insert block" title="Insert block" type="button"><span class="mono">+</span><span class="button-label">Insert block</span></button>
-              <button data-command="code-block" aria-label="Code block" title="Code block" type="button"><svg class="ribbon-icon"><use href="#icon-code-block"></use></svg><span class="button-label">Code block</span></button>
-              <button data-command="image" aria-label="Image" title="Image" type="button"><span class="mono">▧</span><span class="button-label">Image</span></button>
-              <button data-command="table" aria-label="Table" title="Table" type="button"><svg class="ribbon-icon"><use href="#icon-table"></use></svg><span class="button-label">Table</span></button>
-              <button data-command="math" aria-label="Math block" title="Math block" type="button"><span class="serif">Σx</span><span class="button-label">Math block</span></button>
-              <button data-command="mermaid" aria-label="Mermaid diagram" title="Mermaid diagram" type="button"><svg class="ribbon-icon"><use href="#icon-diagram"></use></svg><span class="button-label">Mermaid diagram</span></button>
-              <button data-command="hr" aria-label="Horizontal rule" title="Horizontal rule" type="button"><span class="mono">——</span><span class="button-label">Horizontal rule</span></button>
-            </div>
-            <h2>Insert Block</h2>
-          </div>
-        </section>
-
-        <section class="ribbon-panel" data-ribbon-panel="format" aria-label="Format" hidden>
-          <div class="ribbon-group">
-            <div class="ribbon-controls labelled">
-              <button data-command="bold" aria-label="Bold" title="Bold" type="button">Bold</button>
-              <button data-command="italic" aria-label="Italic" title="Italic" type="button">Italic</button>
-              <button data-command="strike" aria-label="Strikethrough" title="Strikethrough" type="button">Strikethrough</button>
-              <button data-command="quote" aria-label="Block quote" title="Block quote" type="button">Block quote</button>
-            </div>
-            <h2>Markdown Format</h2>
           </div>
         </section>
 
@@ -183,18 +170,17 @@
         <div class="rail-caption">Workspace</div>
         <div id="file-list"></div>
         <div class="rail-spacer"></div>
-        <button id="btn-new" class="new-document" type="button">+ New document</button>
+        <button id="btn-new" class="new-document" data-file-action="new" type="button">+ New document</button>
       </aside>
 
       <section id="document-region">
-        <div id="contextual-controls-root"></div>
         <div id="empty-state">
           <div class="empty-logo" aria-hidden="true">M&#8595;</div>
           <h1>New markdown document</h1>
           <p>Start with a blank page, open an existing markdown file, or paste source text into a clean editor surface.</p>
           <div class="empty-actions">
             <button id="empty-start" class="primary" type="button">Start writing</button>
-            <button id="btn-open" type="button">Open a file</button>
+            <button id="btn-open" data-file-action="open" type="button">Open a file</button>
             <button id="empty-paste" type="button">Paste markdown</button>
           </div>
           <div class="empty-rule"></div>
@@ -207,6 +193,11 @@
             <button type="button" data-template="design-doc"><strong>Design doc</strong><span>Context, options, decision</span></button>
           </div>
           <p class="empty-shortcuts">&#8984;&#8679;R toggles raw &middot; &#8984;&#8679;S opens split</p>
+        </div>
+        <div id="document-zoom" class="document-zoom" aria-label="Document zoom">
+          <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out">&#8722;</button>
+          <button type="button" data-zoom="reset" data-zoom-level aria-label="Reset zoom to 100%" title="Reset zoom">100%</button>
+          <button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in">+</button>
         </div>
         <div id="editor-host">
           <div id="wysiwyg"></div>
@@ -259,9 +250,7 @@
     </footer>
   </div>
 
-  <button id="btn-save" hidden type="button">Save</button>
-  <button id="btn-save-as" hidden type="button">Save As</button>
-  <button id="btn-close-tab" hidden type="button">Close</button>
+    <button id="btn-close-tab" hidden type="button">Close</button>
   <div id="insert-popover-root"></div>
   <div id="code-assistant-root"></div>
   <div id="diagram-assistant-root"></div>

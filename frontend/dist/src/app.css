@@ -1,9 +1,9 @@
 :root {
-  --accent: oklch(0.52 0.09 196);
-  --accent-hover: oklch(0.42 0.09 196);
-  --accent-wash: oklch(0.955 0.025 196);
-  --accent-wash-border: oklch(0.85 0.055 196);
-  --accent-ink: oklch(0.32 0.055 196);
+  --accent: oklch(0.52 0.09 235);
+  --accent-hover: oklch(0.42 0.09 235);
+  --accent-wash: oklch(0.955 0.025 235);
+  --accent-wash-border: oklch(0.85 0.055 235);
+  --accent-ink: oklch(0.32 0.055 235);
   --panel: #fff;
   --chrome: oklch(0.985 0.002 285);
   --canvas: oklch(0.975 0.003 285);
@@ -22,6 +22,31 @@
   --ui: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --mono: var(--code-font);
   --serif: "Newsreader", Georgia, serif;
+
+  /* ONE syntax palette, for both highlighters.
+                                                                             .
+     Code is rendered by two different engines: Highlight.js in Raw and Split,
+     and CodeMirror inside the formatted editor. They had no colours in common.
+     The vendored CodeMirror ships One Dark, and app.css suppressed that theme's
+     dark BACKGROUND while leaving its foreground alone — so the formatted view
+     drew One Dark's purple keywords and grey text on a white block, while the
+     same code was teal on white two panes away.
+                                                                             .
+     These are the values the .hljs-* rules already used. tools/vendor.sh now
+     rewrites One Dark's colour constants to reference them, so the two engines
+     resolve the same variables rather than being matched by eye. */
+  --code-ink: var(--ink);
+  --code-keyword: oklch(0.52 0.09 196);
+  --code-string: oklch(0.52 0.12 145);
+  --code-variable: oklch(0.5 0.13 250);
+  --code-number: oklch(0.55 0.13 60);
+  --code-comment: oklch(0.6 0.01 285);
+
+  /* One tab width for every surface. Measured before this existed: the
+     formatted editor rendered tab-size 4, the split preview 8, and the raw
+     editor 2 — the same document indenting three different ways depending on
+     which pane you were looking at. */
+  --code-tab-size: 4;
 }
 
 html,
@@ -315,8 +340,23 @@ button.primary {
   gap: 3px;
 }
 
+/* Sized to CONTENT, with a shared minimum for rhythm — not a fixed width.
+                                                                             .
+   This was `width: 78px`, plus a hand-computed exception for every label that
+   did not fit: table, code-block, math, mermaid, hr, quote, strike, focus, and
+   two more by id, repeated again at the next breakpoint down. Twelve rules,
+   each added when someone noticed one specific label clipping.
+                                                                             .
+   The Help panel's buttons were never given one, so "Markdown help" and
+   "Keyboard shortcuts" overflowed their boxes and drew on top of each other —
+   measured at 83px and 96px of content in a 76px box. That is the failure mode
+   of a fixed width with a growing exception list: the next label added is
+   broken until somebody sees it.
+                                                                             .
+   `min-width` cannot survive the collapse breakpoint on its own, so that block
+   resets it to 0 where it sets an icon-sized width deliberately. */
 .ribbon-controls.labelled button {
-  width: 78px;
+  min-width: 78px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -329,49 +369,15 @@ button.primary {
   text-overflow: ellipsis;
 }
 
-/* `Table` does not fit the 78px default and its label ellipsised to "Ta…".
-   The brief requires glyph + word for every Insert control, and the project's
-   own responsive rule forbids partial clipping — an ellipsised word is
-   neither collapsed nor whole. */
-.ribbon-controls.labelled button[data-command="table"] {
-  width: 92px;
-}
 
-.ribbon-controls.labelled button[data-command="code-block"] {
-  width: 104px;
-}
 
-.ribbon-controls.labelled button[data-command="math"] {
-  width: 102px;
-}
 
-.ribbon-controls.labelled button[data-command="mermaid"] {
-  width: 136px;
-}
 
-.ribbon-controls.labelled button[data-command="hr"] {
-  width: 132px;
-}
 
-.ribbon-controls.labelled button[data-command="quote"] {
-  width: 92px;
-}
 
-.ribbon-controls.labelled button[data-command="strike"] {
-  width: 108px;
-}
 
-.ribbon-controls.labelled #btn-toggle-mode {
-  width: 122px;
-}
 
-.ribbon-controls.labelled #btn-insert-menu {
-  width: 118px;
-}
 
-.ribbon-controls.labelled button[data-command="focus"] {
-  width: 104px;
-}
 
 .ribbon-controls button,
 .ribbon-controls select {
@@ -442,24 +448,12 @@ button.primary {
   }
 
   .ribbon-controls.labelled button {
-    width: 70px;
+    min-width: 70px;
   }
 
-  .ribbon-controls.labelled button[data-command="code-block"] {
-    width: 92px;
-  }
 
-  .ribbon-controls.labelled button[data-command="math"] {
-    width: 88px;
-  }
 
-  .ribbon-controls.labelled button[data-command="mermaid"] {
-    width: 116px;
-  }
 
-  .ribbon-controls.labelled #btn-insert-menu {
-    width: 106px;
-  }
 }
 
 @media (max-width: 1120px) {
@@ -483,6 +477,7 @@ button.primary {
   .ribbon-controls.labelled #btn-toggle-mode,
   .ribbon-controls.labelled #btn-insert-menu {
     width: 38px;
+    min-width: 0;
     padding-left: 0;
     padding-right: 0;
     gap: 0;
@@ -645,8 +640,7 @@ button.primary {
     linear-gradient(var(--muted), var(--muted)) 8px 13px / 12px 1.5px no-repeat;
 }
 
-.bullets::after,
-.tasks::after {
+.bullets::after {
   content: "";
   position: absolute;
   left: 8px;
@@ -656,6 +650,39 @@ button.primary {
   border-radius: 50%;
   background: var(--ink-2);
   box-shadow: 0 5px 0 var(--ink-2), 0 10px 0 var(--ink-2);
+}
+
+/* Task List had shared `.bullets::after` verbatim, so the two ribbon buttons
+   drew the SAME three round dots and the only way to tell them apart was the
+   tooltip. Checkboxes are the mark that distinguishes a task list from a
+   bulleted one, so the dots become squares — outlined rather than filled,
+   because an empty box is what an unchecked item looks like.
+                                                                             .
+   Drawn with gradients rather than a `☐`/`✓` glyph: `--mono` is JetBrains Mono
+   with a system fallback, and neither is guaranteed to carry those code points
+   at 4px in an offline, CSP-'self' build. `.ordered` can use text because
+   digits are always present. Two gradients per box give the outline; a
+   box-shadow copy could not, because an offset shadow of an outlined box is a
+   filled silhouette.
+                                                                             .
+   One 4x5px tile repeated down, rather than twelve gradients placed by hand:
+   the box occupies the tile's first 4px and the fifth is the gap, so the 5px
+   rhythm is stated once and matches both the three lines in
+   `.icon-lines::before` and the dots in `.bullets::after`. The first version of
+   this drew 5px boxes on a 5px pitch, which left no gap at all and read as one
+   tall box divided in three. */
+.tasks::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 4px;
+  height: 15px;
+  background:
+    linear-gradient(var(--ink-2) 1px, transparent 1px) 0 0 / 4px 5px repeat-y,
+    linear-gradient(transparent 3px, var(--ink-2) 3px, var(--ink-2) 4px, transparent 4px) 0 0 / 4px 5px repeat-y,
+    linear-gradient(var(--ink-2) 4px, transparent 4px) 0 0 / 1px 5px repeat-y,
+    linear-gradient(var(--ink-2) 4px, transparent 4px) 3px 0 / 1px 5px repeat-y;
 }
 
 .ordered::after {
@@ -957,77 +984,6 @@ body.right-panel-hidden #outline-panel .panel-restore {
   padding: 34px 0;
 }
 
-#contextual-controls-root {
-  position: absolute;
-  top: 14px;
-  left: 18px;
-  right: 18px;
-  z-index: 4;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.contextual-controls {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  max-width: calc(100% - 24px);
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
-  pointer-events: auto;
-}
-
-.contextual-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 38px;
-  padding: 5px 8px;
-  border-right: 1px solid var(--line);
-}
-
-.contextual-group:last-child {
-  border-right: 0;
-}
-
-.contextual-group h2 {
-  margin: 0 2px 0 0;
-  color: var(--muted-2);
-  font: 700 10px/1 var(--mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.contextual-group button,
-.contextual-group select,
-.contextual-group input[type='text'] {
-  height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--panel);
-  color: var(--ink);
-  font: 650 12px/1 var(--ui-font);
-}
-
-.contextual-group input[type='text'] {
-  min-width: 148px;
-  padding: 0 9px;
-}
-
-.contextual-group button {
-  padding: 0 10px;
-}
-
-.contextual-group select {
-  min-width: 132px;
-  padding: 0 26px 0 9px;
-}
-
 #wysiwyg table.selected-block,
 #wysiwyg .mermaid-render.selected-block,
 #wysiwyg img.selected-block {
@@ -1058,19 +1014,20 @@ body.split-mode #document-region {
   padding: 0;
 }
 
-body.raw-mode #contextual-controls-root,
-body.split-mode #contextual-controls-root,
-body.app-empty #contextual-controls-root {
-  display: none;
-}
-
 #print-root {
   display: none;
 }
 
 #empty-state {
   width: 560px;
-  align-self: center;
+  /* `safe` centre, not plain centre. #document-region scrolls, and a flex item
+     centred on the cross axis that outgrows its container overflows in BOTH
+     directions — the part above the top edge is then unreachable, because
+     scrollTop is already 0. Measured at a 1440x900 window with seven recent
+     files: the block was 798px in a 750px region and its top sat 53px above
+     the region's own top. `safe` falls back to flex-start exactly when that
+     would happen, and changes nothing when the content fits. */
+  align-self: safe center;
   display: none;
   flex-direction: column;
   align-items: center;
@@ -1329,15 +1286,122 @@ body.split-mode #editor-host {
    editor and code-block backgrounds warm — measured rgb(255,253,251),
    rgb(255,248,244) and a 60%-alpha warm grey on the `pre`. The brief's
    palette is neutral throughout (`panel #fff`, `chrome oklch(0.985 0.002
-   285)`), so the card was reading peach next to a cool-white outline panel.
-   The .code-block-shell already supplies the box; these just stop tinting it. */
+   285)`), so the card was reading peach next to a cool-white outline panel. */
 #wysiwyg .milkdown {
   background: var(--panel);
 }
 
-#wysiwyg .milkdown-code-block,
+/* The vendored palette itself, remapped once, instead of a rule per control.
+                                                                             .
+   `vendor/theme/crepe/style.css` is a warm Material palette — every value in
+   it is brown or peach: surface #fff8f4, surface-low #fff1e5, hover #f9ecdf,
+   selected #ede0d4, secondary #fbdebc, and primary #805610, which is the light
+   brown that was reaching outlines and focus rings. Every in-block control
+   draws from these: the language picker and its list, the copy and preview
+   buttons in `.tools`, CodeMirror's search panel (`.cm-panel`), the placeholder,
+   and the `.selected` outline on a focused block.
+                                                                             .
+   Overriding them per selector is a losing game — the peach reappears in the
+   next control nobody checked, which is how the picker kept its tint after #79
+   cancelled the editor's (#80). So the variables are rebound to this app's
+   tokens at their source, and every vendored rule downstream is correct by
+   construction.
+                                                                             .
+   Specificity: the vendored file declares these on `.milkdown`, which is
+   (0,1,0), and `loadTheme()` appends it to <head> at RUNTIME — so it loads
+   after this file and order cannot be relied on. `#wysiwyg .milkdown` is
+   (1,1,0) and wins regardless of order, the same reasoning as the rules above.
+                                                                             .
+   This also fixes dark mode, which nothing had addressed: `loadTheme()` skips
+   every `-dark/` file, so a dark document previously drew the editor's controls
+   from this LIGHT brown palette. These tokens redefine themselves for dark, so
+   the controls now follow the theme instead of ignoring it.
+                                                                             .
+   `--crepe-color-inline-code` and `--crepe-color-error` are deliberately left
+   alone: they are semantic red, not the warm palette, and the code colour is
+   already answered above. */
+#wysiwyg .milkdown {
+  --crepe-color-background: var(--panel);
+  --crepe-color-on-background: var(--ink);
+  --crepe-color-surface: var(--panel);
+  --crepe-color-surface-low: var(--panel);
+  --crepe-color-on-surface: var(--ink);
+  --crepe-color-on-surface-variant: var(--ink-2);
+  --crepe-color-outline: var(--muted);
+  --crepe-color-primary: var(--accent);
+  --crepe-color-secondary: var(--accent-wash);
+  --crepe-color-on-secondary: var(--accent-ink);
+  --crepe-color-inverse: var(--ink);
+  --crepe-color-on-inverse: var(--panel);
+  --crepe-color-hover: var(--accent-wash);
+  --crepe-color-selected: var(--accent-wash-border);
+  --crepe-color-inline-area: var(--line-soft);
+}
+
 #wysiwyg .ProseMirror pre {
   background: transparent;
+}
+
+/* The editor's own code block IS the box now, so it carries the box's design
+   rather than being flattened underneath one.
+                                                                             .
+   These rules used to read `background: transparent`, because the app drew a
+   `.code-block-shell` over the top and the tint underneath only had to be
+   cancelled. The app stopped drawing that shell — replacing the editor's node
+   is what left code blocks uneditable (#77) — so cancelling the tint without
+   replacing the surface left a borderless, radius-less block with a peach
+   CodeMirror inside it. Measured: block background rgba(0,0,0,0), border none,
+   radius 0, `.cm-editor` rgb(255,248,244).
+                                                                             .
+   Values are the shell's, so a code block looks the same in Formatted mode as
+   it does in preview and print. `#wysiwyg .milkdown-code-block` is (1,1,0) and
+   so beats the vendored `.milkdown *` reset, which is (0,1,0) and loads last. */
+/* No `overflow: hidden` here, unlike the shell below, and the difference is not
+   an oversight. The shell wraps a <pre> that runs edge to edge, so it needs the
+   clip to respect its own radius. The editor's block carries vendored
+   `padding: 8px 20px 20px`, so its CodeMirror is inset 20px and never reaches
+   the corners — and the editor's block, unlike the shell, contains the language
+   picker, which is `position: absolute` inside it. Clipping the block clipped
+   the picker: measured 413px of a 462px dropdown outside the block's box, with
+   `elementFromPoint` at the dropdown's own centre landing outside the list
+   (#80). z-index cannot rescue that — it was already 999, and no stacking order
+   escapes an ancestor's overflow clip.
+                                                                             .
+   Nothing else relied on the clip: `.cm-scroller` is `overflow-x: auto` and
+   holds a long line itself (measured scrollWidth 3482 against clientWidth 556,
+   with `.codemirror-host` not overflowing at all). */
+#wysiwyg .milkdown-code-block {
+  margin: 0 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+#wysiwyg .milkdown-code-block .cm-editor,
+#wysiwyg .milkdown-code-block .cm-gutters {
+  background: transparent;
+}
+
+/* Only what the palette remap cannot carry: the picker's SHAPE. Colour is
+   answered upstream by rebinding `--crepe-color-*`, so nothing here restates a
+   colour — a per-selector colour override is what let the peach survive #79 in
+   the first place (#80).
+                                                                             .
+   Values are `.insert-popover`'s, so a dropdown inside a code block reads as
+   the same object as every other popover in the app. The vendored rule gives
+   `.list-wrapper` a 12px radius and no border at all.
+                                                                             .
+   Specificity: the vendored rule is `.milkdown .milkdown-code-block
+   .list-wrapper`, which is (0,3,0), and it loads after this file. An id makes
+   this (1,2,0), which wins regardless of order. */
+#wysiwyg .milkdown-code-block .list-wrapper {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px oklch(0.3 0.02 285 / 0.16);
+}
+
+#wysiwyg .milkdown-code-block .language-list-item {
+  border-radius: 7px;
 }
 
 .code-block-shell {
@@ -1348,7 +1412,19 @@ body.split-mode #editor-host {
   background: var(--panel);
 }
 
-.code-block-header {
+/* These three are scoped under .code-block-shell to WIN A TIE, not for clarity.
+   The shell is injected into the Milkdown editor, so `.milkdown *` from the
+   vendored Crepe reset — `margin: 0; padding: 0` — matches every element in it.
+   That selector is (0,1,0) and so was a bare `.code-block-header`; index.html
+   loads app.css in <head> while loadTheme() appends the vendored sheets at
+   runtime, so the vendored rule is later and a tie goes to it. The result was
+   the language label jammed against the left border and Copy sitting inline
+   beside it instead of at the right edge, because `margin-right: auto` was
+   zeroed too. Any future rule styling an app-injected element inside the editor
+   needs to out-specify that reset. Pinned by TestCodeBlockChromeIsLaidOutAsDesigned,
+   which asserts position rather than presence — the existing chrome test checks
+   the label and button exist, and passed throughout. */
+.code-block-shell .code-block-header {
   height: 30px;
   display: flex;
   align-items: center;
@@ -1360,13 +1436,13 @@ body.split-mode #editor-host {
   font: 700 10.5px/1 var(--mono);
 }
 
-.code-block-language {
+.code-block-shell .code-block-language {
   margin-right: auto;
   color: var(--muted);
 }
 
-.code-block-copy,
-.code-language-tool {
+.code-block-shell .code-block-copy,
+.code-block-shell .code-language-tool {
   height: 22px;
   border: 0;
   border-radius: 6px;
@@ -1467,40 +1543,52 @@ body.split-mode #editor-host {
   background: oklch(0.78 0.08 196 / 0.35);
 }
 
+/* The syntax palette is deliberately INDEPENDENT of the brand accent, and
+   these two rules are where that was not true.
+                                                                             .
+   `.hljs-section`/`.hljs-title` read `var(--accent)`, and `.hljs-keyword`
+   carried the accent's literal value, so moving the brand hue from teal to
+   blue dragged both with it — landing them within 15 degrees of
+   `.hljs-link`/`.hljs-variable` at hue 250, where keywords, titles and variable
+   names stop being distinguishable from one another in highlighted code.
+                                                                             .
+   Both are pinned to the palette's own hue instead. A rebrand should not be
+   able to degrade code legibility, and the coupling that let it is the defect,
+   not the hue that exposed it. */
 .hljs-section,
 .hljs-title {
-  color: var(--accent);
+  color: var(--code-keyword);
   font-weight: 700;
 }
 
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-built_in {
-  color: oklch(0.52 0.09 196);
+  color: var(--code-keyword);
 }
 
 .hljs-string,
 .hljs-attr,
 .hljs-symbol {
-  color: oklch(0.52 0.12 145);
+  color: var(--code-string);
 }
 
 .hljs-link,
 .hljs-variable,
 .hljs-name {
-  color: oklch(0.5 0.13 250);
+  color: var(--code-variable);
 }
 
 .hljs-number,
 .hljs-literal,
 .hljs-meta {
-  color: oklch(0.55 0.13 60);
+  color: var(--code-number);
 }
 
 .hljs-comment,
 .hljs-quote,
 .hljs-punctuation {
-  color: oklch(0.6 0.01 285);
+  color: var(--code-comment);
 }
 
 .markdown-marker {
@@ -2316,4 +2404,168 @@ body.dark {
     writing-mode: vertical-rl;
     text-orientation: mixed;
   }
+}
+
+/* The diagram's own Edit control, inside the rendered preview.
+                                                                             .
+   Scoped under `#wysiwyg` to out-specify the vendored `.milkdown *` reset,
+   which is (0,1,0) and loads at runtime after this file. Sized and coloured to
+   sit with the copy and preview-toggle buttons the editor already draws on a
+   code block, because that is the design language a reader has already been
+   taught — this is the same kind of per-block action, not a new idiom. */
+#wysiwyg .mermaid-render {
+  position: relative;
+}
+
+#wysiwyg .mermaid-render .diagram-edit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+#wysiwyg .mermaid-render:hover .diagram-edit,
+#wysiwyg .mermaid-render .diagram-edit:focus-visible {
+  opacity: 1;
+}
+
+#wysiwyg .mermaid-render .diagram-edit:hover {
+  border-color: var(--accent-wash-border);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+/* Code typography, identical in every surface.
+                                                                             .
+   Measured before this rule existed, for one fenced block viewed three ways:
+                                                                             .
+     formatted   font `monospace`      15.5px   tab-size 4
+     split       font JetBrains Mono   12.5px   tab-size 8
+     raw         font JetBrains Mono   12.5px   tab-size 2
+                                                                             .
+   The formatted editor's CodeMirror never received --code-font at all, so it
+   fell back to the generic monospace family, three points larger than the same
+   code one pane away. And the same document indented three different ways.
+                                                                             .
+   Scoped under #wysiwyg to out-specify the vendored theme, which styles
+   .cm-content from a stylesheet CodeMirror injects at runtime. */
+#wysiwyg .cm-editor,
+#wysiwyg .cm-content,
+#wysiwyg .cm-line {
+  font-family: var(--code-font);
+  font-variant-ligatures: var(--code-ligatures);
+  font-feature-settings: var(--code-font-features);
+  font-size: 12.5px;
+  tab-size: var(--code-tab-size);
+}
+
+#wysiwyg .cm-content,
+#wysiwyg .cm-line {
+  color: var(--code-ink);
+}
+
+#raw textarea,
+#raw .source-highlight,
+.code-block-shell code,
+.code-block-shell pre {
+  tab-size: var(--code-tab-size);
+}
+
+/* The document's first block starts where the pane's padding says, whatever it
+   is formatted as.
+                                                                             .
+   A heading's top margin collapsed OUT of the editor. `.ProseMirror` and
+   `.milkdown` both have zero margin, padding and border, so neither contains a
+   child's margin; `#wysiwyg`'s 52px padding stopped it going further, which is
+   why it surfaced as the whole editor sitting lower rather than as space inside
+   it. Measured, for a one-block document: a paragraph started 53px from the top
+   of the pane, an h1 85px, an h2 81px, an h3 77px — so applying a heading to
+   the first line MOVED it.
+                                                                             .
+   `flow-root` makes the editor contain its children's margins, which is what a
+   block formatting context is for and stops any future first child leaking one
+   the same way. That alone would keep the editor still while leaving the
+   heading's margin as a gap inside it, so the first block's own top margin is
+   dropped too — the space above the first line is the pane's padding, and one
+   thing should own it.
+                                                                             .
+   Both selectors are needed: ProseMirror renders a widget decoration as the
+   first child, so the first CONTENT block is usually the second element, and is
+   the first only when no widget is present. */
+#wysiwyg .ProseMirror {
+  display: flow-root;
+}
+
+#wysiwyg .ProseMirror > :first-child,
+#wysiwyg .ProseMirror > .ProseMirror-widget:first-child + * {
+  margin-top: 0;
+}
+
+/* Document zoom, in the sense Word means it: the whole document gets closer,
+   proportions preserved.
+                                                                             .
+   `zoom` rather than `transform: scale`, because zoom takes part in LAYOUT.
+   Measured at 1.5: the host went 720px -> 1080px wide and the pane's
+   scrollHeight grew 759 -> 848, so the content can be scrolled to. A transform
+   paints at a new size while the parent still lays out the old one, so a
+   zoomed-in document overflows with nothing to scroll to — and it rasterises
+   text, where this stays a real layout at the new size and so stays crisp. */
+#editor-host {
+  zoom: var(--doc-zoom, 1);
+}
+
+/* Anchored to the pane, and deliberately OUTSIDE #editor-host: inside it the
+   control would zoom itself, shrinking as you zoomed out — smallest exactly
+   when it is hardest to hit. */
+.document-zoom {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 10px oklch(0.3 0.02 285 / 0.08);
+}
+
+.document-zoom button {
+  min-width: 26px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.document-zoom button[data-zoom-level] {
+  min-width: 46px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.document-zoom button:hover:not(:disabled) {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+/* The empty state has no document to zoom, and Raw is a source editor whose
+   size is the code-font setting rather than a page zoom. */
+body.app-empty .document-zoom {
+  display: none;
 }

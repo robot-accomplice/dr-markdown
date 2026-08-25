@@ -4,10 +4,8 @@ import { RawEditor } from './rawmode.js'
 import { bridge } from './bridge.js'
 import { escapeHtml, highlightCode, highlightMarkdownSource, normalizeLanguage } from './highlighter.js'
 import { renderMermaidDiagram } from './mermaid-renderer.js'
-import { containsTable } from './markdown/tables.js'
 import {
-  firstCodeFenceLanguage, firstCodeFenceDescriptor, rewriteCodeFenceLanguage,
-  containsMermaidDiagram, rewriteMermaidFenceSource, fencedLanguages,
+  firstCodeFenceDescriptor, rewriteCodeFenceLanguage, rewriteMermaidFenceSource,
 } from './markdown/fences.js'
 import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
 import { safeLinkHref } from './markdown/links.js'
@@ -40,6 +38,7 @@ const state = {
     editorWidth: 72,
     documentFont: 'Public Sans',
     documentFontSize: 15.5,
+    documentZoom: 1,
     codeFont: 'JetBrains Mono',
     codeLigatures: true,
     formatOnSave: false,
@@ -131,7 +130,6 @@ const els = {
   helpRoot: document.getElementById('help-root'),
   exportRoot: document.getElementById('export-root'),
   printRoot: document.getElementById('print-root'),
-  contextualControlsRoot: document.getElementById('contextual-controls-root'),
   workspace: document.getElementById('workspace'),
   fileRail: document.getElementById('file-rail'),
   fileList: document.getElementById('file-list'),
@@ -143,10 +141,6 @@ const els = {
   btnInsertMenu: document.getElementById('btn-insert-menu'),
   btnSettings: document.getElementById('btn-settings'),
   outlinePanel: document.getElementById('outline-panel'),
-  btnNew: document.getElementById('btn-new'),
-  btnOpen: document.getElementById('btn-open'),
-  btnSave: document.getElementById('btn-save'),
-  btnSaveAs: document.getElementById('btn-save-as'),
   btnCloseTab: document.getElementById('btn-close-tab'),
   emptyStart: document.getElementById('empty-start'),
   emptyPaste: document.getElementById('empty-paste'),
@@ -158,6 +152,8 @@ const els = {
   fileSearchInput: document.getElementById('file-search-input'),
   outlineList: document.getElementById('outline-list'),
   ribbonTabs: document.querySelectorAll('[data-ribbon-tab]'),
+  zoomControl: document.getElementById('document-zoom'),
+  zoomLevel: document.querySelector('[data-zoom-level]'),
   ribbonPanels: document.querySelectorAll('[data-ribbon-panel]'),
   outlineTabs: document.querySelectorAll('[data-outline-tab]'),
 }
@@ -576,11 +572,14 @@ function syncActiveState() {
     'app-empty',
     Boolean(doc && !doc.started && doc.markdown.trim() === '' && state.mode === 'wysiwyg')
   )
-  refreshContextualControls(doc)
 }
 
 function handleRenderedBlockSelection(event) {
   if (state.mode !== 'wysiwyg') return
+  // Delegated, because the editor's node view mounts a COPY of the preview
+  // element the app hands it, and a listener attached to the original is not
+  // on the copy that is clicked.
+  if (event.target.closest?.('[data-diagram-edit]')) return handleDiagramEditRequest(event)
   const table = event.target.closest?.('#wysiwyg table')
   const diagram = event.target.closest?.('#wysiwyg .mermaid-render')
   const image = event.target.closest?.('#wysiwyg img')
@@ -594,14 +593,47 @@ function handleRenderedBlockSelection(event) {
     if (tableIndex < 0) return
     state.editorContext = { blockType: 'table', tableIndex }
   } else if (diagram) {
-    const diagramFenceIndex = Number(diagram.dataset.diagramFenceIndex)
-    if (!Number.isInteger(diagramFenceIndex)) return
+    const diagramFenceIndex = renderedCodeBlockIndex(diagram)
+    if (diagramFenceIndex < 0) return
     state.editorContext = { blockType: 'diagram', diagramFenceIndex }
   } else {
     return
   }
   refreshRenderedBlockSelection()
-  refreshContextualControls(activeDoc())
+}
+
+// The diagram's own Edit control, announced from inside the rendered preview.
+//
+// The preview element belongs to the app (editor.js hands it to the node view),
+// so the button lives on the block it edits rather than in a bar floating over
+// the document. The fence index is resolved from where the click came from, so
+// it always targets THAT diagram — the floating bar resolved the first matching
+// fence in the document, which edited the wrong block whenever there were two.
+function handleDiagramEditRequest(event) {
+  const diagramFenceIndex = renderedCodeBlockIndex(event.target)
+  if (diagramFenceIndex < 0) return
+  state.editorContext = { blockType: 'diagram', diagramFenceIndex }
+  openDiagramAssistant({ editFenceIndex: diagramFenceIndex })
+}
+
+// Which fenced block, counting from the top of the document, a node inside the
+// formatted surface belongs to.
+//
+// This is the index every fence rewrite in this app takes — `rewriteMermaidFenceSource`
+// and `rewriteCodeFenceLanguage` both count ALL fences, mermaid or not — so it
+// has to be the position among all code blocks, not among the diagrams.
+//
+// The editor renders one `.milkdown-code-block` per fenced block in document
+// order, and it keeps that element whether the block is showing its diagram or
+// its source. Counting them is therefore exact where the previous approach was
+// not: the app used to stamp the index onto the diagram element it drew itself,
+// which stopped being possible when the editor took ownership of the block, and
+// counting only the rendered diagrams would have shifted every index the moment
+// one block was toggled to source.
+function renderedCodeBlockIndex(node) {
+  const block = node.closest('.milkdown-code-block')
+  if (!block) return -1
+  return Array.from(els.wysiwyg.querySelectorAll('.milkdown-code-block')).indexOf(block)
 }
 
 function refreshRenderedBlockSelection() {
@@ -609,118 +641,11 @@ function refreshRenderedBlockSelection() {
     table.classList.toggle('selected-block', state.editorContext.blockType === 'table' && state.editorContext.tableIndex === index)
   })
   els.wysiwyg.querySelectorAll('.mermaid-render').forEach((diagram) => {
-    diagram.classList.toggle('selected-block', state.editorContext.blockType === 'diagram' && Number(diagram.dataset.diagramFenceIndex) === state.editorContext.diagramFenceIndex)
+    diagram.classList.toggle('selected-block', state.editorContext.blockType === 'diagram' && renderedCodeBlockIndex(diagram) === state.editorContext.diagramFenceIndex)
   })
   els.wysiwyg.querySelectorAll('img').forEach((image, index) => {
     image.classList.toggle('selected-block', state.editorContext.blockType === 'image' && state.editorContext.imageIndex === index)
   })
-}
-
-function refreshContextualControls(doc) {
-  const md = doc?.markdown ?? ''
-  els.contextualControlsRoot.replaceChildren()
-  if (!doc || !doc.started || state.mode !== 'wysiwyg' || md.trim() === '') return
-
-  const hasTable = containsTable(md)
-  const codeLanguage = firstCodeFenceLanguage(md, { excludeMermaid: true })
-  const hasDiagram = containsMermaidDiagram(md)
-  // Image controls are block-local: they only appear once an image is the
-  // selected block, so they can never act on an unselected sibling.
-  const selectedImage = state.editorContext.blockType === 'image'
-    ? selectedImageToken(md, state.editorContext.imageIndex)
-    : null
-  if (!hasTable && !codeLanguage && !hasDiagram && !selectedImage) return
-
-  const toolbar = document.createElement('div')
-  toolbar.className = 'contextual-controls'
-  toolbar.dataset.contextualControls = 'true'
-  toolbar.setAttribute('aria-label', 'Contextual document controls')
-  if (hasTable) toolbar.append(contextualGroup('table', 'Table', [
-    contextualButton('table-add-row', 'Row +'),
-    contextualButton('table-remove-row', 'Row -'),
-    contextualButton('table-add-column', 'Column +'),
-    contextualButton('table-remove-column', 'Column -'),
-    contextualButton('table-align-left', 'Left'),
-    contextualButton('table-align-center', 'Center'),
-    contextualButton('table-align-right', 'Right'),
-    contextualButton('table-delete', 'Delete'),
-  ]))
-  if (codeLanguage) toolbar.append(contextualCodeGroup(codeLanguage))
-  if (hasDiagram) toolbar.append(contextualGroup('diagram', 'Mermaid Diagram', [
-    contextualButton('diagram-assistant', 'Diagram assistant'),
-  ]))
-  if (selectedImage) toolbar.append(contextualGroup('image', 'Image', [
-    contextualImageWidth(parseImageToken(selectedImage.text).width),
-    contextualImageAlt(parseImageToken(selectedImage.text).alt),
-    contextualButton('image-replace', 'Replace'),
-    contextualButton('image-reveal', 'Reveal'),
-    contextualButton('image-delete', 'Delete'),
-  ]))
-  els.contextualControlsRoot.replaceChildren(toolbar)
-}
-
-function contextualGroup(name, label, controls) {
-  const group = document.createElement('section')
-  group.className = 'contextual-group'
-  group.dataset.contextGroup = name
-  const heading = document.createElement('h2')
-  heading.textContent = label
-  group.append(heading, ...controls)
-  return group
-}
-
-function contextualButton(command, label) {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.dataset.contextCommand = command
-  button.textContent = label
-  button.addEventListener('click', () => {
-    if (command === 'diagram-assistant') openDiagramAssistant({ editFenceIndex: state.editorContext.diagramFenceIndex })
-    else runCommand(command)
-  })
-  return button
-}
-
-function contextualImageWidth(width) {
-  const select = document.createElement('select')
-  select.dataset.contextImageWidth = 'true'
-  select.setAttribute('aria-label', 'Image width')
-  select.title = 'Image width'
-  for (const [value, label] of IMAGE_WIDTH_PRESETS) {
-    const option = document.createElement('option')
-    option.value = value
-    option.textContent = label
-    option.selected = value === width
-    select.append(option)
-  }
-  select.addEventListener('change', () => setImageWidth(select.value))
-  return select
-}
-
-function contextualImageAlt(alt) {
-  const input = document.createElement('input')
-  input.type = 'text'
-  input.dataset.contextImageAlt = 'true'
-  input.value = alt
-  input.placeholder = 'Alt text'
-  input.setAttribute('aria-label', 'Image alt text')
-  input.title = 'Image alt text'
-  input.addEventListener('change', () => setImageAltText(input.value))
-  return input
-}
-
-function contextualCodeGroup(language) {
-  const select = document.createElement('select')
-  select.dataset.contextCodeLanguage = 'true'
-  for (const [value, label] of codeLanguages) {
-    const option = document.createElement('option')
-    option.value = value
-    option.textContent = label
-    option.selected = value === normalizeLanguage(language)
-    select.append(option)
-  }
-  select.addEventListener('change', () => updateCodeBlockLanguage(select.value))
-  return contextualGroup('code', 'Code Block', [select])
 }
 
 // Marks the active document as started, so the placeholder gives way.
@@ -732,6 +657,52 @@ function contextualCodeGroup(language) {
 function startEditing() {
   const doc = activeDoc()
   if (doc) doc.started = true
+}
+
+// Document zoom, in the sense Word means it: everything in the pane gets
+// closer, proportions preserved.
+//
+// Implemented with CSS `zoom` rather than `transform: scale`, because zoom takes
+// part in LAYOUT. Measured: at 1.5 the host went 720px -> 1080px wide and the
+// pane's scrollHeight grew 759 -> 848, so the content scrolls to reach. A
+// transform paints at a different size while the parent still lays out the
+// original, so a zoomed-in document would simply overflow with nothing to
+// scroll to. It also keeps text crisp, being a real layout at the new size
+// rather than a rasterised one.
+//
+// The control lives in the pane but OUTSIDE #editor-host, or it would zoom
+// itself and shrink as you zoomed out.
+const ZOOM_MIN = 0.5
+const ZOOM_MAX = 2
+const ZOOM_STEP = 0.1
+
+function setDocumentZoom(zoom) {
+  const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(zoom * 100) / 100))
+  state.settings.documentZoom = clamped
+  document.documentElement.style.setProperty('--doc-zoom', String(clamped))
+  refreshZoomControl()
+  persistSettings()
+}
+
+function refreshZoomControl() {
+  if (!els.zoomLevel) return
+  const zoom = state.settings.documentZoom ?? 1
+  els.zoomLevel.textContent = `${Math.round(zoom * 100)}%`
+  // A disabled control that still looks pressable is the honest-controls rule:
+  // at the ends of the range these do nothing, and should say so.
+  els.zoomControl?.querySelector('[data-zoom="out"]')?.toggleAttribute('disabled', zoom <= ZOOM_MIN)
+  els.zoomControl?.querySelector('[data-zoom="in"]')?.toggleAttribute('disabled', zoom >= ZOOM_MAX)
+}
+
+function wireZoomControl() {
+  els.zoomControl?.addEventListener('click', (event) => {
+    const action = event.target.closest('[data-zoom]')?.dataset.zoom
+    if (!action) return
+    const zoom = state.settings.documentZoom ?? 1
+    if (action === 'in') setDocumentZoom(zoom + ZOOM_STEP)
+    else if (action === 'out') setDocumentZoom(zoom - ZOOM_STEP)
+    else setDocumentZoom(1)
+  })
 }
 
 function activateRibbonTab(name) {
@@ -758,9 +729,9 @@ function suppressBrowserDefaults() {
   document.addEventListener('dragstart', (event) => {
     if (!event.target.closest('#wysiwyg, #raw')) event.preventDefault()
   })
-  // Wails delivers dropped files with real filesystem paths through a runtime
+  // The host delivers dropped files with real filesystem paths through a host
   // event; the DOM drop event above carries no usable path.
-  globalThis.runtime?.EventsOn?.('files:dropped', (paths) => handleDroppedFiles(paths))
+  globalThis.drmd?.events?.on?.('files:dropped', (paths) => handleDroppedFiles(paths))
 }
 
 async function persistCurrentEditorText() {
@@ -813,8 +784,15 @@ async function mountMarkdown(md) {
 let renderGeneration = 0
 let renderQueue = Promise.resolve()
 
-// Every WYSIWYG render runs the same three passes; keeping them together stops
+// Every WYSIWYG render runs the same two passes; keeping them together stops
 // a new call site from silently skipping one (imported images did exactly that).
+//
+// Code blocks used to be a third pass here, rewriting the editor's own nodes to
+// add highlighting and chrome. They are not any more: the editor's code-mirror
+// node view renders, highlights and edits them itself, and draws mermaid
+// diagrams through the preview hook in editor.js. The pass had to go, not just
+// become redundant — it replaced nodes the node view owns, so whichever ran
+// second won, and the block was left either inert or undecorated (#77).
 function renderWysiwyg(md) {
   const generation = ++renderGeneration
   const superseded = () => generation !== renderGeneration
@@ -824,8 +802,6 @@ function renderWysiwyg(md) {
     // rather than rebuild the editor twice for a result nobody will see.
     if (superseded()) return
     await wysiwyg.setMarkdown(els.wysiwyg, md)
-    if (superseded()) return
-    await highlightFormattedCodeBlocks(md)
     if (superseded()) return
     await resolveImageAssets(els.wysiwyg)
   })
@@ -1059,7 +1035,7 @@ async function runCommand(command) {
 // on. Anything else dropped on the window is left alone.
 const IMPORTABLE_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
 
-// handleDroppedFiles is driven by the Wails file-drop runtime event, which
+// handleDroppedFiles is driven by the host's file-drop event, which
 // supplies real filesystem paths (a browser File object has none).
 async function handleDroppedFiles(paths) {
   const images = (paths ?? []).filter((path) =>
@@ -1203,16 +1179,6 @@ function applyBlockStyle(style) {
 
 
 
-async function updateCodeBlockLanguage(language) {
-  await persistCurrentEditorText()
-  startEditing()
-  const doc = activeDoc()
-  const target = firstCodeFenceDescriptor(doc.markdown, { excludeMermaid: true })
-  doc.markdown = rewriteCodeFenceLanguage(doc.markdown, target?.index, language)
-  await mountMarkdown(doc.markdown)
-  markEdited(doc.markdown)
-}
-
 
 
 
@@ -1252,6 +1218,8 @@ function applyRuntimeSettings() {
   document.documentElement.style.setProperty('--mono', fontStack(state.settings.codeFont, 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace'))
   document.documentElement.style.setProperty('--document-font-size', `${state.settings.documentFontSize}px`)
   document.documentElement.style.setProperty('--editor-width', `${state.settings.editorWidth}ch`)
+  document.documentElement.style.setProperty('--doc-zoom', String(state.settings.documentZoom))
+  refreshZoomControl()
   document.documentElement.style.setProperty('--code-ligatures', state.settings.codeLigatures ? 'common-ligatures' : 'none')
   document.documentElement.style.setProperty('--code-font-features', state.settings.codeLigatures ? 'normal' : '"liga" 0, "calt" 0')
   document.body.classList.toggle('show-formatted-markers', state.settings.showFormattedMarkers)
@@ -1357,12 +1325,12 @@ function focusFirstControl(root) {
   root.querySelector('button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea:not([disabled])')?.focus()
 }
 
-function saveSettings() {
-  if (!settingsDraft) return
-  state.settings = { ...settingsDraft.settings }
-  state.rawOptions = { ...settingsDraft.rawOptions }
-  applyRuntimeSettings()
-  refreshRawOptionState()
+// Writes the current preferences through the bridge.
+//
+// Extracted from saveSettings so the zoom control can persist without going
+// through the settings modal's draft-and-close flow. A failure is contained but
+// recorded: a production build has no devtools, so console alone reaches nobody.
+function persistSettings() {
   const pending = bridge.savePreferences(preferencesEnvelope())
   if (pending?.catch) {
     pending.catch((err) => {
@@ -1370,6 +1338,15 @@ function saveSettings() {
       bridge.recordEvent('preferences.save-failed', { error: String(err?.message ?? err) })
     })
   }
+}
+
+function saveSettings() {
+  if (!settingsDraft) return
+  state.settings = { ...settingsDraft.settings }
+  state.rawOptions = { ...settingsDraft.rawOptions }
+  applyRuntimeSettings()
+  refreshRawOptionState()
+  persistSettings()
   closeSettings()
 }
 
@@ -1624,50 +1601,6 @@ async function refreshSplitPreview(md) {
   await resolveImageAssets(els.splitPreview)
 }
 
-async function highlightFormattedCodeBlocks(md) {
-  if (!md.includes('```')) return
-  const languages = fencedLanguages(md)
-  const blocks = await waitForFormattedCodeElements(languages.length)
-  for (const [index, code] of blocks.entries()) {
-    // The markdown wins. `waitForFormattedCodeElements` waits for the right
-    // NUMBER of code elements, not for their attributes to catch up, so the
-    // element's `language-*` class can still be the one from before the edit.
-    // Reading it first made a language change render the previous language
-    // roughly one time in six — markdown on disk is this project's source of
-    // truth, and it is what was just authoritatively changed.
-    const language = languages[index] || languageFromElement(code) || ''
-    const fenceIndex = index
-    if (normalizeLanguage(language) === 'mermaid') {
-      const source = code.textContent
-      const rendered = document.createElement('div')
-      rendered.className = 'mermaid-render'
-      rendered.dataset.language = 'mermaid'
-      rendered.dataset.diagramFenceIndex = String(fenceIndex)
-      rendered.innerHTML = await renderMermaidDiagram(source)
-      code.closest('pre')?.replaceWith(rendered)
-      continue
-    }
-    code.dataset.language = language
-    if (language) code.classList.add(`language-${normalizeLanguage(language)}`)
-    code.innerHTML = highlightCode(code.textContent, language)
-    wrapCodeBlock(code, language, fenceIndex)
-  }
-}
-
-async function waitForFormattedCodeElements(expectedCount) {
-  for (let attempt = 0; attempt < 12; attempt++) {
-    await new Promise((resolve) => requestAnimationFrame(resolve))
-    const blocks = Array.from(els.wysiwyg.querySelectorAll('pre code'))
-    if (blocks.length >= expectedCount) return blocks
-  }
-  return Array.from(els.wysiwyg.querySelectorAll('pre code'))
-}
-
-
-function languageFromElement(code) {
-  return Array.from(code.classList).find((name) => name.startsWith('language-'))?.replace(/^language-/, '') || ''
-}
-
 async function renderMarkdownPreview(md) {
   const nodes = []
   const lines = md.split('\n')
@@ -1750,14 +1683,6 @@ function codeBlockElement(source, language = '', fenceIndex = null) {
   return figure
 }
 
-function wrapCodeBlock(code, language = '', fenceIndex = null) {
-  const pre = code.closest('pre')
-  if (!pre || pre.closest('.code-block-shell')) return
-  const source = code.textContent
-  const shell = codeBlockElement(source, language, fenceIndex)
-  pre.replaceWith(shell)
-}
-
 function codeLanguageTool(fenceIndex, language) {
   const button = document.createElement('button')
   button.className = 'code-language-tool'
@@ -1795,14 +1720,6 @@ function inlineMarkdownNodes(text) {
 
 
 // Preset widths in CSS pixels; "Original" clears the width entirely.
-const IMAGE_WIDTH_PRESETS = [
-  ['', 'Original'],
-  ['200', 'Small (200)'],
-  ['400', 'Medium (400)'],
-  ['600', 'Large (600)'],
-  ['800', 'Extra large (800)'],
-]
-
 
 
 
@@ -2206,7 +2123,23 @@ function currentDiagramSource() {
 }
 
 async function pasteMarkdown() {
-  const text = await navigator.clipboard?.readText?.()
+  // The optional chaining guards clipboard ABSENCE. It does not guard refusal,
+  // and refusal is the common case: macOS denies a clipboard read that has no
+  // user gesture behind it, and the read then REJECTS. That rejection escaped
+  // this function, so the button did nothing at all — no paste, and not even
+  // the empty-clipboard fallback below.
+  //
+  // Invisible to the suite because the clipboard is stubbed there, so the real
+  // path had never run. Found by walking the UI in a native host.
+  let text
+  try {
+    text = await navigator.clipboard?.readText?.()
+  } catch (error) {
+    // Contained, but never silent. A user who clicks Paste and sees nothing
+    // has no way to tell a denied clipboard from a broken button.
+    bridge.recordEvent('clipboard.read-refused', { error: String(error?.message ?? error) })
+  }
+
   if (text) {
     await setMarkdown(text)
     markEdited(text)
@@ -2275,7 +2208,7 @@ function wire() {
   document.addEventListener('selectionchange', () => {
     currentEditorContext()
   })
-  els.btnNew.addEventListener('click', newDocument)
+
   els.emptyStart.addEventListener('click', () => {
     startEditing()
     syncActiveState()
@@ -2307,6 +2240,7 @@ function wire() {
   // leaving each new render surface to remember on its own.
   document.addEventListener('click', handleDocumentLinkClick)
   els.wysiwyg.addEventListener('click', handleRenderedBlockSelection)
+  wireZoomControl()
   document.querySelectorAll('[data-export-toggle]').forEach((button) => {
     button.addEventListener('click', toggleExportMenu)
   })
@@ -2316,9 +2250,16 @@ function wire() {
   document.querySelectorAll('[data-shortcuts-toggle]').forEach((button) => {
     button.addEventListener('click', () => openHelpPanel('shortcuts'))
   })
-  els.btnOpen.addEventListener('click', openDocument)
-  els.btnSave.addEventListener('click', save)
-  els.btnSaveAs.addEventListener('click', saveAs)
+  // Wired by attribute, not by id, because these actions now appear in more
+  // than one place: the File ribbon tab, the rail's New document button, and
+  // the empty state's Open a file. An id can only ever name one element, which
+  // is why the ribbon had no file operations at all -- Save and Save As existed
+  // as HIDDEN buttons outside it, present only to be a click target.
+  const fileActions = { new: newDocument, open: openDocument, save, 'save-as': saveAs }
+  document.querySelectorAll('[data-file-action]').forEach((button) => {
+    const run = fileActions[button.dataset.fileAction]
+    if (run) button.addEventListener('click', run)
+  })
   els.btnCloseTab.addEventListener('click', closeActiveTab)
   els.blockStyle.addEventListener('change', (e) => {
     applyBlockStyle(e.target.value)
@@ -2482,7 +2423,7 @@ async function consumeFilesHandedOverAtLaunch() {
     return
   }
   for (const path of pending) await openFileFromOS(path)
-  globalThis.runtime?.EventsOn?.('file:open', (path) => {
+  globalThis.drmd?.events?.on?.('file:open', (path) => {
     if (path) openFileFromOS(path)
   })
 }

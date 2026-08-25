@@ -7,7 +7,7 @@
 // first so both readings agree.
 //
 // This matters more here than in a browser tab: a javascript: URL runs in the
-// app's own origin, where the Wails bindings expose SaveDocument and
+// app's own origin, where the native bindings expose SaveDocument and
 // OpenRecentDocument with no path restriction. This product exists to open
 // ARBITRARY markdown, so every document is untrusted input.
 

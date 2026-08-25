@@ -8,13 +8,19 @@ import (
 // reportPanic records a panic, tells the user, and then lets it keep travelling.
 // Use it as the first deferred call in an operation: defer a.reportPanic("SaveDocument").
 //
-// It does not stop the panic, and that is the point. Wails recovers panics in
-// bound method dispatch already (internal/frontend/dispatcher: ProcessMessage
-// defers a recover unless DisablePanicRecovery is set, and this app does not set
-// it), so the process survives one either way. What it did not do was leave
-// anything a user could report: the dispatcher logs through the Wails logger,
-// which in a packaged build writes to a stream nobody reads, and the event trail
-// beside the preference store saw nothing at all.
+// It does not stop the panic, and that is the point. The host recovers panics in
+// bound-method dispatch and REJECTS the frontend's promise, so the process
+// survives one and the caller is told. What a recovery on its own does not do is
+// leave anything a user could report: in a packaged build a log line goes to a
+// stream nobody reads, and the event trail beside the preference store would see
+// nothing at all.
+//
+// This described the previous framework's dispatcher until v0.6.0, and the
+// behaviour it described
+// was worse: that recovery returned an EMPTY result, the runtime's Callback threw
+// on JSON.parse("") before reaching the pending callback, and no call timeout was
+// ever armed — so the frontend's await never settled (#61). The host this project
+// owns rejects instead, which the -gates mode proves on every run.
 //
 // Recovering here instead of re-panicking would be worse than the silence. The
 // deferred call runs during unwinding, so the bound method would return its zero

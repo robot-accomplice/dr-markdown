@@ -10,7 +10,7 @@ import (
 
 // Every Go method the frontend bridge calls must exist on App.
 //
-// The generated Wails binding is gitignored, so a stale one is invisible to
+// The generated binding is gitignored, so a stale one is invisible to
 // review: the copy on the build machine lacked SyncDocuments entirely, the
 // bridge optional-called it into a silent no-op, and Go was left with no
 // documents at all. This compares the two tracked sources instead, so a
@@ -35,10 +35,16 @@ func TestBridgeOnlyCallsMethodsAppProvides(t *testing.T) {
 		t.Fatal("found no exported App methods; the detector is broken, not the code")
 	}
 
-	// Names the bridge reaches for on the Wails object.
+	// Names the bridge reaches for on the native object — in CODE, not in prose.
+	//
+	// Comments are stripped first. A comment that mentions the call shape
+	// invents a method out of thin air, and one that contains a real call can
+	// hide a missing method behind a line nothing executes. This test caught its
+	// own documentation the day the shape was renamed.
 	var missing []string
 	seen := map[string]bool{}
-	for _, m := range regexp.MustCompile(`(?:wails\(\)|app)\??\.([A-Z]\w*)`).FindAllStringSubmatch(string(bridge), -1) {
+	code := stripJSComments(string(bridge))
+	for _, m := range regexp.MustCompile(`(?:native\(\)|app)\??\.([A-Z]\w*)`).FindAllStringSubmatch(code, -1) {
 		name := m[1]
 		if seen[name] {
 			continue
@@ -62,4 +68,15 @@ func keys(m map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// stripJSComments removes // line comments and /* */ blocks.
+//
+// Deliberately simple: it does not understand strings, so a comment marker
+// inside a string literal would be treated as a comment. bridge.js contains no
+// such string, and a detector that needs a JavaScript parser to answer "which
+// methods does this file call" has outgrown being a regex either way.
+func stripJSComments(src string) string {
+	src = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(src, "")
+	return regexp.MustCompile(`(?m)//.*$`).ReplaceAllString(src, "")
 }

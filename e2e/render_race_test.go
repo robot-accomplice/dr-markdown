@@ -7,10 +7,9 @@ import (
 
 // Two renders that overlap must not leave the surface showing the older one.
 //
-// renderWysiwyg runs three passes with an await between each: rebuild the
-// editor, highlight fenced code, resolve images. Nothing prevented a second
-// render starting while the first was suspended, so the older pass resumed
-// afterwards and stamped its state over the newer DOM.
+// renderWysiwyg runs passes with an await between each. Nothing prevented a
+// second render starting while the first was suspended, so the older pass
+// resumed afterwards and stamped its state over the newer DOM.
 //
 // Reproduced deterministically: starting two renders back to back left a
 // ONE-block document with TWO code shells, one carrying the language from the
@@ -19,6 +18,13 @@ import (
 // already correct while the DOM still showed the previous language — a user
 // changing a language twice in quick succession sees a stale highlight that
 // never corrects itself.
+//
+// The code-highlighting pass that produced those shells is gone — the editor's
+// own node view owns code blocks now (#77) — but the generation guard it
+// motivated still governs every remaining pass, and a superseded editor rebuild
+// would leave exactly the same stale surface. So the guarantee is unchanged and
+// only what it is observed through has moved: the editor's own code block and
+// its language button, rather than an app-injected shell.
 func TestOverlappingRendersLeaveTheNewestStateOnScreen(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()
@@ -32,15 +38,19 @@ func TestOverlappingRendersLeaveTheNewestStateOnScreen(t *testing.T) {
 			"  const first = window.__app.setMarkdown('```javascript\\nconst x = 1\\n```\\n')\n"+
 			"  const second = window.__app.setMarkdown('```python\\ny = 2\\n```\\n')\n"+
 			"  await Promise.all([first, second])\n"+
+			"  for (let i = 0; i < 60; i++) {\n"+
+			"    if (document.querySelector('#wysiwyg .milkdown-code-block .language-button')) break\n"+
+			"    await new Promise((r) => setTimeout(r, 20))\n"+
+			"  }\n"+
 			"  await new Promise((r) => setTimeout(r, 300))\n"+
 			"  return JSON.stringify({\n"+
-			"    shells: Array.from(document.querySelectorAll('#wysiwyg .code-block-shell')).map((s) => s.dataset.language)\n"+
+			"    blocks: Array.from(document.querySelectorAll('#wysiwyg .milkdown-code-block .language-button')).map((b) => b.textContent.trim())\n"+
 			"  })\n"+
 			"})()", &got)
 
-		if !strings.Contains(got, `"shells":["python"]`) {
+		if !strings.Contains(got, `"blocks":["python"]`) {
 			t.Fatalf("run %d: overlapping renders left stale or duplicated state: %s\n"+
-				"want exactly one shell, language python (the later render)", i, got)
+				"want exactly one code block, language python (the later render)", i, got)
 		}
 	}
 }
@@ -61,11 +71,11 @@ func TestAFailedRenderDoesNotWedgeLaterRenders(t *testing.T) {
 	var res string
 	evalJS(t, ctx, `(() => {
 		globalThis.__recorded = []
-		globalThis.go = { main: { App: {
+		globalThis.drmd = { native: {
 			LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 			RecordClientEvent: async (e) => { globalThis.__recorded.push(e) },
 			SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-		} } }
+		} } 
 		return 'ok'
 	})()`, &res)
 

@@ -17,10 +17,11 @@
           "id": "app",
           "name": "Desktop App",
           "nodeIds": [
-            "wails-desktop-app",
+            "desktop-app",
             "frontend-shell",
-            "wails-bridge",
-            "wails-go-api"
+            "native-bridge",
+            "go-api",
+            "host-boundary"
           ]
         },
         {
@@ -39,7 +40,7 @@
       "id": "dataflow",
       "name": "Document Dataflow",
       "type": "dataflow",
-      "summary": "Markdown content moves between local editor state, Wails bridge calls, native file operations, and editor adapters.",
+      "summary": "Markdown content moves between local editor state, native bridge calls, native file operations, and editor adapters.",
       "lanes": [
         {
           "id": "input",
@@ -55,14 +56,14 @@
             "frontend-shell",
             "wysiwyg-editor",
             "raw-editor",
-            "wails-bridge"
+            "native-bridge"
           ]
         },
         {
           "id": "native",
           "name": "Native Boundary",
           "nodeIds": [
-            "wails-go-api",
+            "go-api",
             "document-io"
           ]
         }
@@ -72,7 +73,7 @@
       "id": "sequence",
       "name": "Open and Save Sequence",
       "type": "sequence",
-      "summary": "Native document IO sequence through the frontend bridge and Wails-bound Go API.",
+      "summary": "Native document IO sequence through the frontend bridge and Go API.",
       "lanes": [
         {
           "id": "participants",
@@ -80,8 +81,8 @@
           "nodeIds": [
             "macos-user",
             "frontend-shell",
-            "wails-bridge",
-            "wails-go-api",
+            "native-bridge",
+            "go-api",
             "document-io"
           ]
         }
@@ -104,7 +105,7 @@
           "id": "system",
           "name": "System",
           "nodeIds": [
-            "wails-desktop-app"
+            "desktop-app"
           ]
         }
       ]
@@ -113,8 +114,8 @@
       "id": "c4-container",
       "name": "C4 Container",
       "type": "c4-container",
-      "summary": "The Wails application contains an embedded frontend shell, a Wails bridge/API boundary, editor adapters, and document IO.",
-      "scopeNodeId": "wails-desktop-app",
+      "summary": "The application contains an embedded frontend shell, a native bridge/API boundary, editor adapters, and document IO.",
+      "scopeNodeId": "desktop-app",
       "lanes": [
         {
           "id": "frontend",
@@ -127,7 +128,7 @@
           "id": "native",
           "name": "Go Native Layer",
           "nodeIds": [
-            "wails-go-api"
+            "go-api"
           ]
         }
       ]
@@ -143,7 +144,7 @@
           "id": "components",
           "name": "Components",
           "nodeIds": [
-            "wails-bridge",
+            "native-bridge",
             "wysiwyg-editor",
             "raw-editor",
             "markdown-domain"
@@ -155,15 +156,16 @@
       "id": "c4-component-native",
       "name": "Go API Components",
       "type": "c4-component",
-      "summary": "The Wails Go API delegates local file reads and atomic writes to Document IO, and holds no session state of its own \u2014 the open tabs, their dirty state and the on-disk baseline belong to the Document session.",
-      "scopeNodeId": "wails-go-api",
+      "summary": "The Go API delegates local file reads and atomic writes to Document IO, and holds no session state of its own \u2014 the open tabs, their dirty state and the on-disk baseline belong to the Document session. It reaches the operating system only through the Host boundary, which is what keeps the framework that supplies the window out of every other Go file.",
+      "scopeNodeId": "go-api",
       "lanes": [
         {
           "id": "components",
           "name": "Components",
           "nodeIds": [
             "document-io",
-            "document-session"
+            "document-session",
+            "host-boundary"
           ]
         }
       ]

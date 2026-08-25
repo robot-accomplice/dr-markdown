@@ -86,6 +86,28 @@ export function rewriteMermaidFenceSource(md, fenceIndex, source) {
   return md
 }
 
+// The body of every mermaid fence, in document order.
+//
+// The editor draws these before it mounts, so its code-block preview hook can
+// answer synchronously: that hook runs during the node view's render and the
+// node view mounts a COPY of what it is handed, so an element filled in later
+// is filled in after it has stopped being the one on screen.
+export function mermaidFenceSources(md) {
+  const sources = []
+  const lines = md.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^```\s*([A-Za-z0-9_+#.-]*)/)
+    if (!match) continue
+    let end = i + 1
+    while (end < lines.length && !/^```/.test(lines[end])) end++
+    if (normalizeLanguage(match[1] || 'text') === 'mermaid') {
+      sources.push(lines.slice(i + 1, end).join('\n'))
+    }
+    i = end
+  }
+  return sources
+}
+
 export function fencedLanguages(md) {
   return md.split('\n')
     .map((line) => line.match(/^```\s*([A-Za-z0-9_+#.-]+)/)?.[1] || '')

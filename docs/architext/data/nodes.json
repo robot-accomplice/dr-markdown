@@ -15,10 +15,10 @@
       ],
       "runtime": "macOS desktop session",
       "interfaces": [
-        "Wails application window"
+        "Application window"
       ],
       "dependencies": [
-        "wails-desktop-app"
+        "desktop-app"
       ],
       "dataHandled": [
         "markdown-document"
@@ -41,10 +41,10 @@
       ]
     },
     {
-      "id": "wails-desktop-app",
+      "id": "desktop-app",
       "type": "software-system",
       "name": "Dr. Markdown",
-      "summary": "A Wails-based macOS markdown editor with embedded frontend assets and Go-bound native file operations.",
+      "summary": "A macOS markdown editor with embedded frontend assets and Go-bound native file operations. As of v0.6.0 it depends on NO application framework: the window, the webview, the asset scheme and the native dialogs are AppKit and WebKit directly, behind hostPort.",
       "responsibilities": [
         "Host the local editor UI",
         "Expose native document dialogs and close guards",
@@ -56,14 +56,14 @@
         "app.go",
         "frontend/dist"
       ],
-      "runtime": "Wails v2 desktop application",
+      "runtime": "macOS application, AppKit and WebKit",
       "interfaces": [
         "macOS application window",
-        "window.go.main.App bindings"
+        "globalThis.drmd.native bindings"
       ],
       "dependencies": [
         "frontend-shell",
-        "wails-go-api"
+        "go-api"
       ],
       "dataHandled": [
         "markdown-document",
@@ -75,7 +75,7 @@
         "Native dialogs mediate open/save file paths"
       ],
       "observability": [
-        "Wails dev server output",
+        "Host verification modes (-gates, -walk, -menu, -doc)",
         "Window title dirty marker"
       ],
       "relatedFlows": [
@@ -85,14 +85,14 @@
         "switch-editor-mode"
       ],
       "relatedDecisions": [
-        "local-wails-app"
+        "own-the-host"
       ],
       "knownRisks": [
         "raw-syntax-layer-missing"
       ],
       "verification": [
         "go test ./... -count=1",
-        "wails dev"
+        "tools/build-macos.sh --universal"
       ]
     },
     {
@@ -141,7 +141,7 @@
         "RawEditor"
       ],
       "dependencies": [
-        "wails-bridge",
+        "native-bridge",
         "wysiwyg-editor",
         "raw-editor",
         "syntax-highlighter",
@@ -196,12 +196,12 @@
       ]
     },
     {
-      "id": "wails-bridge",
+      "id": "native-bridge",
       "type": "module",
-      "name": "Frontend Wails bridge",
-      "summary": "A small JavaScript adapter over Wails bindings that lets tests stub native document operations.",
+      "name": "Frontend native bridge",
+      "summary": "A small JavaScript adapter over native host bindings that lets tests stub native document operations.",
       "responsibilities": [
-        "Call Wails-bound Go methods lazily",
+        "Call the host-bound Go methods lazily",
         "Gracefully warn when native bindings are unavailable in browser tests",
         "Report every open tab with its own path via SyncDocuments, so no write target is inferred from ambient state"
       ],
@@ -210,7 +210,7 @@
         "frontend/dist/src/bridge.js",
         "app.go"
       ],
-      "runtime": "Embedded webview JavaScript and Wails binding layer",
+      "runtime": "Embedded webview JavaScript and the host binding layer",
       "interfaces": [
         "OpenDocument",
         "OpenRecentDocument",
@@ -224,7 +224,7 @@
         "SavePreferences"
       ],
       "dependencies": [
-        "wails-go-api"
+        "go-api"
       ],
       "dataHandled": [
         "markdown-document",
@@ -254,20 +254,19 @@
       ]
     },
     {
-      "id": "wails-go-api",
+      "id": "go-api",
       "type": "service",
-      "name": "Wails Go API",
-      "summary": "The Go object bound into Wails that adapts native dialogs, document IO, preference storage, dirty state, current content, close guard, font discovery, and title updates behind testable ports.",
+      "name": "the host Go API",
+      "summary": "The Go object the host binds to the frontend. It adapts document IO, preference storage, dirty state, current content, close guard, font discovery, and title updates behind testable ports, and reaches every operating-system operation through nativePort rather than naming a host itself.",
       "responsibilities": [
-        "Dispatch reveal-in-file-browser per platform (darwin/windows/linux) rather than assuming macOS",
-        "Forward Wails file-drop paths to the frontend",
+        "Ask nativePort for dialogs, reveal, drop subscription and title, naming no host framework",
         "Import images through the native picker or a dropped file path",
         "Inline document-relative image assets for rendering and export",
         "List installed font families for settings controls",
         "Load and save application preferences",
         "Open a specific recent document path without showing the picker",
         "Open and save markdown files through native dialogs",
-        "Override Wails message-dialog alert artwork with a transparent icon",
+        "Hold a launch-time file path until the frontend asks for it, because at launch there is no view to receive an event",
         "Record recent documents after open and save",
         "Reveal an existing image asset in the OS file browser",
         "Track dirty/current content for close protection",
@@ -277,11 +276,12 @@
       "sourcePaths": [
         "app.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the application process",
       "interfaces": [
-        "window.go.main.App"
+        "globalThis.drmd.native"
       ],
       "dependencies": [
+        "host-boundary",
         "document-io",
         "font-discovery",
         "preference-store",
@@ -343,7 +343,7 @@
         "internal/preferences/store.go",
         "internal/preferences/store_test.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the host application process",
       "interfaces": [
         "preferences.Store.Load",
         "preferences.Store.Save",
@@ -392,7 +392,7 @@
       "sourcePaths": [
         "internal/fonts/fonts.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the host application process",
       "interfaces": [
         "fonts.ListFamilies"
       ],
@@ -464,17 +464,20 @@
       "id": "wysiwyg-editor",
       "type": "module",
       "name": "WYSIWYG editor adapter",
-      "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown, suppresses initial normalization as a dirty edit, and runs the fidelity registry on the way in and out. It owns the editor lifecycle only; what is done to the user's bytes is owned by the fidelity domain.",
+      "summary": "A wrapper around vendored Milkdown Crepe that mounts formatted editable markdown, suppresses initial normalization as a dirty edit, and runs the fidelity registry on the way in and out. It owns the editor lifecycle only; what is done to the user's bytes is owned by the fidelity domain. Fenced code blocks belong to the vendored editor's own code-block node view, which renders, highlights and edits them; this adapter supplies that node view with the diagram preview for mermaid fences.",
       "responsibilities": [
         "Create and rebuild the formatted editor",
         "Emit user edits to the frontend shell",
         "Serialize markdown from Crepe",
-        "Run the fidelity registry: capture preservations from the document on build, apply serializer policies before the serializer runs, and restore preservations on serialize"
+        "Run the fidelity registry: capture preservations from the document on build, apply serializer policies before the serializer runs, and restore preservations on serialize",
+        "Configure the editor's code-block node view, supplying rendered mermaid diagrams as block previews",
+        "Draw every mermaid diagram in the document before the editor mounts, so a block preview is answered synchronously"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
         "frontend/dist/src/editor.js",
         "frontend/dist/src/fidelity/index.js",
+        "frontend/dist/src/markdown/fences.js",
         "frontend/dist/vendor/crepe.bundle.mjs"
       ],
       "runtime": "Embedded webview JavaScript",
@@ -573,10 +576,11 @@
       "id": "syntax-highlighter",
       "type": "module",
       "name": "Syntax highlighter adapter",
-      "summary": "A frontend adapter over vendored Highlight.js that normalizes language aliases and highlights markdown source plus fenced code blocks.",
+      "summary": "A frontend adapter over vendored Highlight.js that normalizes language aliases and highlights markdown source plus fenced code blocks. It does not highlight code inside the formatted editor: that surface belongs to the vendored editor's code-block node view, which highlights through CodeMirror, and running a second highlighter over it replaced nodes the node view owns and left code blocks uneditable (#77).",
       "responsibilities": [
         "Highlight markdown source for Raw and Split source overlays",
-        "Highlight fenced code blocks by declared backtick language",
+        "Highlight fenced code blocks by declared backtick language for the preview and print surfaces",
+        "Normalize language aliases so a fence's info string and a highlighter language id agree",
         "Escape unsupported languages without mutating markdown"
       ],
       "owner": "Project maintainers",
@@ -621,7 +625,7 @@
       "id": "diagram-renderer",
       "type": "module",
       "name": "Mermaid diagram renderer",
-      "summary": "A frontend adapter over vendored Mermaid that renders Mermaid source into SVG for assistant previews and markdown preview surfaces.",
+      "summary": "A frontend adapter over vendored Mermaid that renders Mermaid source into SVG for assistant previews, markdown preview surfaces, and the formatted editor's code-block previews.",
       "responsibilities": [
         "Initialize the vendored Mermaid runtime once",
         "Render Mermaid fenced-block source into SVG",
@@ -632,7 +636,8 @@
       "sourcePaths": [
         "frontend/dist/src/mermaid-renderer.js",
         "frontend/dist/vendor/mermaid.min.js",
-        "frontend/dist/src/app.js"
+        "frontend/dist/src/app.js",
+        "frontend/dist/src/editor.js"
       ],
       "runtime": "Embedded webview JavaScript",
       "interfaces": [
@@ -667,10 +672,11 @@
       "id": "vendored-editor-assets",
       "type": "module",
       "name": "Vendored editor assets",
-      "summary": "Bundled Crepe, Highlight.js, Mermaid, CodeMirror legacy bundle, and editor theme assets served from embedded frontend files.",
+      "summary": "Bundled Crepe, Highlight.js, Mermaid and editor theme assets served from embedded frontend files. The Crepe bundle is patched after download and so matches no upstream artifact, which is why tools/vendor-digests.txt is the only durable record of the bytes shipped. A standalone CodeMirror bundle was vendored here until 2026-08-10 and imported by nothing; it was removed once measurement showed it could not supply what the Crepe bundle is missing either.",
       "responsibilities": [
         "Provide editor, syntax-highlighting, and Mermaid runtime bundles without npm install at runtime",
-        "Provide theme CSS loaded by the WYSIWYG adapter"
+        "Provide theme CSS loaded by the WYSIWYG adapter",
+        "Patch the Crepe bundle's undefined CodeMirror basicSetup extension, which esm.sh leaves undefined because it resolves the bare specifier `codemirror` to v5; unpatched, every code block throws on mount and can never be edited (#77)"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -728,7 +734,7 @@
       "sourcePaths": [
         "internal/assets/manager.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the host application process",
       "interfaces": [
         "ImportForDocument",
         "LoadForDocument"
@@ -780,7 +786,7 @@
       "sourcePaths": [
         "internal/atomicfile/atomicfile.go"
       ],
-      "runtime": "Go inside Wails application process",
+      "runtime": "Go inside the host application process",
       "interfaces": [
         "Write"
       ],
@@ -920,6 +926,71 @@
         "TestLinkSafety",
         "TestDocumentTextConventions",
         "TestCommandTransforms"
+      ]
+    },
+    {
+      "id": "host-boundary",
+      "type": "module",
+      "name": "macOS host",
+      "summary": "The window, the webview and every operating-system operation, written against AppKit and WebKit directly. No framework sits between the application and the OS. hostPort is what the application asks; host_darwin.go and host_darwin.m are what answers on macOS, and host_unsupported.go refuses elsewhere so the package still compiles where CI runs.",
+      "responsibilities": [
+        "Open the window and run the AppKit event loop",
+        "Serve the embedded frontend over a custom URL scheme, in-process, with no socket",
+        "Install the menu bar \u2014 WITHOUT it a Cocoa app has no Cmd-C, Cmd-V, Cmd-X, Cmd-A or Cmd-Q",
+        "Dispatch bound calls with types generated from app.go, and REJECT the promise when one panics",
+        "Answer dialogs asynchronously over a channel, so a modal never pins a thread and a context can cancel",
+        "Deliver operating-system file drops inward and frontend events outward",
+        "Give every goroutine an exit through a host lifetime signal"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "host.go",
+        "host_darwin.go",
+        "host_darwin.m",
+        "host_lifecycle_darwin.go",
+        "host_unsupported.go",
+        "bound_generated.go",
+        "main.go"
+      ],
+      "runtime": "Go inside the host application process",
+      "interfaces": [
+        "hostPort.Native",
+        "hostPort.Run",
+        "hostConfig",
+        "globalThis.drmd.native"
+      ],
+      "dependencies": [],
+      "dataHandled": [
+        "local-file-path",
+        "markdown-document"
+      ],
+      "security": [
+        "The host is the trust boundary between the operating system and the application: dropped paths, OS-routed file-open paths and dialog results all enter here and are untrusted until the application checks them",
+        "OpenExternalURL passes a URL the application already re-checked in Go; the boundary deliberately does not re-decide scheme safety, so there is exactly one place that does",
+        "Assets reach the view through the host's in-process URL scheme handler, not a TCP listener \u2014 the application opens no socket"
+      ],
+      "observability": [
+        "TestOnlyTheHostFilesReachTheOperatingSystem \u2014 only the host files import \"C\"",
+        "-gates: boot, bound call, panic rejection, events, drop, document round trip",
+        "-walk: 40 checks across the whole UI surface",
+        "-menu: the menu bar exists and steals no editor shortcut"
+      ],
+      "relatedFlows": [
+        "app-boot",
+        "open-save-document"
+      ],
+      "relatedDecisions": [
+        "local-wails-app",
+        "native-file-boundary"
+      ],
+      "knownRisks": [
+        "no-recorded-state-for-rca"
+      ],
+      "verification": [
+        "TestOnlyTheHostFilesReachTheOperatingSystem",
+        "TestTheBoundaryDetectorActuallyReadsGoFiles",
+        "TestGeneratedDispatchMatchesAppGo",
+        "TestFileDropSubscriptionAndEmissionAreSeparate"
       ]
     }
   ]

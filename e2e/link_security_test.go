@@ -18,13 +18,13 @@ func TestDocumentLinksOpenExternallyAndNeverNavigateTheAppWindow(t *testing.T) {
 
 	var res string
 	evalJS(t, ctx, `globalThis.__opened = null;
-	globalThis.go = { main: { App: {
+	globalThis.drmd = { native: {
 		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
 		SyncDocuments: async () => {},
 		SetDirty: async () => {},
 		UpdateContent: async () => {},
 		OpenExternalURL: async (u) => { globalThis.__opened = u }
-	} } }; 'ok'`, &res)
+	} } ; 'ok'`, &res)
 
 	var outcome string
 	evalJS(t, ctx, `(async () => {
@@ -53,7 +53,7 @@ func TestDocumentLinksOpenExternallyAndNeverNavigateTheAppWindow(t *testing.T) {
 // has no scheme by a regex's reading and `javascript:` by the parser's.
 //
 // This matters more here than in a browser tab. A javascript: URL runs in the
-// app's own origin, where window.go.main.App exposes SaveDocument and
+// app's own origin, where globalThis.drmd.native exposes SaveDocument and
 // OpenRecentDocument with no path restriction — so a document that talks its
 // way past this check gets arbitrary file read and write on the user's machine.
 // This product exists to open ARBITRARY markdown, so every document is

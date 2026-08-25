@@ -109,13 +109,31 @@
       "summary": "Lift open, save, resolve-unsaved and asset import out of app.go (747 lines) into use-case types, leaving App as a thin adapter. The injected ports already exist and do not change. Sequenced last deliberately: dependency inversion is already in place, so this addresses comprehension rather than correctness, and deferring it costs clarity not safety."
     },
     {
+      "id": "host-boundary",
+      "kind": "chore",
+      "section": "Host Portability And Exit Path",
+      "title": "Draw the host boundary before choosing a replacement",
+      "status": "planned",
+      "priority": "high",
+      "summary": "Phase 0 of getting off Wails, approved 2026-08-10; design at docs/superpowers/specs/2026-08-10-host-boundary-design.md. One hostPort defined from what the application needs rather than what Wails offers, composing the existing nativePort rather than re-cutting 11 tested operations. tools/genbridge reads app.go via go/ast and emits a tracked bridge module, ending calls by name string and deleting three regex-based drift tests that generation makes impossible; the parser choice is a correctness requirement, since one of those tests matched 17 of 18 methods because UpdateContent is written on one line. Changes no runtime behaviour and ships an identical app, so every pre-existing test must stay green and unchanged. Its deliverable is a measurement: the host-specific surface reduced to main.go and transport.js and counted, so the choice between Wails v3, owning the host, and a macOS-native shell is made from evidence rather than estimate. Does not fix #61 or #57 and does not touch packaging, because all three need a host that exposes more than Wails v2 does."
+    },
+    {
       "id": "wails-exit-path",
       "kind": "chore",
       "section": "Host Portability And Exit Path",
       "title": "An exit path from Wails",
       "status": "planned",
+      "priority": "critical",
+      "summary": "Replace Wails with a hand-written host. Measured 2026-08-10: a working macOS host is 486 lines including its own test harness, against 241 for the boundary it replaces and 5,116 for Wails' macOS layer, with a panicking bound call REJECTING rather than hanging (#61). Raised to critical by a maintainer release gate: no further release ships until every vestige of Wails is eliminated. Two facts govern sequencing. The host is ONE CUTOVER, not a migration — bridge.js degrades when the host is absent but throws when it is partial, so no host can implement a subset. And packaging is the unmeasured item on the critical path: tools/build-macos.sh delegates bundle assembly, Info.plist templating, icon embedding and DMG creation to `wails build`, none of which the spike covered. Version identity must move off wails.json, with its drift gate, before that file is deleted. Full inventory: docs/decisions/2026-08-10-host-replacement.md."
+    },
+    {
+      "id": "default-markdown-handler",
+      "kind": "feature",
+      "section": "Desktop Integration",
+      "title": "Offer to become the default .md application",
+      "status": "planned",
       "priority": "medium",
-      "summary": "Reduce the app to a host-swappable shell and choose a replacement. Wails is imported by only two files and every native operation already sits behind nativePort in the wailsNative adapter, so the remaining coupling is main.go's wails.Run bootstrap, the reflection binding that turns Bind: []interface{}{app} into a window.go.main.App surface bridge.js calls by name string, and tools/build-macos.sh delegating DMG packaging to wails build. Two open defects are host limitations rather than app defects: no application menu (#57) and a panicking bound call whose frontend promise never settles. The vendored Milkdown Crepe frontend needs a webview, and the no-Node-toolchain rule excludes Electron, so candidates are webview hosts."
+      "summary": "Offer once, on first launch, to make Dr. Markdown the default application for .md and .markdown. The bundle already declares CFBundleDocumentTypes and UTImportedTypeDeclarations, so the app appears under Open With today and simply never becomes the default; no code calls Launch Services. Asked at first launch rather than \"during install\" because there is no installer -- distribution is a DMG with a drag-to-/Applications symlink. Claims the UTI net.daringfireball.markdown, covering both extensions the bundle advertises, via LSSetDefaultRoleHandlerForContentType: the NSWorkspace equivalent is macOS 12+ and the deployment target is 11.0, so it would need a version gate plus this call as the fallback anyway. Three guards: already the default, already answered, and running from a mounted disk image -- the last because setting the handler to a bundle under /Volumes points every future double-click at a volume that will be unmounted. Decision recorded in docs/decisions/2026-08-25-default-markdown-handler.md, with one question left open for the implementer to answer by driving the built app: whether recent macOS shows its own consent dialog, which would make our prompt the second one."
     }
   ]
 }

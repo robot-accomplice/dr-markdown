@@ -2,19 +2,20 @@
   "decisions": [
     {
       "id": "local-wails-app",
-      "status": "accepted",
-      "title": "Ship Dr. Markdown as a local Wails desktop app",
+      "status": "superseded",
+      "title": "Ship Dr. Markdown as a local Wails desktop app (superseded by own-the-host)",
       "context": "The application is targeted at macOS and embeds frontend assets through Wails rather than serving a website.",
       "decision": "Use Wails to host the editor UI locally and bind native Go document operations into the frontend.",
       "consequences": [
         "The frontend can remain static assets embedded in the binary",
         "Native file dialogs and close guards live in Go",
-        "Browser-only behavior must be suppressed or replaced where it leaks into the desktop UX"
+        "Browser-only behavior must be suppressed or replaced where it leaks into the desktop UX",
+        "SUPERSEDED 2026-08-10 by own-the-host. Kept because the reasoning still holds \u2014 a local desktop app with embedded assets and native Go file operations \u2014 and only the framework underneath changed."
       ],
       "relatedNodes": [
-        "wails-desktop-app",
+        "desktop-app",
         "frontend-shell",
-        "wails-go-api"
+        "go-api"
       ],
       "relatedFlows": [
         "app-boot",
@@ -24,9 +25,9 @@
     {
       "id": "native-file-boundary",
       "status": "accepted",
-      "title": "Keep filesystem access behind the Wails Go API",
+      "title": "Keep filesystem access behind the Go API",
       "context": "The frontend shell runs in a webview and should not directly read or write local files.",
-      "decision": "Route open, save, save-as, dirty-state, and unsaved-change guard behavior through Wails-bound Go methods.",
+      "decision": "Route open, save, save-as, dirty-state, and unsaved-change guard behavior through the host-bound Go methods.",
       "consequences": [
         "E2E tests can stub bridge methods without native dialogs",
         "Document IO stays testable as a Go package",
@@ -34,8 +35,8 @@
       ],
       "relatedNodes": [
         "frontend-shell",
-        "wails-bridge",
-        "wails-go-api",
+        "native-bridge",
+        "go-api",
         "document-io"
       ],
       "relatedFlows": [
@@ -134,7 +135,7 @@
       ],
       "relatedNodes": [
         "image-asset-manager",
-        "wails-go-api"
+        "go-api"
       ],
       "relatedFlows": [
         "import-image-asset"
@@ -220,11 +221,61 @@
       "relatedNodes": [
         "wysiwyg-editor",
         "frontend-shell",
-        "wails-go-api"
+        "go-api"
       ],
       "relatedFlows": [
         "edit-markdown-document",
         "open-save-document"
+      ]
+    },
+    {
+      "id": "own-the-host",
+      "status": "accepted",
+      "title": "Own the macOS host instead of depending on an application framework",
+      "context": "Wails met every stated requirement, and was rejected on the relationship rather than on capability. Three maintainer objections: no control over the internals of one of the largest pieces of the application; dependence on an upstream bug-resolution schedule, which issue #61 demonstrated concretely \u2014 a panicking bound call left the frontend promise unsettled forever, with no downstream fix available and none in v2.14.0; and a 151-module trust surface. A fourth objection, that the framework involved TCP between Go and the frontend, was CHECKED AND REFUTED and is recorded so it is not derived again: both net.Listen sites in v3/pkg sit behind the server and mcp build tags.",
+      "decision": "Write the macOS host against AppKit and WebKit directly, behind the hostPort boundary already established. Measured before committing: a working host is the size of the boundary it replaces, not the size of the framework \u2014 Wails' macOS layer is 5,116 lines, but it buys a tray, custom chrome and a dev server this application does not use.",
+      "consequences": [
+        "No third-party dependency remains in the running application",
+        "A panicking bound call REJECTS the frontend promise, closing #61 with no upstream involved",
+        "The menu bar became ours to build, and its absence removed Cmd-C, Cmd-V, Cmd-X, Cmd-A and Cmd-Q until it was found",
+        "Bound-method dispatch is generated from app.go, so a renamed method is a compile error rather than a silent no-op",
+        "Windows and Linux have no host at all; neither was ever built under the framework either",
+        "Host verification drives a native window, so it cannot run in CI and is a manual step on a Mac"
+      ],
+      "relatedNodes": [
+        "desktop-app",
+        "host-boundary",
+        "go-api"
+      ],
+      "relatedFlows": [
+        "app-boot"
+      ]
+    },
+    {
+      "id": "editor-owns-code-blocks",
+      "status": "accepted",
+      "title": "Let the vendored editor own fenced code blocks",
+      "context": "Code blocks could not be edited in Formatted mode, which contradicts the rule the editor exists to serve, and they shipped that way in v0.5.1. The cause was measured rather than inferred: esm.sh resolves the bare specifier `codemirror` inside the Crepe bundle to CodeMirror 5, whose namespace has no `basicSetup` export, so the code-block node view built its CodeMirror extension set with an undefined entry and EditorState.create threw. The throw happened inside the IntersectionObserver callback that upgrades a block, after the node view had already set `initialized = true`, so it was never retried and every block stayed on a placeholder inside a `contenteditable=\"false\"` wrapper. The app had compensated by drawing its own static chrome and Highlight.js output over that placeholder, which made the block look deliberate.",
+      "decision": "Patch the vendored bundle to drop the undefined extension, and let the editor's own code-block node view render, highlight and edit fenced blocks. Remove the app's in-editor code-block pass entirely. Supply mermaid diagrams to that node view through its preview hook, so a diagram renders in place and its source stays editable behind a toggle. Keep the app's shell for the preview and print surfaces, where nothing else draws the block.",
+      "consequences": [
+        "Code blocks are editable in Formatted mode, verified by a gate that types real keystrokes and requires them in the document's markdown rather than asserting an element exists.",
+        "Mermaid diagrams became editable in place for the first time; previously they rendered but could only be changed by leaving Formatted mode, which was the same rule violation in a different construct.",
+        "A whole class of race disappeared. The app's pass and the node view both mutated the same DOM, so whichever ran second won, and the block was left either inert or undecorated.",
+        "The language picker, copy button and language list are the editor's, so the app's hover language tool and right-click language menu were removed. The contextual controls bar remains a second route to the same change.",
+        "KNOWN DEVIATION: the editor's picker writes a language's DISPLAY name into the fence, so choosing Python through it produces \"```Python\" where every other route in this app writes \"```python\". Markdown treats info strings case-insensitively so nothing renders differently, but it is inconsistent with the normalization this project applies everywhere else. Asserted in e2e/code_block_language_test.go so it cannot drift unnoticed.",
+        "Wiring the separately vendored codemirror.bundle.mjs was measured and REFUTED as a repair: it puts a second copy of @codemirror/state on the page and CodeMirror rejects the result with \"Unrecognized extension value in extension set\". That bundle had been fetched and digest-pinned while imported by nothing, and was deleted once it was shown to have no possible use.",
+        "The mis-resolution cannot be fixed at the fetch either. @milkdown/crepe declares `codemirror: ^6.0.1`, so this is an esm.sh bug; ?deps= and ?alias= are ignored because the es2022 path is a prebuilt artifact, and jsdelivr's +esm build resolves correctly but emits 46 external imports, which no self-contained CSP-'self' asset server can load.",
+        "What the dropped extension carried, measured in the built app rather than read off basicSetup's feature list: line numbers and the fold gutter, bracket auto-closing, and autocompletion are gone. Undo is NOT gone — the node view forwards CodeMirror updates into ProseMirror transactions, so the document's own history answers Cmd-Z inside a code block. Multi-line editing, highlighting and the default keymap all work."
+      ],
+      "relatedNodes": [
+        "wysiwyg-editor",
+        "syntax-highlighter",
+        "diagram-renderer",
+        "vendored-editor-assets"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
       ]
     }
   ]
