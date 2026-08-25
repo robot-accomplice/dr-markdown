@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build-macos.sh — production macOS packaging for Dr. Markdown.
 #
-# Replaces `wails build`, which this project no longer depends on. That command
+# Replaces the framework build command this project no longer depends on. That
 # did five things and only one of them was interesting: it compiled the binary,
 # assembled a .app bundle, substituted a version into Info.plist, converted an
 # icon, and ad-hoc signed the result. All five are standard macOS tooling, and

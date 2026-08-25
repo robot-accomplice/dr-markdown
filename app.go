@@ -34,7 +34,7 @@ var versionFile string
 // the packaging script reads it, and it outlives whatever builds the bundle.
 var appVersion = strings.TrimSpace(versionFile)
 
-// fileOpenEvent is the Wails event carrying a path macOS asked us to open while
+// fileOpenEvent is the host event carrying a path macOS asked us to open while
 // the app was already running. The frontend subscribes to it by this name.
 const fileOpenEvent = "file:open"
 
@@ -51,7 +51,7 @@ var iconFreeMessageDialogPNG = []byte{
 	0xae, 0x42, 0x60, 0x82,
 }
 
-// App is the Wails-bound API exposed to the frontend as window.go.main.App.
+// App is the host-bound API exposed to the frontend as globalThis.drmd.native.
 type App struct {
 	ctx context.Context
 
@@ -250,7 +250,7 @@ func (a *App) SaveDocumentAs(content string) (string, error) {
 
 // OpenDocument is one editor tab as the frontend sees it. Go does not infer
 // which document is current; the frontend names it on every push.
-// Aliased rather than redefined so the Wails binding signature and the JSON
+// Aliased rather than redefined so the binding signature and the JSON
 // wire format are byte-identical to before the session extraction — the json
 // tags are the contract with the webview.
 type OpenDocument = session.Document

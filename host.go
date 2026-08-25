@@ -5,6 +5,12 @@ import (
 	"io/fs"
 )
 
+// The framework this host replaced is named nowhere in this codebase, on
+// purpose: a reader meeting its name in a comment cannot tell whether it is
+// still present. What it did, what it cost, and the four objections that drove
+// it out are recorded in docs/decisions/2026-08-10-host-replacement.md, and the
+// release that removed it is docs/releases/v0.6.0-abort.md.
+//
 // hostPort is what the application needs from whatever runs it: a window, a way
 // to serve its assets, lifecycle callbacks, and the native operations.
 //
@@ -32,7 +38,8 @@ type hostConfig struct {
 	Width  int
 	Height int
 	// Assets is the embedded frontend. How it reaches the view is the host's
-	// business: Wails serves it through a custom URL scheme handler in-process,
+	// business: the framework this replaced served it through a custom URL scheme
+	// handler in-process,
 	// and nothing here assumes that.
 	Assets        fs.FS
 	OnStartup     func(context.Context)
