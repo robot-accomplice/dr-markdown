@@ -19,6 +19,13 @@ on:
 permissions:
   contents: read
 
+# A second push to the same ref makes the first run's answer irrelevant, and the
+# e2e suite launches a browser per test — the older run is both wrong and
+# expensive.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -61,11 +68,23 @@ jobs:
       - name: go test
         run: go test ./... -count=1
 
+      # Recursive, deliberately. This globbed `frontend/dist/src/*.js` and so
+      # checked 6 files while missing 13 — everything under src/markdown/ and
+      # src/fidelity/, which is the entire markdown domain and the whole
+      # byte-fidelity layer. A syntax error in either merged green.
       - name: Check frontend syntax
         run: |
-          for f in frontend/dist/src/*.js; do
+          count=0
+          while IFS= read -r f; do
             node --check "$f" || exit 1
-          done
+            count=$((count + 1))
+          done < <(find frontend/dist/src -name '*.js' -not -path '*/vendor/*')
+          echo "checked $count frontend modules"
+          if [ "$count" -lt 15 ]; then
+            echo "::error::Only $count modules checked; the tree has more than that."
+            echo "::error::The find above stopped matching, so this gate is not covering the frontend."
+            exit 1
+          fi
 
       # Vendored bundles are ~6 MB of third-party JavaScript fetched over the
       # network by tools/vendor.sh. Verifying the committed bytes against the
@@ -80,3 +99,73 @@ jobs:
   # defining constraint is not having one. It stays a maintainer-run gate,
   # documented in CONTRIBUTING, and this comment exists so that omission is a
   # recorded decision rather than something that quietly fell off the list.
+
+  # The shipping product, on the only platform it ships to.
+  #
+  # This job exists because the ubuntu job above compiles NONE of the
+  # application's host layer. Every file implementing the window, the webview,
+  # the asset scheme, the menu bar and the native dialogs is `*_darwin.go`, and
+  # build constraints exclude all of them on Linux. Demonstrated rather than
+  # assumed: inserting `var x int = "obviously wrong"` into host_darwin.go leaves
+  # `GOOS=linux go build ./...` exiting 0, while GOOS=darwin fails. A syntax
+  # error in the thing users actually run merged green.
+  #
+  # cgo against Cocoa and WebKit means this cannot be cross-compiled from the
+  # Linux runner; it needs a real macOS image. They are free for public
+  # repositories.
+  darwin:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Compiles the cgo host: Cocoa, WebKit, the Objective-C preamble.
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      # DRMD_SKIP_E2E is set HERE and nowhere else. The e2e suite is browser
+      # coverage of the frontend, it runs in full on the ubuntu job, and macOS
+      # images carry no Chrome — running it here would either fail on a missing
+      # binary or double a ten-minute suite for no new information. What this
+      # job is for is the Go code Linux cannot see.
+      - name: go test
+        env:
+          DRMD_SKIP_E2E: "1"
+        run: go test ./... -count=1
+
+      # Packaging is production code and was verified only by hand. It compiles
+      # the binary, assembles the bundle, substitutes VERSION into Info.plist,
+      # generates the iconset through tools/genicon and converts it with
+      # iconutil, ad-hoc signs, and builds a DMG. Every one of those can break
+      # without a single test noticing.
+      - name: Package the app
+        run: ./tools/build-macos.sh
+
+      # The bundle is only real if the OS agrees it is. `codesign --verify`
+      # already runs inside the script; this checks the pieces a broken icon or
+      # plist substitution would leave malformed, which signing does not.
+      - name: Verify the bundle
+        run: |
+          APP=build/bin/dr-markdown.app
+          test -d "$APP" || { echo "::error::no .app produced"; exit 1; }
+          test -f "$APP/Contents/Info.plist" || { echo "::error::no Info.plist"; exit 1; }
+          test -f "$APP/Contents/Resources/iconfile.icns" || { echo "::error::no icon"; exit 1; }
+          test -f build/dr-markdown.dmg || { echo "::error::no DMG"; exit 1; }
+          plutil -lint "$APP/Contents/Info.plist"
+          version=$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")
+          expected=$(cat VERSION)
+          if [ "$version" != "$expected" ]; then
+            echo "::error::Info.plist says $version but VERSION says $expected"
+            exit 1
+          fi
+          # An .icns that iconutil accepted can still be empty of the sizes the
+          # Dock needs; the icon is generated per-size and that is worth checking.
+          sips -g pixelWidth "$APP/Contents/Resources/iconfile.icns" >/dev/null
+          echo "bundle ok: version $version"
