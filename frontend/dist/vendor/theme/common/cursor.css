@@ -1,5 +1,5 @@
-@import '@milkdown/kit/prose/gapcursor/style/gapcursor.css';
-@import 'prosemirror-virtual-cursor/style/virtual-cursor.css';
+@import './pm-gapcursor.css';
+@import './pm-virtual-cursor.css';
 
 .milkdown .crepe-drop-cursor {
     background-color: color-mix(
