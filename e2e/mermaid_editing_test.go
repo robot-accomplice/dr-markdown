@@ -4,8 +4,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/chromedp/chromedp"
 )
 
 // Mermaid fences render as diagrams in Formatted mode. Before the code-mirror
@@ -38,22 +36,14 @@ func TestMermaidRendersAndStaysEditableInFormattedMode(t *testing.T) {
 		t.Fatal("a rendered mermaid diagram should offer a way back to its source: " +
 			"a diagram that cannot be edited in place is the #77 defect in another construct")
 	}
-	if err := chromedp.Run(ctx,
-		chromedp.Click("#wysiwyg .milkdown-code-block .preview-toggle-button", chromedp.ByQuery),
-	); err != nil {
-		t.Fatalf("toggling a mermaid diagram back to source: %v", err)
-	}
+	clickWhenVisible(t, ctx, "#wysiwyg .milkdown-code-block .preview-toggle-button")
 	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .cm-content[contenteditable="true"]') !== null`) {
 		t.Fatal("toggling a mermaid diagram should expose an editable source surface")
 	}
 
 	const typed = "  B --> C[Done]"
-	if err := chromedp.Run(ctx,
-		chromedp.Click("#wysiwyg .cm-content", chromedp.ByQuery),
-		chromedp.SendKeys("#wysiwyg .cm-content", "\n"+typed, chromedp.ByQuery),
-	); err != nil {
-		t.Fatalf("typing into a mermaid source: %v", err)
-	}
+	clickWhenVisible(t, ctx, "#wysiwyg .cm-content")
+	sendKeysTo(t, ctx, "#wysiwyg .cm-content", "\n"+typed)
 
 	var got string
 	evalJS(t, ctx, `(async () => {

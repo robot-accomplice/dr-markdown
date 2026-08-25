@@ -4,8 +4,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/chromedp/chromedp"
 )
 
 // WYSIWYG is the defining purpose of this editor: everything that renders in
@@ -41,12 +39,8 @@ func TestCodeBlockBodyIsEditableInFormattedMode(t *testing.T) {
 	}
 
 	const typed = "ZZTOP"
-	if err := chromedp.Run(ctx,
-		chromedp.Click("#wysiwyg .cm-content", chromedp.ByQuery),
-		chromedp.SendKeys("#wysiwyg .cm-content", typed, chromedp.ByQuery),
-	); err != nil {
-		t.Fatalf("typing into the code block: %v", err)
-	}
+	clickWhenVisible(t, ctx, "#wysiwyg .cm-content")
+	sendKeysTo(t, ctx, "#wysiwyg .cm-content", typed)
 
 	var got string
 	evalJS(t, ctx, `(async () => {
