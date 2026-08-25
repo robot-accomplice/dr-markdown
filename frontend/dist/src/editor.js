@@ -55,7 +55,37 @@ function diagramElement(html) {
   host.className = 'mermaid-render'
   host.dataset.language = 'mermaid'
   host.innerHTML = html
+  host.append(diagramEditButton())
   return host
+}
+
+// The way back to a diagram's assistant, on the diagram itself.
+//
+// This used to live in a floating bar parked over the top of the document,
+// which appeared whenever the document CONTAINED a diagram — caret nowhere near
+// it — and was removed for that reason. A per-block action belongs on its
+// block.
+//
+// It is safe to put here, and only here, because this element is the app's own:
+// the node view asks for a preview and mounts a copy of whatever it is handed,
+// so anything inside it survives a re-render. Appending to the node view's own
+// `.tools` group would not — that DOM belongs to the editor and is rebuilt.
+//
+// It carries NO listener of its own, and that is not an oversight: the node
+// view mounts a COPY of this element, and cloning a node does not clone its
+// event listeners. A handler attached here would exist on the element that was
+// handed over and be absent from the one on screen — the button would render
+// and do nothing, which is the exact shape of the defect (#75) that cost this
+// project a day. The shell delegates from #wysiwyg instead, and finds this
+// button by its data attribute.
+function diagramEditButton() {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'diagram-edit'
+  button.dataset.diagramEdit = 'true'
+  button.textContent = 'Edit diagram'
+  button.title = 'Edit this diagram'
+  return button
 }
 
 // Draw every diagram in the document before the editor mounts, so the preview
