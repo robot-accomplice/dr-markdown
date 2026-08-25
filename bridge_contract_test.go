@@ -10,7 +10,7 @@ import (
 
 // Every Go method the frontend bridge calls must exist on App.
 //
-// The generated Wails binding is gitignored, so a stale one is invisible to
+// The generated binding is gitignored, so a stale one is invisible to
 // review: the copy on the build machine lacked SyncDocuments entirely, the
 // bridge optional-called it into a silent no-op, and Go was left with no
 // documents at all. This compares the two tracked sources instead, so a
