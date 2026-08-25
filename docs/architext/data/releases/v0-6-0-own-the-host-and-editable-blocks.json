@@ -125,6 +125,19 @@
           "host-gates",
           "full-test-suite"
         ]
+      },
+      {
+        "id": "settings-row-alignment",
+        "title": "A settings row's control lines up with the title that names it",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Reported from real use of the packaged 0.6.0 build, against the Code Block dialog. Every .settings-row is a two-line label beside a control laid out with align-items: center, which centres the control against the whole label group rather than the title it names — measured at +9.0px. The row is top-aligned now, with the title and the control sharing one band (--row-band), so the description hangs below without pulling the control down. Central, not local: the dialog reuses .settings-row, so the same misalignment was in all 13 rows across the dialog and the Editor and Appearance settings. All now measure +0.0px. Two regressions the extended test caught before merge: the band rule out-specified .settings-toggle and STRETCHED the pill to 32px, and min-height on a content-box element grew the segmented control to 38px. A stretched pill still centres, so its size is asserted separately.",
+        "owner": "Project maintainers",
+        "workstreamId": "host",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ]
       }
     ],
     "deferred": [
