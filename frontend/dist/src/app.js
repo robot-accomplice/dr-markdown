@@ -141,10 +141,6 @@ const els = {
   btnInsertMenu: document.getElementById('btn-insert-menu'),
   btnSettings: document.getElementById('btn-settings'),
   outlinePanel: document.getElementById('outline-panel'),
-  btnNew: document.getElementById('btn-new'),
-  btnOpen: document.getElementById('btn-open'),
-  btnSave: document.getElementById('btn-save'),
-  btnSaveAs: document.getElementById('btn-save-as'),
   btnCloseTab: document.getElementById('btn-close-tab'),
   emptyStart: document.getElementById('empty-start'),
   emptyPaste: document.getElementById('empty-paste'),
@@ -2212,7 +2208,7 @@ function wire() {
   document.addEventListener('selectionchange', () => {
     currentEditorContext()
   })
-  els.btnNew.addEventListener('click', newDocument)
+
   els.emptyStart.addEventListener('click', () => {
     startEditing()
     syncActiveState()
@@ -2254,9 +2250,16 @@ function wire() {
   document.querySelectorAll('[data-shortcuts-toggle]').forEach((button) => {
     button.addEventListener('click', () => openHelpPanel('shortcuts'))
   })
-  els.btnOpen.addEventListener('click', openDocument)
-  els.btnSave.addEventListener('click', save)
-  els.btnSaveAs.addEventListener('click', saveAs)
+  // Wired by attribute, not by id, because these actions now appear in more
+  // than one place: the File ribbon tab, the rail's New document button, and
+  // the empty state's Open a file. An id can only ever name one element, which
+  // is why the ribbon had no file operations at all -- Save and Save As existed
+  // as HIDDEN buttons outside it, present only to be a click target.
+  const fileActions = { new: newDocument, open: openDocument, save, 'save-as': saveAs }
+  document.querySelectorAll('[data-file-action]').forEach((button) => {
+    const run = fileActions[button.dataset.fileAction]
+    if (run) button.addEventListener('click', run)
+  })
   els.btnCloseTab.addEventListener('click', closeActiveTab)
   els.blockStyle.addEventListener('change', (e) => {
     applyBlockStyle(e.target.value)
