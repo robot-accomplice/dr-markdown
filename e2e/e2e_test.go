@@ -2825,7 +2825,16 @@ func clickWhenVisible(t *testing.T, ctx context.Context, selector string) {
 		const r = e.getBoundingClientRect()
 		return r.height > 0 && r.width > 0
 	})()`
-	if !waitForJS(t, ctx, visible) {
+	// A longer budget than waitForJS's two seconds, deliberately. Becoming
+	// visible can mean a lazy mount driven by an IntersectionObserver, a Vue
+	// re-render after a toggle, or a font load settling a zero-height box — none
+	// of which are instant on a loaded CI runner, and all of which are correct
+	// behaviour rather than a defect. Two seconds failed
+	// TestMermaidRendersAndStaysEditableInFormattedMode on macOS while passing
+	// locally, which is a statement about the runner, not the editor. The click
+	// below already allows twenty; the wait for the thing to be clickable should
+	// not be an order of magnitude stingier.
+	if !waitForVisible(t, ctx, visible) {
 		var present bool
 		evalJS(t, ctx, `document.querySelector(`+strconv.Quote(selector)+`) !== null`, &present)
 		if present {
@@ -2839,6 +2848,21 @@ func clickWhenVisible(t *testing.T, ctx context.Context, selector string) {
 	if err := chromedp.Run(tctx, chromedp.Click(selector, chromedp.ByQuery)); err != nil {
 		t.Fatalf("clicking %s: %v", selector, err)
 	}
+}
+
+// waitForVisible polls a boolean expression on a budget suited to layout
+// settling, rather than waitForJS's two seconds.
+func waitForVisible(t *testing.T, ctx context.Context, expr string) bool {
+	t.Helper()
+	var ok bool
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 300; i++) {
+			if (`+expr+`) return true
+			await new Promise((resolve) => setTimeout(resolve, 50))
+		}
+		return false
+	})()`, &ok)
+	return ok
 }
 
 // sendKeysTo types into a selector under the same deadline, for the same reason.

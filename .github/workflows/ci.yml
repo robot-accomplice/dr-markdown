@@ -130,15 +130,22 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # DRMD_SKIP_E2E is set HERE and nowhere else. The e2e suite is browser
-      # coverage of the frontend, it runs in full on the ubuntu job, and macOS
-      # images carry no Chrome — running it here would either fail on a missing
-      # binary or double a ten-minute suite for no new information. What this
-      # job is for is the Go code Linux cannot see.
+      # The e2e package is EXCLUDED by listing packages, not by setting
+      # DRMD_SKIP_E2E.
+      #
+      # That variable does not do what this job first claimed. newTestBrowser
+      # honours it only when Chrome is ABSENT — its whole purpose is that a
+      # missing browser must never pass silently — and macOS runners ship Chrome
+      # at /Applications/Google Chrome.app, which chromeAvailable() checks by
+      # name. So the suite ran here anyway, for 249 seconds, with the variable
+      # set and visible in the log.
+      #
+      # It is excluded rather than run because it is browser coverage of the
+      # frontend, it runs in full on the ubuntu job, and the same browser on a
+      # different OS tests the runner rather than the product. What this job is
+      # for is the Go code Linux cannot compile at all.
       - name: go test
-        env:
-          DRMD_SKIP_E2E: "1"
-        run: go test ./... -count=1
+        run: go test $(go list ./... | grep -v '/e2e$') -count=1
 
       # Packaging is production code and was verified only by hand. It compiles
       # the binary, assembles the bundle, substitutes VERSION into Info.plist,
