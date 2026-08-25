@@ -729,9 +729,9 @@ function suppressBrowserDefaults() {
   document.addEventListener('dragstart', (event) => {
     if (!event.target.closest('#wysiwyg, #raw')) event.preventDefault()
   })
-  // Wails delivers dropped files with real filesystem paths through a runtime
+  // The host delivers dropped files with real filesystem paths through a host
   // event; the DOM drop event above carries no usable path.
-  globalThis.runtime?.EventsOn?.('files:dropped', (paths) => handleDroppedFiles(paths))
+  globalThis.drmd?.events?.on?.('files:dropped', (paths) => handleDroppedFiles(paths))
 }
 
 async function persistCurrentEditorText() {
@@ -1035,7 +1035,7 @@ async function runCommand(command) {
 // on. Anything else dropped on the window is left alone.
 const IMPORTABLE_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
 
-// handleDroppedFiles is driven by the Wails file-drop runtime event, which
+// handleDroppedFiles is driven by the host's file-drop event, which
 // supplies real filesystem paths (a browser File object has none).
 async function handleDroppedFiles(paths) {
   const images = (paths ?? []).filter((path) =>
@@ -2423,7 +2423,7 @@ async function consumeFilesHandedOverAtLaunch() {
     return
   }
   for (const path of pending) await openFileFromOS(path)
-  globalThis.runtime?.EventsOn?.('file:open', (path) => {
+  globalThis.drmd?.events?.on?.('file:open', (path) => {
     if (path) openFileFromOS(path)
   })
 }
