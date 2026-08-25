@@ -315,8 +315,23 @@ button.primary {
   gap: 3px;
 }
 
+/* Sized to CONTENT, with a shared minimum for rhythm — not a fixed width.
+                                                                             .
+   This was `width: 78px`, plus a hand-computed exception for every label that
+   did not fit: table, code-block, math, mermaid, hr, quote, strike, focus, and
+   two more by id, repeated again at the next breakpoint down. Twelve rules,
+   each added when someone noticed one specific label clipping.
+                                                                             .
+   The Help panel's buttons were never given one, so "Markdown help" and
+   "Keyboard shortcuts" overflowed their boxes and drew on top of each other —
+   measured at 83px and 96px of content in a 76px box. That is the failure mode
+   of a fixed width with a growing exception list: the next label added is
+   broken until somebody sees it.
+                                                                             .
+   `min-width` cannot survive the collapse breakpoint on its own, so that block
+   resets it to 0 where it sets an icon-sized width deliberately. */
 .ribbon-controls.labelled button {
-  width: 78px;
+  min-width: 78px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -329,49 +344,15 @@ button.primary {
   text-overflow: ellipsis;
 }
 
-/* `Table` does not fit the 78px default and its label ellipsised to "Ta…".
-   The brief requires glyph + word for every Insert control, and the project's
-   own responsive rule forbids partial clipping — an ellipsised word is
-   neither collapsed nor whole. */
-.ribbon-controls.labelled button[data-command="table"] {
-  width: 92px;
-}
 
-.ribbon-controls.labelled button[data-command="code-block"] {
-  width: 104px;
-}
 
-.ribbon-controls.labelled button[data-command="math"] {
-  width: 102px;
-}
 
-.ribbon-controls.labelled button[data-command="mermaid"] {
-  width: 136px;
-}
 
-.ribbon-controls.labelled button[data-command="hr"] {
-  width: 132px;
-}
 
-.ribbon-controls.labelled button[data-command="quote"] {
-  width: 92px;
-}
 
-.ribbon-controls.labelled button[data-command="strike"] {
-  width: 108px;
-}
 
-.ribbon-controls.labelled #btn-toggle-mode {
-  width: 122px;
-}
 
-.ribbon-controls.labelled #btn-insert-menu {
-  width: 118px;
-}
 
-.ribbon-controls.labelled button[data-command="focus"] {
-  width: 104px;
-}
 
 .ribbon-controls button,
 .ribbon-controls select {
@@ -442,24 +423,12 @@ button.primary {
   }
 
   .ribbon-controls.labelled button {
-    width: 70px;
+    min-width: 70px;
   }
 
-  .ribbon-controls.labelled button[data-command="code-block"] {
-    width: 92px;
-  }
 
-  .ribbon-controls.labelled button[data-command="math"] {
-    width: 88px;
-  }
 
-  .ribbon-controls.labelled button[data-command="mermaid"] {
-    width: 116px;
-  }
 
-  .ribbon-controls.labelled #btn-insert-menu {
-    width: 106px;
-  }
 }
 
 @media (max-width: 1120px) {
@@ -483,6 +452,7 @@ button.primary {
   .ribbon-controls.labelled #btn-toggle-mode,
   .ribbon-controls.labelled #btn-insert-menu {
     width: 38px;
+    min-width: 0;
     padding-left: 0;
     padding-right: 0;
     gap: 0;
