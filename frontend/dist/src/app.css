@@ -768,7 +768,11 @@ button.primary {
 .diagram-fields input {
   width: 100%;
   min-width: 0;
-  height: 32px;
+  /* border-box, or width:100% means 100% of the track PLUS 18px of padding and
+     2px of border: measured at 260px inside a 240px column, running under the
+     preview beside it. */
+  box-sizing: border-box;
+  height: var(--row-band);
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 0 9px;
@@ -782,7 +786,11 @@ button.primary {
   max-height: 320px;
   overflow: auto;
   display: grid;
-  place-items: center;
+  /* `safe` centre. A centred grid item taller than its box overflows BOTH ways,
+     so the top of the diagram was clipped and unreachable by scrolling —
+     measured 9px out of the top and 9px out of the bottom. `safe` falls back to
+     start alignment rather than centring something that does not fit. */
+  place-items: safe center;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--canvas);
@@ -791,6 +799,9 @@ button.primary {
 
 .diagram-preview svg {
   max-width: 100%;
+  /* Bounded in BOTH axes. Without a height bound the diagram renders at its
+     natural size and overflows a box that exists to contain it. */
+  max-height: 100%;
   height: auto;
 }
 
