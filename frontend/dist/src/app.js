@@ -38,6 +38,7 @@ const state = {
     editorWidth: 72,
     documentFont: 'Public Sans',
     documentFontSize: 15.5,
+    documentZoom: 1,
     codeFont: 'JetBrains Mono',
     codeLigatures: true,
     formatOnSave: false,
@@ -155,6 +156,8 @@ const els = {
   fileSearchInput: document.getElementById('file-search-input'),
   outlineList: document.getElementById('outline-list'),
   ribbonTabs: document.querySelectorAll('[data-ribbon-tab]'),
+  zoomControl: document.getElementById('document-zoom'),
+  zoomLevel: document.querySelector('[data-zoom-level]'),
   ribbonPanels: document.querySelectorAll('[data-ribbon-panel]'),
   outlineTabs: document.querySelectorAll('[data-outline-tab]'),
 }
@@ -658,6 +661,52 @@ function refreshRenderedBlockSelection() {
 function startEditing() {
   const doc = activeDoc()
   if (doc) doc.started = true
+}
+
+// Document zoom, in the sense Word means it: everything in the pane gets
+// closer, proportions preserved.
+//
+// Implemented with CSS `zoom` rather than `transform: scale`, because zoom takes
+// part in LAYOUT. Measured: at 1.5 the host went 720px -> 1080px wide and the
+// pane's scrollHeight grew 759 -> 848, so the content scrolls to reach. A
+// transform paints at a different size while the parent still lays out the
+// original, so a zoomed-in document would simply overflow with nothing to
+// scroll to. It also keeps text crisp, being a real layout at the new size
+// rather than a rasterised one.
+//
+// The control lives in the pane but OUTSIDE #editor-host, or it would zoom
+// itself and shrink as you zoomed out.
+const ZOOM_MIN = 0.5
+const ZOOM_MAX = 2
+const ZOOM_STEP = 0.1
+
+function setDocumentZoom(zoom) {
+  const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(zoom * 100) / 100))
+  state.settings.documentZoom = clamped
+  document.documentElement.style.setProperty('--doc-zoom', String(clamped))
+  refreshZoomControl()
+  persistSettings()
+}
+
+function refreshZoomControl() {
+  if (!els.zoomLevel) return
+  const zoom = state.settings.documentZoom ?? 1
+  els.zoomLevel.textContent = `${Math.round(zoom * 100)}%`
+  // A disabled control that still looks pressable is the honest-controls rule:
+  // at the ends of the range these do nothing, and should say so.
+  els.zoomControl?.querySelector('[data-zoom="out"]')?.toggleAttribute('disabled', zoom <= ZOOM_MIN)
+  els.zoomControl?.querySelector('[data-zoom="in"]')?.toggleAttribute('disabled', zoom >= ZOOM_MAX)
+}
+
+function wireZoomControl() {
+  els.zoomControl?.addEventListener('click', (event) => {
+    const action = event.target.closest('[data-zoom]')?.dataset.zoom
+    if (!action) return
+    const zoom = state.settings.documentZoom ?? 1
+    if (action === 'in') setDocumentZoom(zoom + ZOOM_STEP)
+    else if (action === 'out') setDocumentZoom(zoom - ZOOM_STEP)
+    else setDocumentZoom(1)
+  })
 }
 
 function activateRibbonTab(name) {
@@ -1173,6 +1222,8 @@ function applyRuntimeSettings() {
   document.documentElement.style.setProperty('--mono', fontStack(state.settings.codeFont, 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace'))
   document.documentElement.style.setProperty('--document-font-size', `${state.settings.documentFontSize}px`)
   document.documentElement.style.setProperty('--editor-width', `${state.settings.editorWidth}ch`)
+  document.documentElement.style.setProperty('--doc-zoom', String(state.settings.documentZoom))
+  refreshZoomControl()
   document.documentElement.style.setProperty('--code-ligatures', state.settings.codeLigatures ? 'common-ligatures' : 'none')
   document.documentElement.style.setProperty('--code-font-features', state.settings.codeLigatures ? 'normal' : '"liga" 0, "calt" 0')
   document.body.classList.toggle('show-formatted-markers', state.settings.showFormattedMarkers)
@@ -1278,12 +1329,12 @@ function focusFirstControl(root) {
   root.querySelector('button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea:not([disabled])')?.focus()
 }
 
-function saveSettings() {
-  if (!settingsDraft) return
-  state.settings = { ...settingsDraft.settings }
-  state.rawOptions = { ...settingsDraft.rawOptions }
-  applyRuntimeSettings()
-  refreshRawOptionState()
+// Writes the current preferences through the bridge.
+//
+// Extracted from saveSettings so the zoom control can persist without going
+// through the settings modal's draft-and-close flow. A failure is contained but
+// recorded: a production build has no devtools, so console alone reaches nobody.
+function persistSettings() {
   const pending = bridge.savePreferences(preferencesEnvelope())
   if (pending?.catch) {
     pending.catch((err) => {
@@ -1291,6 +1342,15 @@ function saveSettings() {
       bridge.recordEvent('preferences.save-failed', { error: String(err?.message ?? err) })
     })
   }
+}
+
+function saveSettings() {
+  if (!settingsDraft) return
+  state.settings = { ...settingsDraft.settings }
+  state.rawOptions = { ...settingsDraft.rawOptions }
+  applyRuntimeSettings()
+  refreshRawOptionState()
+  persistSettings()
   closeSettings()
 }
 
@@ -2184,6 +2244,7 @@ function wire() {
   // leaving each new render surface to remember on its own.
   document.addEventListener('click', handleDocumentLinkClick)
   els.wysiwyg.addEventListener('click', handleRenderedBlockSelection)
+  wireZoomControl()
   document.querySelectorAll('[data-export-toggle]').forEach((button) => {
     button.addEventListener('click', toggleExportMenu)
   })
