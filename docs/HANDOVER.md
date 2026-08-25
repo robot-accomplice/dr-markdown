@@ -1,268 +1,359 @@
-# Handover — 2026-08-10 (rev 4)
+# Handover — 2026-08-10 (rev 6)
 
 State of play for whoever picks this up next. Written to be actionable without the conversation that
 produced it.
 
-Rev 4 covers a long day: v0.5.1 shipped, two documented claims were found false and corrected, the
-host boundary's Go half landed, and the direction for replacing Wails was designed and scoped. Two of
-those corrections matter more than the work, and both are recorded below under the same heading,
-because they are the same mistake in three costumes.
+Rev 6 closes the day rev 5 could not: **Wails is gone from the running application**, and **the
+release blocker is fixed**. Two PRs are open, both CLEAN with CI green, and nothing is in flight.
 
-## Where things stand
+**Nothing here has been verified in the real macOS application.** Everything about the code-block
+fix is verified in headless Chrome. Given this project's own repeated lesson — every defect that
+mattered was found by a person using the app while the suite stayed green — the first thing worth
+doing is opening a document and typing into a code block and a mermaid diagram.
 
-**v0.5.1 is released.** `main` is at the v0.5.1 tag; the
-[release](https://github.com/robot-accomplice/dr-markdown/releases/tag/v0.5.1) carries two macOS DMGs,
-universal and arm64, both unsigned and un-notarized. It closed #53 (Finder file-open) and added the
-panic trail. ABORT Round 6 record: `docs/releases/v0.5.1-abort.md`, five of five GO after one NO-GO
-that was fixed rather than argued down.
+> **Two claims rev 5 recorded as measured fact were false**, and both pointed away from the cause.
+> They are corrected in place under the release blocker rather than deleted, because a later session
+> trusting this file is the whole point of it, and because the error has a shape worth keeping
+> visible: a true observation carrying a false conclusion.
 
-**`develop` is two commits ahead of `main` and carries an unreleased fix.** The code block chrome
-(PR #67) — the language label and Copy button were mispositioned in the shipped 0.5.1 DMGs. Cosmetic,
-so it may not justify a release cycle on its own; that is a judgement call, not an oversight.
+## The rule that governs everything below
 
-**Two PRs are open and they overlap.**
+**WYSIWYG is the defining purpose of this editor.** Maintainer, 2026-08-10:
 
-- [#68](https://github.com/robot-accomplice/dr-markdown/pull/68) `design/host-boundary` — spec, plan,
-  roadmap. CLEAN.
-- [#69](https://github.com/robot-accomplice/dr-markdown/pull/69) `refactor/host-boundary` — Stage 1
-  of the boundary. CLEAN, CI passed.
+> EVERYTHING should be editable in formatted mode, it's a WYSIWYG markdown editor
 
-**#69 was branched from #68, so it contains #68's commits.** Merge #68 first and #69 follows cleanly,
-or merge #69 and close #68 as subsumed. Do not merge them in the other order expecting two separate
-diffs.
+> WYSIWYG ... is the whole reason this app exists
 
-## The three corrections, and why they are one mistake
+Everything in Formatted mode must be editable in place. If a construct renders but cannot be edited
+there, **that is a defect, not a design choice** — regardless of what any inventory, spec or prior
+note says about that construct. Recorded as a critical project rule in
+`docs/architext/data/rules.json` (`wysiwyg-is-the-purpose`) because the opposite had already been
+inferred twice from documentation: the 2026-08-06 screen inventory promises block-local *language*
+editing for rendered code blocks, and that was read as licence for the body to be read-only. It is
+not.
 
-Three claims this project had recorded as fact turned out false on the same day. Each had **true
-premises, valid reasoning, and a false conclusion**, which is why each survived review — a reviewer
-checks the facts, finds them correct, and passes.
+## Start here
 
-1. **"`recover()` appears nowhere, so a panic kills the app."** True grep. Wails recovers panics in
-   bound-method dispatch, so the process always survived. What it does instead is worse and
-   undocumented: `ProcessMessage` returns an empty result, `darwin/frontend.go` passes it to
-   `Frontend.Callback`, the runtime's `Callback` throws on `JSON.parse("")` before reaching the
-   pending callback, and no call timeout is ever armed. **The frontend's `await` never settles.**
-   Tracked as [#61](https://github.com/robot-accomplice/dr-markdown/issues/61).
-2. **"`main.go` passes no `Menu`, so there is no menu bar."** Both source facts true.
-   **AppKit supplies a default menu bar when an app sets none** — `Dr. Markdown`, `Edit`, `Window`,
-   including `Quit ⌘Q`, which was used to quit the app. #57 is retitled to what is actually missing:
-   File and View menus.
-3. **"`.code-block-header { padding: 0 12px }` is in app.css, so it applies."** It was in the file and
-   in the browser, and computed to `0px`. `.milkdown *` in the vendored reset ties it at specificity
-   (0,1,0), and the theme is appended at runtime by `loadTheme()` while app.css loads in `<head>` — so
-   the vendored rule is later and wins. Fixed in PR #67.
+**[#79](https://github.com/robot-accomplice/dr-markdown/pull/79) is MERGED.** `develop` carries the
+code-block fix. **One PR remains:**
 
-**The lesson, and it is the most transferable thing in this document: when the question is what the
-RUNNING system does, and the answer depends on a framework, an OS or a browser, your own source is
-not admissible evidence.** Read the dependency's source, or drive the built artifact. A note reading
-"established from source; not driven" is the finding, not a caveat — that exact phrase was in rev 2
-of this file, about the menu bar.
+**[#74](https://github.com/robot-accomplice/dr-markdown/pull/74) `refactor/own-the-host-cutover`** —
+the host replacement. It has been **updated onto the post-#79 `develop`**, so it is current: the one
+conflict this predicted did occur, in `docs/architext/data/decisions.json` and nothing else, because
+both PRs appended a decision to the end of the same array. It was resolved by keeping both entries —
+`own-the-host` and `editor-owns-code-blocks` — and `architext validate` passes.
 
-## Replacing Wails — the direction, designed and scoped
+That merge is also the first time the host replacement and the code-block fix have existed together.
+The full local gate was run on the combined tree, not just on each half.
 
-Approved 2026-08-10, raised to **high priority**. Spec:
-`docs/superpowers/specs/2026-08-10-host-boundary-design.md`. Plan:
-`docs/superpowers/plans/2026-08-10-host-boundary.md`.
+Then the release ceremony below.
 
-**Phase 0 does not choose a host.** It draws the boundary that makes the choice reversible and its
-cost measurable. Stage 1 (the Go half) is done and is PR #69:
+**A trap when #74 lands:** GitHub will not auto-close the issues these PRs fix, because the
+repository's default branch is `main` and both PRs target `develop`. Close
+[#77](https://github.com/robot-accomplice/dr-markdown/issues/77) (fixed, already on `develop`),
+[#61](https://github.com/robot-accomplice/dr-markdown/issues/61) and
+[#57](https://github.com/robot-accomplice/dr-markdown/issues/57) (fixed by #74) by hand, or let them
+close when `develop` reaches `main`.
 
-| file | lines |
+The ceremony was halted at 3 of 7 while the blocker stood, because finishing it would have meant
+writing a Release Truth record asserting a readiness that was not true. **That is still the reason
+it is not finished** — see the ceremony section for what has to be true first.
+
+## The release blocker — FIXED, see [#79](https://github.com/robot-accomplice/dr-markdown/pull/79)
+
+**Insert → Code produced a block you could not type into.**
+
+> we cannot ship another broken release on basic editing functionality
+
+This was **pre-existing** — it shipped in v0.5.1 and had since syntax highlighting was added. It was
+not a consequence of the host replacement.
+
+### What this section blamed, and why that was the symptom rather than the cause
+
+`highlightFormattedCodeBlocks()` ran against `els.wysiwyg` — the LIVE editor — and for every code
+block did two destructive things. That pass is now deleted, and it *was* wrong. But it was
+compensation for a block that was already dead, not the reason the block was dead: the real cause is
+below, and it is one undefined value in the vendored bundle.
+
+```js
+// app.js:1652
+code.innerHTML = highlightCode(code.textContent, language)
+wrapCodeBlock(code, language, fenceIndex)
+
+// app.js:1753
+function wrapCodeBlock(code, language = '', fenceIndex = null) {
+  const pre = code.closest('pre')
+  if (!pre || pre.closest('.code-block-shell')) return
+  const source = code.textContent
+  const shell = codeBlockElement(source, language, fenceIndex)
+  pre.replaceWith(shell)      // the editor's node is thrown away
+}
+```
+
+### RESOLVED 2026-08-10 by [#79](https://github.com/robot-accomplice/dr-markdown/pull/79). Two of these measurements were WRONG.
+
+**This section recorded three measurements as fact. Two were false, and both pointed away from the
+cause.** Corrected in place rather than deleted, because the whole value of this file is that a later
+session trusts it, and because the error has a repeatable shape: a true observation carrying a false
+conclusion.
+
+1. **CORRECT — the vendored bundle is not missing anything.** `Crepe.Feature.CodeMirror` exists and
+   is `"code-mirror"`; only `Latex` is disabled in `editor.js`.
+2. **WRONG — "no CodeMirror is mounted anyway", concluded as "that feature never did this job".**
+   The counts were right. The conclusion was not: it never mounts because it **throws**.
+   `initializeCodeMirror()` raises `TypeError: Cannot read properties of undefined (reading
+   'extension')` out of `EditorState.create`.
+3. **WRONG — "a plain `<pre>` inside ProseMirror's contenteditable, so very likely editable
+   already."** It is `pre.milkdown-code-block-placeholder` inside
+   `div.milkdown-code-block[contenteditable="false"]`. It was never editable by anything, and the
+   word "likely" is doing all the work in that sentence — it was never checked by typing.
+
+**The cause.** esm.sh resolves the bare specifier `codemirror` inside the Crepe bundle to
+**CodeMirror 5** — `defineMode`/`defineMIME`/`registerHelper`, no `basicSetup`, which is a v6 export.
+Crepe builds `[keymap, fme.basicSetup, …]`, so entry two is `undefined`. `@milkdown/crepe` declares
+`codemirror: ^6.0.1`, so this is an esm.sh bug, not a Crepe bug.
+
+**Why it was permanent and silent.** The throw happens inside the `IntersectionObserver` callback
+that upgrades a block, *after* the node view sets `initialized = true`. Nothing retries, and the
+exception reaches nobody. A guard set before the work turns one crash into a permanent state.
+
+**The fix was to drop that entry** in `tools/vendor.sh`. **No NodeView was needed** — the direction
+below was wrong. The upstream node view already renders a searchable language picker, a copy button
+and a preview toggle, and once it mounts it does the whole job, highlighting included. The app's
+in-editor pass was deleted rather than rewritten, and mermaid moved onto the same node view's preview
+hook, which made diagrams editable in place for the first time.
+
+**Refuted, so nobody spends the day on them again:** supplying `extensions` via `featureConfigs` does
+not displace the broken default (Crepe concatenates); the separately vendored `codemirror.bundle.mjs`
+cannot supply it either (second copy of `@codemirror/state`, rejected outright) and has been deleted;
+and the fetch cannot be fixed with `?deps=`/`?alias=` because the es2022 path is prebuilt.
+
+**The lesson this cost.** Every code-block test asserted *presence* — a label, a Copy button, a
+highlighted span — and every one passed for the entire time the block underneath was inert, because
+**none of them ever typed**. The gate that finally caught it sends real keystrokes and requires them
+in the document's markdown.
+
+## What merged into `develop` today
+
+| PR | |
 | --- | --- |
-| `host.go` — the port, names no host | 45 |
-| `host_wails.go` — **the only Go file naming Wails** | 171 |
-| `main.go` — imports only `embed` | 25 |
-| **total** | **241** |
+| [#70](https://github.com/robot-accomplice/dr-markdown/pull/70) | `VERSION` is the single source of build identity; drift gate proven able to fail |
+| [#71](https://github.com/robot-accomplice/dr-markdown/pull/71) | empty state no longer clipped off the top by a long recents list |
+| [#72](https://github.com/robot-accomplice/dr-markdown/pull/72) | Paste survives a clipboard the platform refuses |
+| [#73](https://github.com/robot-accomplice/dr-markdown/pull/73) | the release gate and the elimination inventory |
 
-**241 lines is what this app costs to move.** For contrast, Wails' own per-platform desktop layer is
-26,911 lines (darwin 5,116, windows 18,196, linux 3,545) — but that is what it costs to *write* a
-host at Wails' feature level, including a tray, custom chrome and a dev server this app never uses.
+## The open PR: the host replacement
 
-The candidates, with what was actually verified about each:
+**[#74](https://github.com/robot-accomplice/dr-markdown/pull/74) `refactor/own-the-host-cutover`.**
+Complete and verified, updated onto the post-#79 `develop`. Unmerged only because the release it
+belongs to had not cleared its blocker; that blocker is now gone.
 
-- **A — Wails v3.** Checked against source at `v3.0.0-beta.6`: bindings generated by static analysis
-  rather than reflection, plus `options.PanicHandler` and typed `CallError` rejection covered by
-  `bindings_panic_internal_test.go`, whose comment describes the same defect class as #61. Risk:
-  beta.0 shipped 2026-08-02 and beta.6 on 2026-08-09 — seven prereleases in eight days.
-- **B — own the host.** `webview/webview_go` is **disqualified**: last pushed 2024-08-31, two years
-  stale. `crgimenes/glaze` is CGo-free with a native menu bar but is six months old at 132 stars.
-  Hand-rolled cgo is what Wails does. **Windows dominates the cost at 3.5× macOS** because WebView2 is
-  COM interop.
-- **C — macOS-native shell now.** Wails' macOS layer is 5,116 lines and this app needs a subset.
-- **D — direct rendering, no webview.** See below.
-- **Recorded non-options:** Tauri (Rust core, so Go becomes a sidecar and every `nativePort` call
-  becomes IPC) and Electron (excluded by the no-Node rule).
+**Wails is gone from the running application.** `go.mod` carries chromedp (tests only),
+`golang.org/x/image` and `golang.org/x/sys`. Zero `wailsapp` modules. Binary 12.3MB → 10.4MB.
+Everything the application asks of the OS is answered by AppKit and WebKit directly, behind
+`hostPort`. **`app.go` was not touched by the swap.**
 
-**Stage 2 of phase 0 is deliberately held** — the generated bridge, `transport.js`, the JS event
-channel. Under D there is no JavaScript at all, so that work would be wasted. Everything in Stage 1 is
-an OS concern and survives any answer.
+### Why it had to be one commit
 
-## Option D and the serialization finding
+`bridge.js` degrades when the host is **absent** but throws when it is **partial** — several entries
+are written `native()?.Method(x)` rather than `native()?.Method?.(x)`, so once the object exists a
+missing method is a TypeError and boot dies. There was never a staged path, and rev 4's "second
+adapter alongside Wails" plan was wrong for that reason.
 
-D would delete a great deal: **5.9 MB** of vendored JS (Crepe 2.7 MB, Mermaid 2.6 MB), our **6,804
-lines** of frontend, `verify-vendor.sh`, the CSP and allowlists, and a browser engine in-process. It is
-also the only option that closes the re-serialization class.
+### Host defects found and fixed on the way
 
-**A correction that must not be re-derived:** the motivating intuition was that the app hosts a TCP
-server. **It does not.** No `net.Listen`, `http.Serve` or `ListenAndServe` anywhere in Wails'
-`internal/` outside tests; macOS serves assets over `wails://` through a `WKURLSchemeHandler`
-in-process; the dev server is behind `//go:build dev`. Frontend calls are `WailsInvoke` across the
-webview boundary, not a socket.
+Each real, none would have failed a test:
 
-**D is blocked on foundations that do not exist.** There is no mature Go rich-text editing engine
-(Gio's rich text API is "recently started work"; Fyne's is display-oriented), and no viable native
-Mermaid renderer — `zkrebbekx/go-mermaid` looks perfect in a search result and has **2 stars, created
-2026-06-13**, while `dreampuf/mermaid.go` drives headless Chrome, which is the browser you were
-removing.
+- **`DefaultButton` was dropped in the port.** Return on the overwrite prompt destroyed the file.
+- **`dispatch_async` to the main queue is not serviced during a modal**, so any open dialog froze
+  every pending reply — and the dialog is usually the report of the failure the caller awaits.
+- **`dispatch_sync` held a cgo call open for the life of a dialog**, pinning an OS thread and making
+  the `context.Context` every `nativePort` method takes impossible to honour. Now answered over a
+  channel, with `orDone`/`or` giving every goroutine an exit.
+- **There was no menu bar at all.** A Cocoa app gets none unless it builds one, and the Edit menu's
+  key equivalents are what deliver ⌘C, ⌘V, ⌘X, ⌘A and ⌘Q. Measured `mainMenu=NIL`. Building it also
+  closes [#57](https://github.com/robot-accomplice/dr-markdown/issues/57).
+- **Three shortcuts were stolen by that new menu** — ⌘B (bold), ⇧⌘S (split), ⌘W (close tab, which the
+  menu had closing the window). A menu key equivalent beats the webview, so all three would have
+  shipped silently.
 
-So the agreed next project is the piece that is valuable under **every** option: **move the markdown
-model into Go.** And there is a finding that changes its shape, established just before this handover:
+### Verification, and its honest limit
 
-> **Go must parse, but must never re-render whole documents.**
->
-> `yuin/goldmark` (4,935 stars, healthy) is a fine parser. But every AST→markdown renderer has the
-> same property ProseMirror has. `pgavlin/goldmark`'s own docs say it plainly: *"The output may not be
-> textually identical to the source that produced the AST, but the structure should match."* Adopting
-> one would **move the GA blocker from JavaScript into Go and make it look like progress**, because
-> the tests that catch respelling live in `e2e/` and measure the editor's output.
->
-> The correct shape: Go parses and locates every construct by **byte range**, patches the ranges an
-> edit touched, and serializes **only newly inserted fragments**. Never regenerate the document.
-> Byte preservation is not a layer on top of consolidation — it is the only correct shape *for*
-> consolidation.
+`go run . -gates -walk -menu -close -close-dirty -drop -doc <file> -modal N`
 
-The remaining unproven assumption is mapping an editor transaction back to a source range. It is
-reachable via `ctx.get('remark')` (proved 2026-08-09) but the mapping itself has never been
-demonstrated. **That is the one risk in the whole direction, and it is isolated to one step.**
+Gates: the frontend boots, a bound call round-trips, **a panicking bound call REJECTS rather than
+hanging** ([#61](https://github.com/robot-accomplice/dr-markdown/issues/61)), events reach the
+frontend, a real mouse drag arrives, and a document round-trips to disk byte-exactly. The walk is 40
+checks across the 2026-08-06 screen inventory. All pass, including from inside the `.app`.
 
-## The things that are actually open
+**None of it runs in CI.** It drives a native window, chromedp cannot see it, and there is no macOS
+runner. Every *Go* test is untagged and runs on Linux; the host gates are a manual step on a Mac.
 
-Issues #57, #61, #62 and #63 are described above under the corrections and the D section. These are
-the ones with no other home:
+## MERGED: code blocks are editable
 
-1. **Windows and Linux are unbuilt.** Only `tools/build-macos.sh` exists; it builds `darwin/arm64` by
-   default or `darwin/universal` with `--universal`. CI runs the full suite on Linux but produces no
-   artifact. A release build matrix means native runners and per-platform packaging — real work under
-   any host, and wasted if the host changes, which is why it is not being done now.
-2. **The re-serialization class**, accepted since v0.4.0 and still the standing GA blocker. 38 of 49
-   surveyed constructs round-trip byte-identically and **nothing is deleted any more**, but a
-   construct nobody has surveyed is still respelled. Confirmed live on 2026-08-10 by driving the
-   packaged app: a real edit and save rewrote `| --- | --- |` to `| - | - |`. That is *known* —
-   `e2e/fidelity_survey_test.go:120` records `"table": true, // delimiter row padding recomputed from
-   content` — so the both-directions gate stayed green, which is the mechanism working. **The markdown
-   model project above is what closes this class.**
-3. **A cosmetic fix is shipped-but-unreleased.** The code block chrome fix (PR #67) is on `develop`;
-   the published 0.5.1 DMGs carry the defect.
+**[#79](https://github.com/robot-accomplice/dr-markdown/pull/79) `fix/code-blocks-editable`, merged
+into `develop`.** It was branched from `develop` rather than from #74, so it carried none of the host
+work and merged on its own.
 
-## In flight: ribbon presentation
+The cause and the two false measurements are recorded under the release blocker above. What the fix
+does:
 
-`design/ribbon-presentation` carries an **approved design awaiting maintainer review**, at
-`docs/superpowers/specs/2026-08-10-ribbon-presentation-design.md`. No plan written, no code touched.
+- **`tools/vendor.sh` drops the undefined extension** from the Crepe bundle, and **fails loudly** if
+  its anchor ever stops matching. Silence there would ship uneditable code blocks again while the
+  suite stayed green, which is exactly how this defect survived a release.
+- **The app's in-editor code-block pass is deleted, not rewritten.** Once the node view can mount, it
+  renders, highlights and edits the block itself and brings a searchable 143-language picker and a
+  copy button. The app's pass had been replacing nodes the node view owns.
+- **Mermaid moved onto the same node view's preview hook**, so a diagram renders in place *and* its
+  source stays editable behind a toggle. It was never editable before — the same rule violation as
+  #77 in a different construct. Diagrams are drawn before the editor mounts, because the node view
+  mounts a **copy** of any element handed to it and filling one in afterwards writes to a detached
+  node.
+- **The block carries its own surface now.** Cancelling the vendored warm tint without replacing the
+  box left a borderless, radius-less block with a peach CodeMirror inside it, and every existing test
+  stayed green through it.
+- **`codemirror.bundle.mjs` is deleted** — 377KB, digest-pinned, imported by nothing, and measured
+  incapable of supplying what the Crepe bundle was missing.
 
-Uniform-width ribbon buttons, five shortened Insert-tab labels, a never-truncate test gate, an
-icons-only setting in Appearance, `Cmd+Shift+L`, and deriving the Settings shortcut list from the same
-table the `keydown` handler dispatches from.
+### What dropping `basicSetup` actually costs
 
-Two questions were put to the maintainer and are unanswered: whether the Insert tab should lose its
-explicit labels (`Code block` → `Code`), and whether the shortcut-table change is wanted or just the
-two lines that add one hotkey.
+Measured in the built app, **not** read off the package's feature list — the first write-up of this
+got it wrong that way:
 
-The View-menu item the maintainer asked for is **not** in that spec. There is no View menu to add it
-to — though, contrary to what rev 2 and rev 3 of this document said, there *is* a menu bar to add one
-to. See correction 2 above and [#57](https://github.com/robot-accomplice/dr-markdown/issues/57).
+- **Lost:** line numbers and the fold gutter, bracket auto-closing, autocompletion.
+- **NOT lost:** undo. The node view forwards CodeMirror updates into ProseMirror transactions, so the
+  document's own history answers ⌘Z inside a code block. Multi-line editing, highlighting and the
+  default keymap all work.
 
-## The architecture, after three refactor phases
+### The alternatives, all measured and all worse
 
-Everything below landed against `docs/decisions/2026-08-09-domain-ownership-and-boundaries.md`, an
-agreed design plus a clean-code audit. Every pre-existing test stayed green **and unchanged**
-throughout, which was the stated judging criterion.
+- **esm.sh cannot be steered.** `?deps=codemirror@6.0.2` and `?alias=` return byte-identical output,
+  because `/es2022/crepe.bundle.mjs` is a prebuilt artifact. `@milkdown/crepe@7.22.0` declares
+  `codemirror: ^6.0.1`, so **this is an esm.sh resolution bug, not a Crepe bug** — worth reporting
+  upstream.
+- **jsdelivr's `+esm` build resolves it correctly** and carries a real `basicSetup` — but emits **46
+  external imports**, which no self-contained, CSP-`'self'`, offline application can load. Adopting
+  it means vendoring 46 transitive modules with rewritten paths: a vendoring project, not a fetch.
+- **If only bracket auto-closing is wanted**, the tractable route is exporting `closeBrackets` from
+  the vendored bundle in `vendor.sh` and appending it through `featureConfigs.extensions`. Appending
+  works — only the undefined entry was ever broken. Same minified-name drift risk as the patch that
+  is already there, so it is worth doing only if the gap actually bites.
 
-| unit | owns | was |
-| --- | --- | --- |
-| `frontend/dist/src/fidelity/` | six compensations behind **two ports** and one registry | five ad-hoc pairs on the editor adapter |
-| `frontend/dist/src/markdown/` | pure `string -> string` document logic, six modules | 360 lines inside `app.js` |
-| `internal/session` | tabs, dirty state, on-disk baseline | loose fields on the Wails binding surface |
-| `frontend/dist/src/editor.js` | the Crepe lifecycle, and nothing else — **118 lines**, from 286 | that plus five preservations |
-| `host.go` + `host_wails.go` (2026-08-10, PR #69) | the window, assets, lifecycle and native ops behind `hostPort`; **the only Go file naming Wails** | `wails.Run` options and `wailsNative` inside `main.go` and `app.go` |
+### The gate that was missing, and why it matters more than the fix
 
-**`app.go` no longer imports Wails.** `NewApp` takes a `nativePort`, and `main.go` constructs
-`wailsHost` without naming the framework. `TestOnlyTheHostFilesNameWails` keeps it that way and was
-proven red against a real violation before being trusted — it also caught *itself* on its first run,
-because the file contained the literal string it searched for.
+Every code-block test asserted **presence** — a language label, a Copy button, a highlighted span —
+and every one passed for the entire time the block underneath was inert, because **none of them ever
+typed**. The new gates type real keystrokes and require the characters to come back out of the
+document's markdown; the mermaid gate requires the diagram to render *and* take an edit; and a
+geometry gate covers the block surface, which is the only kind of check that can fail for the
+peach-block regression above.
 
-**Two ports, not one, and the distinction matters.** A `Preservation` runs *after* the serializer and
-puts captured bytes back. A `SerializerPolicy` runs *before* it and returns options. Forcing markdown
-style detection into the Preservation shape would mean a `restore` that does nothing.
+## Packaging works
 
-**Capture order and restore order are not reverses of each other**, and `fidelity/index.js` says so.
-`trailing` must capture first because it reads the original document — frontmatter splitting would
-otherwise hand it a body, and a file that is nothing but frontmatter has an empty body whose trailing
-run is not the file's.
+`tools/build-macos.sh` replaces `wails build`, which no longer exists in this tree: compile, bundle,
+`Info.plist` from `VERSION`, `.icns` from `build/appicon.png`, ad-hoc sign, DMG. `--universal`
+verified — `lipo -archs` reports `x86_64 arm64`. `wails.json` is deleted.
 
-## Facts that cost real time, and are not obvious from the code
+## Documentation is current
 
-- **`ctx.set` replaces a slice; the serializer holds a reference to the ORIGINAL object.** Mutate what
-  the serializer already holds. Verify the *effect*, never the call.
-- **Crepe's `config` callbacks run before core slices exist.** Reading one there breaks boot outright —
-  a blank window, not an error. Configure after `create()`.
-- **mdast source positions ARE reachable**, via `ctx.get('remark')` — not `ctx.get('parser')`, which
-  returns ProseMirror nodes with no position data. The old spike concluded "no parser export, so no
-  positions"; the premise was true and the conclusion false. Source-preserving editing is therefore no
-  longer closed on evidence, but the transaction-to-source mapping is unproven and nothing depends on
-  it.
-- **Stripping link reference definitions to protect them does not work.** Without its definition
-  `[spec][s]` is not a link, so the serializer escapes it. One rewrite for another.
-- **Inline HTML is preserved.** `<b>`, `<span>`, `<kbd>`, comments and block `<div>` all round-trip
-  byte-identically.
+Architext no longer describes a Wails application. Node ids renamed (`wails-desktop-app` →
+`desktop-app`, `wails-bridge` → `native-bridge`, `wails-go-api` → `go-api`) across every referencing
+file; historical release records keep their prose because they record what was true then. The
+`own-the-host` decision carries the three objections that drove it and the fourth that was **checked
+and refuted** — both `net.Listen` sites in Wails v3 sit behind the `server` and `mcp` build tags, so
+the TCP claim should not be derived a third time. `no-recorded-state-for-rca` is closed. README
+rewritten, screenshots regenerated, `architext validate` passes.
 
-## How to not get burned here
+## The remaining ceremony, and why it is still not done
 
-- **`e2e/` is the only coverage of the frontend.** `newTestBrowser` FAILS rather than skips when no
-  Chrome is found. `DRMD_SKIP_E2E` is the deliberate opt-out and must never be set in CI.
-- **The suite launches one browser per test — 91 per run.** chromedp's 20s connect default was
-  exceeded twice on CI; it is raised to 60s in `newTestBrowser`. The real fix is fewer browsers: the
-  `fidelity_unit` and `markdown_unit` tests boot a whole browser only to `import()` a pure module and
-  could share one.
-- **Take the local gate FROM CI, never from memory.** It is
-  `gofmt -l . && go vet ./... && ./tools/verify-vendor.sh && go test ./... -count=1`. Eight commits
-  once passed a self-defined "vet + test" gate and went red on `gofmt`.
-- **Two gates fail in BOTH directions on purpose.** `e2e/fidelity_test.go` and
-  `e2e/fidelity_survey_test.go` record what is *still* rewritten, so a fix that is not also disclosed
-  in the README breaks the build. If one goes red after a fix, that is the mechanism working.
-- **`architext validate` checks schema, not truth.** Six risk records were found describing a codebase
-  that no longer existed, and validation passed on every one. Re-read them against the source on every
-  release pass.
-- **Verify the packaged app, not just the tests.** `wails dev` bridges the production Go bindings to a
-  browser, so the binding layer no automated gate covers can be driven directly — that is how v0.5.0
-  was confirmed to open a document, report clean, and survive two real saves byte-identically. And
-  **install the DMG**: doing that for the first time is what found #53.
+The blocker is gone, but a release record is a claim about a build that exists and has been run.
+**None of the following is true yet**, which is the justification for leaving all of it:
+
+0. **Drive the real application.** Nothing about the code-block fix has been seen outside headless
+   Chrome. Open a document; type into a code block; toggle a mermaid diagram to its source and edit
+   it; change a block's language from the picker. This is step zero because it is the step that has
+   caught every defect that mattered on this project.
+1. **Merge #74.** #79 is already on `develop`; the host replacement is not.
+2. **Release Truth record + `VERSION` bump** — `VERSION` still reads `0.5.1`, and
+   `docs/architext/data/releases/` still has `currentReleaseId: v0-5-1-arrival-and-crash-visibility`.
+   **Deliberately not written here.** Every record in that directory describes a release that
+   happened; writing a v0.6.0 record now would assert a readiness that does not exist yet — the same
+   thing rev 5 refused to do for the same reason. Write it after step 0 and step 1, from what the
+   built application actually did.
+3. **Close resolved issues by hand.** [#61](https://github.com/robot-accomplice/dr-markdown/issues/61)
+   and [#57](https://github.com/robot-accomplice/dr-markdown/issues/57) are fixed by #74;
+   [#77](https://github.com/robot-accomplice/dr-markdown/issues/77) by #79. GitHub will not
+   auto-close any of them on a merge into `develop`, because the default branch is `main`.
+4. **Recheck [#75](https://github.com/robot-accomplice/dr-markdown/issues/75) rather than closing
+   it.** It was guessed to share #77's cause. That guess is now checkable: if the block-edit `+` menu
+   still does nothing once #79 is in, the cause is something else and the guess was never evidence.
+5. **ABORT stations.**
+6. **roboticus-site** project card — `src/lib/projects-data.ts` carries `currentVersion`.
+7. Rebuild from the merge commit, install the DMG, open a document before publishing.
+
+## Issues opened today
+
+- [#77](https://github.com/robot-accomplice/dr-markdown/issues/77) — code blocks not editable. **Was
+  the blocker; fixed by [#79](https://github.com/robot-accomplice/dr-markdown/pull/79).**
+- [#75](https://github.com/robot-accomplice/dr-markdown/issues/75) — the block-edit `+` menu appears to
+  do nothing. Guessed at the time to be the same cause as #77 — "it inserts a block that renders as
+  an empty box you cannot type into". **Recheck against #79 rather than closing on that guess**: an
+  inserted code block is now editable immediately, so if the `+` menu still does nothing the cause is
+  something else and the guess was never evidence.
+- [#78](https://github.com/robot-accomplice/dr-markdown/issues/78) — opened 2026-08-10 with #79: the
+  editor's own language picker writes a language's DISPLAY name into the fence (` ```Python `), where
+  every other route in this app writes ` ```python `.
+- [#76](https://github.com/robot-accomplice/dr-markdown/issues/76) — block-edit menu highlight colour
+  is off-theme. Note an app rule on an editor-injected element loses a specificity tie to
+  `.milkdown *`; scope to (0,2,0).
+
+**Not a regression, checked:** ribbon buttons have never had uniform widths. The only CSS changes
+since `v0.5.1` are the `#empty-state` line and PR #67's code-block-header scoping, neither in ribbon
+rules. `design/ribbon-presentation` is 148 lines of spec and no code, still waiting on two maintainer
+answers.
+
+## The lesson from this session
+
+**Every defect that mattered today was found by a person using the app, not by a test.** The suite was
+green throughout: while the application had no copy, no paste and no ⌘Q; while the empty state was
+clipped off the top of the screen; while Paste died on a denied clipboard; and while code blocks
+could not be edited.
+
+The corollary is about instruments. Four times a harness reported a failure that was the harness's
+own: a raw newline in an Objective-C string literal killed the whole injected script (and the app
+still looked healthy, because `bridge.js` degrades); an instruction window took key focus from the
+modal it was describing; a backtick in a Go comment terminated a raw string, so a stale binary
+reported the previous run's results; and a walk that raced `boot()` reported 39 failures as
+application defects. **Prove the instrument before believing a negative** is already in this
+project's lessons. It cost four rounds anyway.
+
+**Rev 6 adds the other half of that lesson: prove the instrument before believing a negative, and
+prove a CLAIM before recording it as a measurement.** Rev 5 wrote down three measurements under the
+release blocker. Two were false, and both were false in the same way — a correct observation with an
+inferred conclusion attached, published as one fact. "No CodeMirror is mounted" was a true count; "so
+that feature never did this job" was a guess, and the truth was that it crashed. "A plain `<pre>`
+inside contenteditable" was a true reading of the wrong element; "so it is very likely editable
+already" was never tested by the one action that would have settled it in five seconds — typing into
+it.
+
+Both survived review for the same reason the three corrections in rev 4 did: **a reviewer checks the
+facts, finds them correct, and passes.** When recording a measurement, write the observation and the
+inference as separate sentences, and mark which one was driven.
+
+The concrete cost: a proposal to write a ProseMirror NodeView, which would have rebuilt from scratch
+what the vendored node view already does, to work around a crash caused by one undefined value.
 
 ## Ground rules that are enforced, not aspirational
 
-- **Modified gitflow is mandatory**: branch → PR to `develop` → PR to `main`. Branch protection now
-  requires the `test` check and an up-to-date branch on both, so a red merge is no longer possible.
-  Expect a promotion PR to sit `BEHIND` until you merge `main` back into `develop` — that is the
-  merge-commit flow working, not a problem.
-- Only **robot-accomplice** credentials. `gh` defaults to the wrong account — pin it:
-  `export GH_TOKEN=$(gh auth token --user robot-accomplice)`.
+- **Modified gitflow**: branch → PR to `develop` → PR to `main`. Branch protection requires the
+  `test` check and an up-to-date branch. Expect a PR to sit `BEHIND` after another merges; update it.
+- Only **robot-accomplice** credentials: `export GH_TOKEN=$(gh auth token --user robot-accomplice)`.
 - **No Claude/Anthropic attribution** in commits, PRs or artifacts.
-- **No Node toolchain.** Not for building, not for testing. `node --check` in CI is a syntax gate only.
-- Architext data under `docs/architext/data/**` is the reviewed source of truth and must be updated
-  when architecture, trust boundaries or release scope change.
-
-## Release mechanics, in order
-
-1. Bump `wails.json` `productVersion` **and** `appVersion` together — `TestAppVersionMatchesWailsConfig`
-   fails on drift.
-2. Write the Release Truth record under `docs/architext/data/releases/`, then run `architext doctor .
-   --yes` to regenerate the counts rather than hand-writing them. It caught a miscount last time.
-   Reconcile and delete the `.bak` it leaves.
-3. Run the ABORT stations against the candidate and record the verdicts.
-4. `release/vX.Y.Z` → PR to `develop` → PR to `main`.
-5. **Rebuild the artifact from the merge commit**, not the release branch:
-   `tools/build-macos.sh --universal`. Verify with `lipo -archs` (expect `x86_64 arm64`) and
-   `PlistBuddy -c "Print :CFBundleShortVersionString"`.
-6. Install the DMG to `/Applications` and open a document with it before publishing.
-7. Tag, then `gh release create` with both DMGs.
-8. Update the [roboticus-site](https://github.com/robot-accomplice/roboticus-site) project card —
-   `src/lib/projects-data.ts` carries `currentVersion` and it went two releases stale last time.
+- **No Node toolchain.** `node --check` is a syntax gate only.
+- **Take the local gate FROM CI, never from memory.** Today:
+  `gofmt -l . && go vet ./... && ./tools/verify-vendor.sh && go test ./... -count=1`.
+- **A Go raw string cannot contain a backtick**, and Objective-C compiles `\n` in a literal into a
+  real newline. Both have silently broken injected JavaScript here. Serve large scripts through the
+  scheme handler instead.
+- Architext data under `docs/architext/data/**` must be updated when architecture or trust boundaries
+  change, and `architext validate` must pass.

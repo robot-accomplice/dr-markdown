@@ -26,12 +26,12 @@ func TestFailureSurfacesRecordDurableEvents(t *testing.T) {
 		defer cancel()
 		url := serveFrontend(t)
 		bootAppWithNativeStub(t, ctx, url, `globalThis.__events = [];
-			globalThis.go = { main: { App: {
+			globalThis.drmd = { native: {
 				LoadPreferences: async () => { throw new Error('decode preferences: unexpected end of JSON input') },
 				RecordClientEvent: (event) => { globalThis.__events.push(event) },
 				SetDirty: async () => {},
 				UpdateContent: async () => {}
-			} } };`)
+			} } ;`)
 
 		var events string
 		evalJS(t, ctx, `(globalThis.__events || []).join(',')`, &events)
@@ -56,11 +56,11 @@ func TestFailureSurfacesRecordDurableEvents(t *testing.T) {
 		var events string
 		evalJS(t, ctx, `(async () => {
 			globalThis.__events = []
-			globalThis.go = { main: { App: {
+			globalThis.drmd = { native: {
 				LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 				RecordClientEvent: (event) => { globalThis.__events.push(event) },
 				SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-			} } }
+			} } 
 			await window.__app.setMarkdown('[click me](javascript:alert(1))\n')
 			await window.__app.setMode('split')
 			await new Promise((r) => setTimeout(r, 100))
@@ -91,11 +91,11 @@ func TestFailureSurfacesRecordDurableEvents(t *testing.T) {
 		var count int
 		evalJS(t, ctx, `(async () => {
 			globalThis.__events = []
-			globalThis.go = { main: { App: {
+			globalThis.drmd = { native: {
 				LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 				RecordClientEvent: (event) => { globalThis.__events.push(event) },
 				SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-			} } }
+			} } 
 			await window.__app.setMarkdown('[a](javascript:alert(1))\n')
 			await window.__app.setMode('split')
 			// Re-render the same refused link the way it actually repeats.
@@ -127,12 +127,12 @@ func TestFailureSurfacesRecordDurableEvents(t *testing.T) {
 		var events string
 		evalJS(t, ctx, `(async () => {
 			globalThis.__events = []
-			globalThis.go = { main: { App: {
+			globalThis.drmd = { native: {
 				LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 				ImportDroppedImage: async () => { throw new Error('document must be saved first') },
 				RecordClientEvent: (event) => { globalThis.__events.push(event) },
 				SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-			} } }
+			} } 
 			await window.__app.handleDroppedFiles(['/tmp/shot.png'])
 			await new Promise((r) => setTimeout(r, 100))
 			return (globalThis.__events || []).join(',')
@@ -152,12 +152,12 @@ func TestFrontendOpensAFileHandedToItAtLaunch(t *testing.T) {
 	defer cancel()
 	url := serveFrontend(t)
 
-	bootAppWithNativeStub(t, ctx, url, `globalThis.go = { main: { App: {
+	bootAppWithNativeStub(t, ctx, url, `globalThis.drmd = { native: {
 		LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 		FrontendReady: async () => ['/tmp/handed-over.md'],
 		OpenRecentDocument: async (p) => ({ path: p, content: '# Handed over\n\nfrom Finder\n' }),
 		SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-	} } };`)
+	} } ;`)
 
 	var got string
 	evalJS(t, ctx, `(async () => {

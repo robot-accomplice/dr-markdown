@@ -151,13 +151,13 @@ func TestLineEndingsSurviveAnEditAndSave(t *testing.T) {
 	var saved string
 	evalJS(t, ctx, `(async () => {
 		globalThis.__saved = null
-		globalThis.go = { main: { App: {
+		globalThis.drmd = { native: {
 			LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 			OpenDocument: async () => ({ path: '/tmp/crlf.md', content: `+string(in)+` }),
 			SaveDocument: async (p, c) => { globalThis.__saved = c },
 			ResolveUnsavedChanges: async () => true,
 			SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-		} } }
+		} } 
 		await window.__app.openDocument()
 		// A real keystroke: the editor re-serializes and that result becomes the
 		// buffer. Saving without editing preserves CRLF trivially, because the
@@ -209,13 +209,13 @@ func TestOpeningADocumentDoesNotMarkItModified(t *testing.T) {
 			}
 			var dirty bool
 			evalJS(t, ctx, `(async () => {
-				globalThis.go = { main: { App: {
+				globalThis.drmd = { native: {
 					LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 					OpenDocument: async () => ({ path: '/tmp/probe.md', content: `+string(in)+` }),
 					SaveDocument: async () => {},
 					ResolveUnsavedChanges: async () => true,
 					SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-				} } }
+				} } 
 				await window.__app.openDocument()
 				await new Promise((r) => setTimeout(r, 300))
 				return window.__app.state.dirty === true
