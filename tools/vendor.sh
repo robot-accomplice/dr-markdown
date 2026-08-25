@@ -8,6 +8,15 @@ CREPE_VERSION="7.22.0"
 HIGHLIGHT_VERSION="11.11.1"
 MERMAID_VERSION="11.6.0"
 
+# The stylesheets Crepe's own theme @imports but does not ship. Pinned
+# separately because @milkdown/kit re-exports them as bundler subpaths
+# (@milkdown/kit/prose/view/style/prosemirror.css and friends) rather than
+# shipping the files, so they can only be fetched from upstream.
+PM_VIEW_VERSION="1.42.3"
+PM_GAPCURSOR_VERSION="1.4.1"
+PM_TABLES_VERSION="1.8.5"
+PM_VIRTUAL_CURSOR_VERSION="0.4.2"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR="$ROOT/frontend/dist/vendor"
 mkdir -p "$VENDOR/theme"
@@ -159,6 +168,60 @@ curl -fsSL "$LIST_URL" |
     mkdir -p "$VENDOR/theme/$(dirname "$rel")"
     fetch "$BASE_URL$path" "$VENDOR/theme/$rel"
   done
+
+# Crepe's theme CSS @imports four stylesheets from OTHER npm packages, by bare
+# specifier. A browser resolves a bare specifier in CSS relative to the
+# stylesheet's own URL, so each became a request under vendor/theme/common/ for
+# a path that does not exist, and 404ed:
+#
+#   common/prosemirror.css  -> @milkdown/kit/prose/view/style/prosemirror.css
+#   common/cursor.css       -> @milkdown/kit/prose/gapcursor/style/gapcursor.css
+#                              prosemirror-virtual-cursor/style/virtual-cursor.css
+#   common/table.css        -> @milkdown/kit/prose/tables/style/tables.css
+#
+# So ProseMirror's own base editor stylesheet, the gap cursor, the virtual
+# cursor and the table styles never loaded at all. A failed @import is silent —
+# the importing sheet still applies, nothing throws, and no test asserts on a
+# stylesheet that is missing — which is why this shipped. It was found by the
+# host harness logging ASSET MISS while driving the real app.
+#
+# The files are fetched from upstream rather than from @milkdown/kit, because
+# kit re-exports those paths as bundler subpaths and does not ship them: every
+# @milkdown/kit/prose/... URL above returns 404 from the registry.
+fetch "https://cdn.jsdelivr.net/npm/prosemirror-view@${PM_VIEW_VERSION}/style/prosemirror.css" \
+  "$VENDOR/theme/common/pm-view.css"
+fetch "https://cdn.jsdelivr.net/npm/prosemirror-gapcursor@${PM_GAPCURSOR_VERSION}/style/gapcursor.css" \
+  "$VENDOR/theme/common/pm-gapcursor.css"
+fetch "https://cdn.jsdelivr.net/npm/prosemirror-tables@${PM_TABLES_VERSION}/style/tables.css" \
+  "$VENDOR/theme/common/pm-tables.css"
+fetch "https://cdn.jsdelivr.net/npm/prosemirror-virtual-cursor@${PM_VIRTUAL_CURSOR_VERSION}/style/virtual-cursor.css" \
+  "$VENDOR/theme/common/pm-virtual-cursor.css"
+
+# Point the vendored sheets at the local copies. katex is REMOVED rather than
+# satisfied: Crepe.Feature.Latex is disabled in editor.js, so fetching a 300KB
+# stylesheet for a feature that is off would be worse than the 404.
+rewrite_import() {
+    local file="$1" spec="$2" local_name="$3"
+    if ! grep -q "$spec" "$VENDOR/theme/$file"; then
+        echo "error: $file no longer imports $spec." >&2
+        echo "       Either the vendored theme changed shape or this rewrite already ran." >&2
+        echo "       An unrewritten bare specifier 404s silently and the editor loses that" >&2
+        echo "       stylesheet with nothing reporting it." >&2
+        exit 1
+    fi
+    sed -i.bak "s|@import '$spec';|@import './$local_name';|" "$VENDOR/theme/$file" && rm "$VENDOR/theme/$file.bak"
+}
+
+rewrite_import common/prosemirror.css "@milkdown/kit/prose/view/style/prosemirror.css"     pm-view.css
+rewrite_import common/cursor.css      "@milkdown/kit/prose/gapcursor/style/gapcursor.css"  pm-gapcursor.css
+rewrite_import common/cursor.css      "prosemirror-virtual-cursor/style/virtual-cursor.css" pm-virtual-cursor.css
+rewrite_import common/table.css       "@milkdown/kit/prose/tables/style/tables.css"        pm-tables.css
+
+if grep -q "katex/dist/katex.min.css" "$VENDOR/theme/common/latex.css"; then
+    sed -i.bak "/katex\/dist\/katex.min.css/d" "$VENDOR/theme/common/latex.css" && rm "$VENDOR/theme/common/latex.css.bak"
+    echo "dropped the katex import (Latex feature is disabled)"
+fi
+echo "rewrote the theme's cross-package @imports to local copies"
 
 # Manifest of theme CSS in load order (common/ sorts first alphabetically).
 ( cd "$VENDOR/theme" && find . -name '*.css' | sed 's|^\./||' | sort > manifest.txt )
