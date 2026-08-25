@@ -2,7 +2,7 @@
 // focus, which have unsaved changes, and what this app last read from or wrote
 // to each file on disk.
 //
-// It exists because that state used to live on the Wails binding surface as
+// It exists because that state used to live on the binding surface as
 // loose fields behind a shared mutex, with its rules recorded only in comments
 // that every reader had to remember to honour. Those rules are not stylistic —
 // getting one wrong destroyed a document the user had not touched.

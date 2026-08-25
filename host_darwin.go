@@ -12,7 +12,8 @@ package main
 // AppKit and WebKit expose no C API, so some Objective-C is unavoidable. What
 // actually requires the LANGUAGE is protocol conformance — serving assets and
 // receiving calls each need a class conforming to a protocol — and that is all
-// host_darwin.m contains. Wails' WailsContext conforms to four protocols
+// host_darwin.m contains. The framework this replaced used one context object
+// conforming to four protocols
 // (WKURLSchemeHandler, WKScriptMessageHandler, WKNavigationDelegate,
 // WKUIDelegate); this needs two.
 
@@ -295,7 +296,8 @@ func decodeArgs(args []json.RawMessage, targets ...any) error {
 //
 // `payload` is a JSON value ready to interpolate into the resolver. The
 // deferred recover is the point of owning the host: a panic becomes a REJECTED
-// promise, so the frontend's await settles. Under Wails v2 the same panic is
+// promise, so the frontend's await settles. Under the framework this replaced
+// the same panic is
 // recovered upstream and the callback discarded — the promise never settles and
 // that operation is dead until restart (#61), with no downstream fix.
 func dispatchCall(app *App, method, argsJSON string) (ok bool, payload string) {
@@ -734,7 +736,7 @@ func (darwinNative) EmitFileOpen(_ context.Context, p string) {
 }
 
 // emitToFrontend delivers an event through the runtime shim the injected script
-// installs. app.js subscribes with globalThis.runtime.EventsOn at two sites, so
+// installs. app.js subscribes with globalThis.drmd.events.on at two sites, so
 // a host providing only the bound methods leaves both dead.
 func emitToFrontend(name string, payload any) {
 	encoded, err := json.Marshal(payload)
