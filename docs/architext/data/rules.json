@@ -3,12 +3,12 @@
     {
       "id": "wysiwyg-is-the-purpose",
       "title": "WYSIWYG is the defining purpose of this editor",
-      "summary": "Everything in Formatted mode must be editable in place. If a construct renders but cannot be edited there, that is a defect, not a design choice \u2014 regardless of what any inventory, spec or prior note says about that construct.",
+      "summary": "Everything in Formatted mode must be editable in place. If a construct renders but cannot be edited there, that is a defect, not a design choice — regardless of what any inventory, spec or prior note says about that construct.",
       "category": "Design",
       "criticality": "critical",
       "order": 1,
       "source": "maintainer",
-      "rationale": "Stated by the maintainer on 2026-08-10: \"EVERYTHING should be editable in formatted mode, it's a WYSIWYG markdown editor\", and \"WYSIWYG ... is the whole reason this app exists\". It was recorded as a rule because the opposite had already been inferred twice from documentation: the 2026-08-06 screen inventory promises block-local LANGUAGE editing for rendered code blocks, and that was read as licence for the body to be read-only. It is not. The consequence is concrete \u2014 code blocks have been uneditable since syntax highlighting was added (#77), because the app replaces the editor's own node with static chrome, and that shipped in v0.5.1. A release is blocked on it: \"we cannot ship another broken release on basic editing functionality\".",
+      "rationale": "Stated by the maintainer on 2026-08-10: \"EVERYTHING should be editable in formatted mode, it's a WYSIWYG markdown editor\", and \"WYSIWYG ... is the whole reason this app exists\". It was recorded as a rule because the opposite had already been inferred twice from documentation: the 2026-08-06 screen inventory promises block-local LANGUAGE editing for rendered code blocks, and that was read as licence for the body to be read-only. It is not. The consequence is concrete — code blocks have been uneditable since syntax highlighting was added (#77), because the app replaces the editor's own node with static chrome, and that shipped in v0.5.1. A release is blocked on it: \"we cannot ship another broken release on basic editing functionality\".",
       "appliesTo": [
         "any change to the Formatted editing surface",
         "any decoration or post-processing applied to editor DOM",
@@ -40,18 +40,16 @@
     },
     {
       "id": "refresh-readme-screenshots-on-ui-change",
-      "title": "Refresh README screenshots on UI change",
-      "summary": "Any UI-facing change that affects layout, chrome, controls, or visible editor behavior must run go run ./tools/screenshots and refresh the checked-in README screenshots.",
+      "title": "Refresh README screenshots when preparing a release",
+      "summary": "Run go run ./tools/screenshots and refresh the checked-in README screenshots as part of preparing a release, not on every UI-facing change. The screenshots document the released product; between releases they may lag the branch.",
       "category": "Design",
       "criticality": "high",
       "order": 20,
       "source": "maintainer",
-      "rationale": "The README is the public visual contract for the current macOS app surface, so screenshots must not drift behind implemented UI.",
+      "rationale": "The README is the public visual contract for the RELEASED macOS app, so the screenshots must be current at the moment of release. Requiring them on every UI change instead made five binary PNGs a shared, multi-writer artifact: git cannot merge a PNG, so any two concurrent UI branches conflicted on all five by construction. That happened on three separate pull requests in one day, and the only correct resolution each time was to discard both sides and regenerate — which is the definition of a derived artifact that should have one writer. Release preparation is that writer. Regenerating is deterministic on a given machine, so drift is detectable; a CI equality check would compare macOS-rendered output against a Linux runner's and would need verifying before it could be trusted.",
       "appliesTo": [
-        "frontend UI changes",
-        "visual design fixes",
-        "README updates",
-        "release preparation"
+        "release preparation",
+        "README updates"
       ],
       "protection": {
         "edit": false,
