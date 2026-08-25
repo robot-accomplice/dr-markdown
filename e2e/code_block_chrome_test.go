@@ -11,21 +11,26 @@ import (
 // this line deliberately.
 const headerPadding = 12
 
-// The existing chrome test asserts the language label and Copy button EXIST and
-// carry the right text. That check is correct, is aimed at the right elements,
-// and passed for the whole time the chrome was visibly wrong: the label sat
-// against the block's left border with no padding, and Copy sat inline beside it
-// instead of at the right edge.
+// The app's code-block shell is a PREVIEW and PRINT construct now. It used to
+// be injected into the editor as well, which is where this test used to point.
 //
-// The cause was a specificity tie. `.milkdown *` in the vendored Crepe reset
-// sets `margin: 0; padding: 0`, and `.milkdown *` and `.code-block-header` are
-// both (0,1,0). index.html loads app.css in <head>, while loadTheme() appends
-// the vendored sheets at runtime — so the vendored rule is later, and later wins
-// a tie. Every rule styling an app-injected element inside the editor has to
-// out-specify that reset, and only geometry can tell you when one stops doing so.
+// Why it pointed there, and what that caught: an existing test asserted the
+// language label and Copy button EXIST and carry the right text, and it passed
+// for the whole time the chrome was visibly wrong — the label sat against the
+// block's left border with no padding, and Copy sat inline beside it instead of
+// at the right edge. The cause was a specificity tie. `.milkdown *` in the
+// vendored Crepe reset sets `margin: 0; padding: 0`, and `.milkdown *` and
+// `.code-block-header` are both (0,1,0); index.html loads app.css in <head>
+// while loadTheme() appends the vendored sheets at runtime, so the vendored
+// rule is later and later wins a tie.
 //
-// Asserting position rather than presence is the whole point of this test. A
-// presence check cannot fail for a layout fault; this one cannot pass through it.
+// That particular collision can no longer happen, because the app no longer
+// injects anything into the editor: the editor's own node view draws code
+// blocks, and drawing over it is what left them uneditable (#77). The lesson it
+// records is still live for anything else placed inside `.milkdown`, and the
+// geometry check is still the only thing that can fail for a layout fault
+// rather than a missing element — so it keeps doing that job on the surface
+// where the shell still renders.
 func TestCodeBlockChromeIsLaidOutAsDesigned(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()
@@ -35,9 +40,10 @@ func TestCodeBlockChromeIsLaidOutAsDesigned(t *testing.T) {
 	fixture := "```go\nfunc main() {}\n```\n"
 	var res string
 	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
 
-	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .code-block-shell .code-block-header') !== null`) {
-		t.Fatal("no code block chrome rendered inside the editor")
+	if !waitForJS(t, ctx, `document.querySelector('#split-preview .code-block-shell .code-block-header') !== null`) {
+		t.Fatal("no code block chrome rendered in the split preview")
 	}
 
 	var m struct {
@@ -46,7 +52,7 @@ func TestCodeBlockChromeIsLaidOutAsDesigned(t *testing.T) {
 		HeaderPadL int `json:"headerPadL"`
 	}
 	evalJS(t, ctx, `(() => {
-		const shell = document.querySelector('#wysiwyg .code-block-shell')
+		const shell = document.querySelector('#split-preview .code-block-shell')
 		const label = shell.querySelector('.code-block-language')
 		const copy = shell.querySelector('.code-block-copy')
 		const s = shell.getBoundingClientRect()
@@ -58,7 +64,7 @@ func TestCodeBlockChromeIsLaidOutAsDesigned(t *testing.T) {
 	})()`, &m)
 
 	if m.HeaderPadL != headerPadding {
-		t.Errorf("header padding-left computed %dpx, designed %dpx: a vendored rule is winning the cascade",
+		t.Errorf("header padding-left computed %dpx, designed %dpx: a rule is winning the cascade",
 			m.HeaderPadL, headerPadding)
 	}
 	// One border pixel sits between the shell edge and the header's padding box.

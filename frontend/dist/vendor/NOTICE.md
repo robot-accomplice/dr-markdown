@@ -5,13 +5,17 @@ Fetched by `tools/vendor.sh`. Do not hand-edit.
 | Asset | Package | Version | License | Source |
 |---|---|---|---|---|
 | `crepe.bundle.mjs` + `theme/` | `@milkdown/crepe` | 7.22.0 | MIT | https://github.com/Milkdown/milkdown |
-| `codemirror.bundle.mjs` | `codemirror` | 6.0.2 | MIT | https://github.com/codemirror/basic-setup |
 | `highlight.min.js` | `highlight.js` | 11.11.1 | BSD-3-Clause | https://github.com/highlightjs/highlight.js |
 | `mermaid.min.js` | `mermaid` | 11.6.0 | MIT | https://github.com/mermaid-js/mermaid |
 
-Milkdown bundles ProseMirror (MIT, https://prosemirror.net) and CodeMirror.
-CodeMirror bundles @codemirror/* and @lezer/* packages (MIT,
-https://github.com/codemirror).
+Milkdown bundles ProseMirror (MIT, https://prosemirror.net) and CodeMirror
+(@codemirror/* and @lezer/*, MIT, https://github.com/codemirror), so the code
+blocks in the formatted editor are CodeMirror instances owned by Milkdown.
+
+A standalone `codemirror.bundle.mjs` was vendored here until 2026-08-10 and was
+imported by nothing. It could not be used to supply what the Crepe bundle is
+missing either: loading it puts a second copy of `@codemirror/state` on the
+page, and CodeMirror rejects the result outright. See `tools/vendor.sh`.
 Highlight.js provides the common browser language build used for markdown
 source overlays and fenced code block highlighting.
 Mermaid renders local fenced `mermaid` diagrams and assistant previews.
