@@ -10,7 +10,8 @@
 //
 // What genuinely requires Objective-C is protocol conformance — AppKit and
 // WebKit expose no C API, and serving assets and receiving calls each need a
-// class conforming to a protocol. Wails' WailsContext conforms to four
+// class conforming to a protocol. The framework this replaced used one context
+// object conforming to four
 // (WKURLSchemeHandler, WKScriptMessageHandler, WKNavigationDelegate,
 // WKUIDelegate); this needs two.
 
@@ -25,8 +26,9 @@
 static WKWebView *gWebView = nil;
 
 // The scheme assets are served over. It must not be http or https: WebKit
-// reserves those and registering a handler for one throws. Wails registers
-// "wails" through the identical call, and the app's 'self'-only CSP works
+// reserves those and registering a handler for one throws. The framework this
+// replaced registered its own scheme through the identical call, and the app's
+// 'self'-only CSP works
 // against it today — which is the evidence that a custom scheme does not
 // produce an origin the CSP refuses.
 static NSString *const kScheme = @"drmd";
@@ -194,7 +196,7 @@ void hostCloseNow(void) {
 // EDIT MENU's key equivalents are what deliver Cmd-C, Cmd-V, Cmd-X and Cmd-A to
 // the first responder. Without a menu there is no copy, no paste, and no Cmd-Q.
 //
-// Wails built one (Application.m calls setMainMenu:), which is why nobody
+// The framework this replaced built one, which is why nobody
 // noticed it was load-bearing until the host was replaced. Measured before
 // this existed: mainMenu=NIL.
 //
@@ -358,7 +360,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     [config.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
 
     // The bound surface is an explicit two-method object, NOT a proxy over every
-    // name. bridge.js degrades when a binding is absent — `wails()?.X() ?? missing(X)`
+    // name. bridge.js degrades when a binding is absent — `native()?.X() ?? missing(X)`
     // — and that degradation is exactly what lets the whole frontend boot against
     // a host implementing nothing. A proxy would make every method look present
     // and route it to a dispatcher with no answer.
@@ -383,8 +385,8 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"});"
         // The full bound surface, taken from app.go. It is NOT minimal, and it
         // cannot be: bridge.js degrades when go.main.App is ABSENT, but several
-        // entries are written `wails()?.Method(x)` rather than
-        // `wails()?.Method?.(x)`, so once the object exists a missing method is
+        // entries are written `native()?.Method(x)` rather than
+        // `native()?.Method?.(x)`, so once the object exists a missing method is
         // a TypeError rather than a fallback. A partial host breaks boot.
         @"const NAMES = ['OpenDocument','SaveDocument','SaveDocumentAs','SyncDocuments',"
         @"  'SetDirty','UpdateContent','ListFontFamilies','LoadPreferences','SavePreferences',"
@@ -394,12 +396,16 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"const App = {};"
         @"for (const n of NAMES) App[n] = (...args) => call(n, args);"
         @"globalThis.drmd = { native: App };"
-        // app.js subscribes through globalThis.runtime.EventsOn at two sites
-        // (files:dropped and file:open), so a host must supply that surface too.
-        // It is not part of go.main.App and a host that provides only the bound
-        // methods leaves both subscriptions silently dead.
+        // Events are a separate surface from the bound methods: app.js subscribes
+        // at two sites (files:dropped and file:open), and a host that provides
+        // only the bound methods leaves both subscriptions silently dead.
+        //
+        // Named under drmd like everything else this host installs. It carried
+        // the previous framework's name and shape until v0.6.0, which read as
+        // though the framework were still present — see
+        // docs/decisions/2026-08-10-host-replacement.md.
         @"const listeners = new Map();"
-        @"globalThis.runtime = { EventsOn: (name, handler) => {"
+        @"globalThis.drmd.events = { on: (name, handler) => {"
         @"  if (!listeners.has(name)) listeners.set(name, []);"
         @"  listeners.get(name).push(handler);"
         @"} };"
@@ -443,16 +449,16 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"  out.gate3b_survived = await timed("
         @"    globalThis.drmd.native.Ping('still here').catch((e) => 'THREW: ' + e.message), 'ping2');"
         // Gate 4: the Go -> frontend event channel. app.js subscribes through
-        // globalThis.runtime.EventsOn for files:dropped and file:open, and a host
+        // globalThis.drmd.events.on for files:dropped and file:open, and a host
         // that implements only bound methods leaves both silently dead — no
         // error, just a file opened from Finder that never appears.
-        @"  const got = new Promise((r) => globalThis.runtime.EventsOn('file:open', r));"
+        @"  const got = new Promise((r) => globalThis.drmd.events.on('file:open', r));"
         @"  globalThis.drmd.native.Ping('__emit_file_open');"
         @"  out.gate4_event_received = await timed(got, 'event');"
         // Gate 5: the file-drop path from AppKit's callback through the
         // subscriber to the frontend. The OS delivery itself needs a real drag
         // and a person; everything downstream of it is exercised here.
-        @"  const dropped = new Promise((r) => globalThis.runtime.EventsOn('files:dropped', r));"
+        @"  const dropped = new Promise((r) => globalThis.drmd.events.on('files:dropped', r));"
         @"  globalThis.drmd.native.Ping('__simulate_drop');"
         @"  out.gate5_drop_delivered = await timed(dropped, 'drop');"
         // Gate 6: an actual document round trip. The other gates prove the host
@@ -516,7 +522,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         // idle so a real drag can be performed on it.
         @"globalThis.__drmdReportRealDrop = (paths) =>"
         @"  window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__realdrop', args: [paths] });"
-        @"globalThis.runtime.EventsOn('files:dropped', (paths) => {"
+        @"globalThis.drmd.events.on('files:dropped', (paths) => {"
         @"  if (globalThis.__drmdDropMode) globalThis.__drmdReportRealDrop(paths);"
         @"});"
         @"window.addEventListener('load', () => {"

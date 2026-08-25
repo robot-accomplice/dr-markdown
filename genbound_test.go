@@ -7,7 +7,7 @@ import (
 )
 
 // A generated file that is tracked but stale is the defect this guards, and
-// this project has already paid for it: the Wails-generated binding is
+// this project has already paid for it: the generated binding is
 // gitignored, and a stale copy on a build machine once turned SyncDocuments
 // into a silent no-op, leaving Go with no documents at all.
 //

@@ -1,5 +1,5 @@
 // Package e2e drives the vendored frontend in headless Chrome via chromedp.
-// It serves frontend/dist over httptest (matching the Wails asset-server
+// It serves frontend/dist over httptest (matching the app's asset-scheme
 // environment) and talks to the page through the window.__app hooks.
 //
 // Requires a Chrome/Chromium binary on the machine. Tests FAIL rather than
