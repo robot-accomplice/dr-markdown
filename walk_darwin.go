@@ -91,7 +91,7 @@ await checkAsync('Split toggles a real second pane', async () => {
 // ---- Ribbon tabs --------------------------------------------------------
 // Panels are toggled with the hidden ATTRIBUTE on [data-ribbon-panel]
 // (app.js:743), not with an is-active class.
-for (const tab of ['home', 'insert', 'format', 'view', 'help']) {
+for (const tab of ['file', 'insert', 'format', 'view', 'help']) {
   await checkAsync('ribbon tab ' + tab + ' activates', async () => {
     app().activateRibbonTab(tab)
     await settle()
@@ -114,7 +114,7 @@ const commands = [
 ]
 for (const cmd of commands) {
   await checkAsync('command ' + cmd + ' mutates the buffer', async () => {
-    app().activateRibbonTab('home')
+    app().activateRibbonTab('file')
     await app().setMarkdown('seed text\n')
     await settle()
     const before = app().getMarkdown()
