@@ -148,6 +148,80 @@ patch_colour '"#21252b"' '"transparent"'          "gutter background"
 patch_colour '"#528bff"' '"var(--accent)"'        "cursor"
 echo "remapped the vendored One Dark palette to the app's syntax tokens"
 
+# Export CodeMirror's `indentUnit` facet, so how far Tab indents is decided in
+# app code instead of here.
+#
+# Reported from real use: Tab inserted four spaces in raw mode and two in the
+# formatted view's code blocks — the same keystroke on the same document giving
+# different text. Raw mode used the app's own constant; CodeMirror used the
+# facet's default of two spaces, and nothing connected them.
+#
+# The bundle exports only Crepe's own surface, and the feature accepts
+# `extensions`, so exporting the facet is enough: frontend/dist/src/indent.js
+# holds the width and editor.js configures it. Rewriting the default value in
+# place would work too, and is worse — a product decision would then live in a
+# shell script that rewrites a third-party artifact.
+#
+# The minified name is DISCOVERED from the facet's own definition rather than
+# written down. `Of` today is a name the minifier chose and will choose
+# differently on the next refresh; the definition is the stable thing.
+indent_facet=$(grep -o '[A-Za-z_$][A-Za-z0-9_$]*=[A-Za-z_$][A-Za-z0-9_$]*\.define({combine:t=>{if(!t\.length)return"  "' \
+    "$VENDOR/crepe.bundle.mjs" | head -1 | cut -d= -f1)
+if [ -z "$indent_facet" ]; then
+    echo "error: could not find CodeMirror's indentUnit facet in crepe.bundle.mjs." >&2
+    echo "       It is identified by its own definition — a facet whose combine" >&2
+    echo "       returns two spaces when unset. Without the export, editor.js" >&2
+    echo "       cannot set the indent width and Tab would silently go back to" >&2
+    echo "       indenting by two in the formatted view and four in raw." >&2
+    exit 1
+fi
+if ! grep -q "export{Cq as Crepe" "$VENDOR/crepe.bundle.mjs"; then
+    echo "error: crepe.bundle.mjs no longer ends with the expected export list." >&2
+    exit 1
+fi
+sed -i.bak "s|export{Cq as Crepe|export{$indent_facet as indentUnit,Cq as Crepe|" \
+    "$VENDOR/crepe.bundle.mjs" && rm "$VENDOR/crepe.bundle.mjs.bak"
+echo "exported CodeMirror's indentUnit facet (minified as $indent_facet)"
+
+# Normalize the language the block picker writes into a fence.
+#
+# The node view's setLanguage puts the picked value straight into the node's
+# `language` attribute, and the picker supplies CodeMirror's DISPLAY name — so
+# choosing Python from the block's own picker writes ```Python, where every
+# other route in this application writes ```python (GitHub #78).
+#
+# Markdown treats info strings case-insensitively, so nothing renders
+# differently. It matters here because this project holds a byte-identical
+# round-trip corpus and a 49-construct fidelity survey, and a file that gains a
+# capitalised fence purely because of which control the user reached for is an
+# inconsistency the corpus would have to encode.
+#
+# Patched at the PICKER, deliberately, and not on serialize. Normalizing on
+# serialize would rewrite fences the USER authored capitalised, which the
+# fidelity survey would correctly fail — a document must come back as it went
+# in. Only a language the picker just chose is normalized.
+#
+# What "normalized" means stays in app code: the hook calls
+# globalThis.drmd.normalizeLanguage, which is highlighter.js's own function, and
+# falls back to the raw value if it is absent so the bundle degrades rather than
+# breaks.
+setlang_anchor='setLanguage=s=>{var l;this.view.dispatch(this.view.state.tr.setNodeAttribute((l=this.getPos())!=null?l:0,"language",s))}'
+if ! grep -qF "$setlang_anchor" "$VENDOR/crepe.bundle.mjs"; then
+    echo "error: the code block node view's setLanguage is not where it was." >&2
+    echo "       Without this patch the block's language picker writes CodeMirror's" >&2
+    echo "       display name into the fence — \`\`\`Python rather than \`\`\`python —" >&2
+    echo "       disagreeing with every other route in the app (#78)." >&2
+    exit 1
+fi
+setlang_patched='setLanguage=s=>{var l;this.view.dispatch(this.view.state.tr.setNodeAttribute((l=this.getPos())!=null?l:0,"language",(globalThis.drmd&&globalThis.drmd.normalizeLanguage?globalThis.drmd.normalizeLanguage(s):s)))}'
+python3 - "$VENDOR/crepe.bundle.mjs" "$setlang_anchor" "$setlang_patched" <<'PYEOF'
+import sys, io
+path, old, new = sys.argv[1], sys.argv[2], sys.argv[3]
+s = io.open(path, encoding='utf-8').read()
+io.open(path, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYEOF
+echo "routed the block language picker through the app's normalizer"
+
 # Highlight.js common browser build: syntax highlighting for markdown source
 # overlays and language-tagged fenced code blocks.
 fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@${HIGHLIGHT_VERSION}/build/highlight.min.js" \

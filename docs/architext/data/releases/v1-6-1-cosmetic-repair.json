@@ -1,0 +1,221 @@
+{
+  "id": "v1-6-1-cosmetic-repair",
+  "version": "1.6.1",
+  "name": "Repair from use and the standing defect backlog",
+  "status": "complete",
+  "posture": "on-track",
+  "summary": "The first release scoped from USING the packaged application rather than from review findings alone. v0.6.0's premortem carried one line a harness cannot close — install the DMG and use it — and closing it immediately returned a layout defect that five ABORT stations, the host gates and a 40-check screen walk had all passed over. This release carries that fix and clears the standing defect backlog: every open issue that is a defect rather than a roadmap milestone. Two of those defects were created by the v0.6.0 work itself — a UI route the contextual-bar removal took away, and a harness check that cannot fail — which is the argument for closing them here rather than carrying them further.",
+  "targetWindow": "Current milestone",
+  "lastUpdated": "2026-08-25T00:00:00.000Z",
+  "updateSource": "ABORT review passed 5/5; release candidate cut",
+  "scope": {
+    "required": [
+      {
+        "id": "settings-row-alignment",
+        "title": "A settings row's control lines up with the title that names it",
+        "kind": "bug-fix",
+        "status": "complete",
+        "summary": "Reported from real use of the packaged 0.6.0 build, against the Code Block dialog. Every .settings-row is a two-line label beside a control laid out with align-items: center, which centres the control against the whole label group rather than the title it names — measured at +9.0px. The row is top-aligned now, with the title and the control sharing one band (--row-band), so the description hangs below without pulling the control down. Central, not local: the dialog reuses .settings-row, so the same misalignment was in all 13 rows across the dialog and the Editor and Appearance settings. All now measure +0.0px. Two regressions the extended test caught before merge: the band rule out-specified .settings-toggle and STRETCHED the pill from 20px to 32px, and min-height on a content-box element grew the segmented control to 38px. A stretched pill still centres, so the offset assertion passed it — its size is asserted separately.",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ]
+      },
+      {
+        "id": "panic-before-app-exists",
+        "title": "A panic before the App exists leaves no trail",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "diagnostics",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "host-gates",
+          "issue-62"
+        ],
+        "summary": "GitHub #62. App.reportPanic covers every bound method, but not a panic raised before the App and its event log are constructed — inside NewApp(), or on the main goroutine before startup fires. Both kill the process with nothing recorded and no dialog. Closing it means changing construction order to open a trail that does not depend on the App, not adding another guard. NOTE: the issue's stated premise is now partly stale — it describes the replaced framework's Run() and its lifecycle callbacks, which no longer exist. The window it names is real, but its shape changed with the host replacement and must be re-measured against the current startup path before the fix is designed. RE-MEASURED first, as flagged. The issue's premise was stale and its window was WIDER than recorded: probing each candidate point showed a panic inside NewApp left no file at all, AND a panic after NewApp but before host.Run left nothing either — although the log existed by then — because nothing in main recovered. The boundary was never whether the App exists, it is whether a call is wrapped by reportPanic, and main is not. app.startup was already covered. Fixed both halves: NewEventLog opens the trail before NewApp so the App's own construction is covered, and recordStartupPanic recovers on the main goroutine, records with a phase field distinguishing it from a runtime panic, and RE-PANICS — a failure during startup means the application cannot run, so the crash is preserved and only the silence is fixed. Covers the main goroutine only; a panic on another goroutine cannot be recovered from main, which is Go rather than an oversight and is stated so this is not mistaken for total coverage."
+      },
+      {
+        "id": "repeating-panic-evicts-trail",
+        "title": "A repeating panic evicts the context needed to diagnose it",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "diagnostics",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "issue-63"
+        ],
+        "summary": "GitHub #63. The event log is bounded at 2000 entries and trim keeps the newest, which is right in general and wrong for a repeating panic: a panic in a debounced path records once per tick, so the FIRST panic and everything leading to it are evicted and 2000 copies of the last are kept. That inverts what root-cause analysis needs. The refused-link-scheme precedent in this repo solves the same shape by capping per distinct key; of the three options the issue records, recording the first N occurrences then a periodic still-happening summary preserves the most diagnostic value and is the most code. FIXED in the log rather than in each caller: the trail is the thing being protected, so it protects itself. Record folds by a signature built from the event and its fields excluding volatile ones (stack, time) — a stack differs between occurrences and would make every repeat look distinct. The first 5 occurrences are recorded in full, then only at decade milestones carrying a repeats count, which is O(log n) records for n occurrences. Measured: 5000 repeats produce 11 records and the events leading up to the failure survive; without the fold the same input produces 2000 records and evicts all three. At most 64 distinct signatures are tracked, past which events record unfolded — a flood spread across thousands of DISTINCT signatures is a different problem, and suppressing to guess at it would drop records that are not repeats."
+      },
+      {
+        "id": "close-dirty-cannot-fail",
+        "title": "-close-dirty cannot fail: both guard outcomes report PASS",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "diagnostics",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "host-gates",
+          "issue-100"
+        ],
+        "summary": "GitHub #100, found while re-driving the host modes for v0.6.0. reportCloseDecision prints PASS on both branches because it does not know which mode it is running in, so under -close-dirty a guard that ALLOWS the close — the exact failure the mode exists to catch, unsaved work dropped silently — is reported as a passing clean close. The guard itself is correct; this is a reporting defect. A check that passes on every outcome is indistinguishable from a check that was never run. FIXED: the judgement is now a pure function, judgeClose in closecheck.go, separated from the host so it can be tested without one — driving the window still needs a person, but whether an observation is a pass does not. Fourteen unit cases, nine of which must FAIL, including the exact defect: a dirty document that closes with no prompt. A dirty close has no single correct outcome, which is why the original could not just compare a boolean; it depends on the button, so the harness now records prompts raised and the answer chosen and asserts the PAIRING — Cancel must prevent, Don't Save must allow, Save must allow once the save completes, and a failed dialog must protect the work. One test asserts no verdict can describe a dirty observation as clean, which is what the old wording did."
+      },
+      {
+        "id": "fence-casing",
+        "title": "Code block language picker writes the display name into the fence",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "issue-78"
+        ],
+        "summary": "GitHub #78. The vendored node view's picker, adopted in #77 when the app stopped drawing its own chrome, sets the block language from LanguageDescription.name — the DISPLAY name — so a file gains a capitalised fence where every other route in the app writes the normalized lowercase id. Nothing renders differently and no content is lost, but this project holds a byte-identical round-trip corpus and a 49-construct fidelity survey, so an inconsistency that depends on which control the user reached for matters more here. Already asserted in e2e so it cannot change unnoticed in either direction. Normalizing on serialize is NOT the fix: it would rewrite user-authored capitalised fences, which the fidelity survey would correctly fail. FIXED at the PICKER, not on serialize. The node view's setLanguage put the picked value straight into the language attribute; tools/vendor.sh now routes that one assignment through globalThis.drmd.normalizeLanguage, which is highlighter.js's own function, so what normalized means stays in app code beside every other user of it rather than being spelled out in a shell script. The hook falls back to the raw value if absent, so the bundle degrades rather than breaks. Serializing was rejected as the site because it would rewrite fences the USER authored capitalised — asserted by a new test that opens a document containing ```Python and ```JavaScript and requires both back unchanged, which is the fidelity guarantee the issue named."
+      },
+      {
+        "id": "image-reveal-route",
+        "title": "Image Reveal in Finder has no route in the UI",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "menu-check",
+          "issue-85"
+        ],
+        "summary": "GitHub #85, created by the v0.6.0 contextual-bar removal. Every other control in the bar's image group was duplication of what the editor already provides; Reveal was not, because it is a desktop capability that calls through to the host and no editor plugin can provide it. The capability is intact behind the API and still works when invoked; what it no longer has is anything to click. The awkwardness is that the image block is entirely vendored, unlike the mermaid preview the Diagram assistant was relocated onto, so appending to its operation group means injecting into DOM the node view owns and rebuilds. The app now builds its own menu bar, which is a route the bar-era options did not have. FIXED as a View menu item. Not on the image block: that block is entirely vendored, so appending to its controls means injecting into DOM the node view owns and rebuilds, which is the pattern behind #77 and #80. The application builds its own menu bar now, which is a route the options recorded on the issue did not have when it was written. A menu cannot know whether an image is selected, so the command SAYS SO rather than doing nothing — a silently inert control is #75 again. That required giving the application somewhere to speak, which it had none of: a status-bar message area, which also makes an image-reveal FAILURE visible for the first time (that path previously only console.warn'd, invisible in a production build with no devtools). Asserted by the menu check and by two e2e tests covering both the selected and the nothing-selected paths."
+      },
+      {
+        "id": "tab-indent-agrees",
+        "title": "Tab indents by the same amount in every mode",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Reported from real use. Measured on one document: Tab inserted 4 spaces in raw and 2 in the formatted view's code blocks. Neither was wrong alone — raw used the app's own constant, and the formatted view is CodeMirror, whose indentUnit facet defaults to two — but nothing connected them, so the same keystroke on the same document produced different text depending on the mode, which split view makes routine. Both now read frontend/dist/src/indent.js. tools/vendor.sh exports CodeMirror's facet so the decision lives in app code rather than in a shell script that rewrites a vendored artifact, and it DISCOVERS the minified name from the facet's own definition rather than hardcoding it, because the name is chosen by the minifier and the definition is not."
+      },
+      {
+        "id": "diagram-dialog-bounds",
+        "title": "The diagram assistant's preview and fields stay inside their boxes",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Reported from real use. Two defects in one dialog, both measured. The field inputs had width:100% plus 9px padding and a 1px border on a content-box element, so a 240px column held a 260px input that ran underneath the preview beside it. Separately the preview's SVG was bounded in width but not height, and place-items: center on an item taller than its box overflows BOTH ways — the diagram sat 9px out of the top and 9px out of the bottom, and the clipped top could not be scrolled to. Fixed with box-sizing on the input, max-height on the SVG, and `safe` centring so an item that does not fit falls back to start alignment instead of being centred out of view. This is the second content-box overflow found this release; see the note on adopting a global border-box."
+      },
+      {
+        "id": "icon-legible-at-every-size",
+        "title": "One icon artwork, legible at every size",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "Reported from real use of the installed 0.6.0 build: the icon is an unreadable mess. Three faults. It was two artworks — a stethoscope illustration from 64px up and a mark drawn in Go below — so the Dock and the Finder list did not read as the same product. The illustration's tubing crossed the letterforms, which genicon's own comment called the worst case for downsampling before shipping exactly that. And mid-blue strokes on a pale blue tile carried almost no contrast, so at Dock size it read as a smudge. Replaced with maintainer-supplied artwork — the format's own M-arrow in white on a blue gradient — used at EVERY size, and checked at 16px before adoption rather than after: the notch and the arrowhead both still resolve there. genicon no longer draws anything, so the per-size branch and the drawing primitives are gone. tools/genbanner was resampled from the new artwork, because its colours came from the old one and its claim to match the icon had silently stopped being true."
+      },
+      {
+        "id": "install-replaces-by-identity",
+        "title": "Installing replaces an existing install by identity, not by path",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "Reported from real use. The install step removed only /Applications/dr-markdown.app, so a bundle carrying the same CFBundleIdentifier under a different name survived. Observed: a hand-renamed 'Dr. Markdown.app' at 0.5.1 sitting beside a freshly installed 0.6.0 with the same identifier. LaunchServices resolves documents by identifier rather than path, so double-clicking a .md file could open either, showing a version behind with nothing in the window to reveal which. The step now reads the identifier from the bundle being installed and removes every bundle in /Applications and ~/Applications that carries it, checking each candidate's identifier before removal so it can only ever remove another copy of this application. LIMIT: this governs the build script's --install. A DMG drag-install is Finder's, and Finder replaces only the same-named bundle; detecting duplicates from inside the running application is a separate decision, not taken here."
+      }
+    ],
+    "planned": [],
+    "stretch": [],
+    "deferred": [],
+    "outOfScope": [
+      {
+        "id": "roadmap-milestones",
+        "title": "The five open roadmap milestones",
+        "reason": "#5, #10, #11, #12 and #13 are open, but they are multi-release trackers — post-alpha remediation, direct export, comments and review, share/sync and extensions architecture, packaging and signing — not defects. Excluded because each is a milestone in its own right, not because they are unimportant."
+      }
+    ]
+  },
+  "workstreams": [
+    {
+      "id": "surface",
+      "name": "What the application does in use",
+      "owner": "Project maintainers",
+      "status": "in-progress",
+      "posture": "on-track",
+      "progress": 60,
+      "summary": "Defects a person meets while using the packaged application.",
+      "itemIds": [
+        "settings-row-alignment",
+        "fence-casing",
+        "image-reveal-route",
+        "tab-indent-agrees",
+        "diagram-dialog-bounds",
+        "icon-legible-at-every-size",
+        "install-replaces-by-identity"
+      ]
+    },
+    {
+      "id": "diagnostics",
+      "name": "Whether a failure can be root-caused",
+      "owner": "Project maintainers",
+      "status": "planned",
+      "posture": "on-track",
+      "progress": 0,
+      "summary": "The recorded trail, and whether the checks over it can fail.",
+      "itemIds": [
+        "panic-before-app-exists",
+        "repeating-panic-evicts-trail",
+        "close-dirty-cannot-fail"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "wysiwyg-reserialization-class",
+      "title": "The WYSIWYG surface still re-serializes the whole document",
+      "severity": "high",
+      "status": "accepted",
+      "summary": "Carried forward unchanged from v0.6.0. The editor parses to ProseMirror's model and re-serializes everything, so a construct nobody surveyed is still respelled. Only source-preserving editing would close the class. This is recorded here because the version number moves to 1.x, which reads as a maturity claim this blocker contradicts; the version was chosen by the maintainer with that stated."
+    }
+  ],
+  "milestones": [],
+  "dependencies": [],
+  "evidence": [
+    "full-test-suite",
+    "issue-62",
+    "issue-63",
+    "issue-78",
+    "issue-85",
+    "issue-100",
+    "abort-review",
+    "host-gates",
+    "screen-walk",
+    "menu-check",
+    "packaging"
+  ]
+}

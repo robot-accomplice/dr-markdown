@@ -2,12 +2,12 @@
   "id": "v0-6-0-own-the-host-and-editable-blocks",
   "version": "0.6.0",
   "name": "Own the host, and make the editor editable",
-  "status": "in-progress",
+  "status": "complete",
   "posture": "on-track",
   "summary": "The release that removes the application framework and fixes the rule the editor exists to serve. Wails is gone from the running application: the window, the webview, the asset scheme, the native dialogs and the menu bar are AppKit and WebKit directly, behind hostPort, and a panicking bound call now REJECTS rather than leaving the frontend's await unsettled forever. Code blocks became editable in Formatted mode for the first time since syntax highlighting landed, and mermaid diagrams became editable at all. The cause was one undefined value: esm.sh resolves the bare specifier `codemirror` inside the vendored Crepe bundle to CodeMirror 5, which has no basicSetup, so EditorState.create threw inside the observer callback that upgrades a block, after the node view had set initialized = true, and never retried. Alongside that, the three editing surfaces were made to agree with each other, the floating contextual bar was removed in favour of controls on the blocks they act on, the ribbon stopped shipping the same command in two tabs, and continuous integration began compiling the code that actually ships.",
   "targetWindow": "Current milestone",
   "lastUpdated": "2026-08-25T00:00:00.000Z",
-  "updateSource": "Release preparation, pre-ABORT",
+  "updateSource": "Released: tagged v0.6.0 at f82351b",
   "scope": {
     "required": [
       {

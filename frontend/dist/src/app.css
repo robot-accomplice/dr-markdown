@@ -5,6 +5,11 @@
   --accent-wash-border: oklch(0.85 0.055 235);
   --accent-ink: oklch(0.32 0.055 235);
   --panel: #fff;
+  /* A settings row's title and its control occupy one band, so they read as a
+     pair however far the description below them runs. Every row control is
+     sized from this; a control that opts out of it will not line up. */
+  --row-band: 32px;
+  --row-toggle-height: 20px;
   --chrome: oklch(0.985 0.002 285);
   --canvas: oklch(0.975 0.003 285);
   --line: oklch(0.93 0.005 285);
@@ -763,7 +768,11 @@ button.primary {
 .diagram-fields input {
   width: 100%;
   min-width: 0;
-  height: 32px;
+  /* border-box, or width:100% means 100% of the track PLUS 18px of padding and
+     2px of border: measured at 260px inside a 240px column, running under the
+     preview beside it. */
+  box-sizing: border-box;
+  height: var(--row-band);
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 0 9px;
@@ -777,7 +786,11 @@ button.primary {
   max-height: 320px;
   overflow: auto;
   display: grid;
-  place-items: center;
+  /* `safe` centre. A centred grid item taller than its box overflows BOTH ways,
+     so the top of the diagram was clipped and unreachable by scrolling —
+     measured 9px out of the top and 9px out of the bottom. `safe` falls back to
+     start alignment rather than centring something that does not fit. */
+  place-items: safe center;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--canvas);
@@ -786,6 +799,9 @@ button.primary {
 
 .diagram-preview svg {
   max-width: 100%;
+  /* Bounded in BOTH axes. Without a height bound the diagram renders at its
+     natural size and overflows a box that exists to contain it. */
+  max-height: 100%;
   height: auto;
 }
 
@@ -1858,7 +1874,11 @@ body.raw-mode:not(.raw-soft-wrap) #raw .source-input {
 .settings-row {
   min-height: 60px;
   display: flex;
-  align-items: center;
+  /* NOT centre. Centring aligns the control with the middle of the two-line
+     label group, which puts it 9px below the title it names — measured, and
+     visible as the title and the control's own text sitting on different
+     lines. Top-aligned, with both sharing --row-band, they pair up. */
+  align-items: start;
   justify-content: space-between;
   gap: 24px;
   padding: 14px 0;
@@ -1876,6 +1896,9 @@ body.raw-mode:not(.raw-soft-wrap) #raw .source-input {
 .settings-row strong {
   font-size: 13.5px;
   font-weight: 650;
+  display: flex;
+  align-items: center;
+  min-height: var(--row-band);
 }
 
 .settings-row span {
@@ -1883,9 +1906,19 @@ body.raw-mode:not(.raw-soft-wrap) #raw .source-input {
   font-size: 12px;
 }
 
+/* The control side of the band. The label group is the row's first child;
+   everything else in a row is the control that names it. */
+.settings-row > :not(div:first-child, .settings-toggle) {
+  align-self: start;
+  min-height: var(--row-band);
+  /* border-box, or a control with padding grows PAST the band: the segmented
+     control's 3px padding made it 38px and sat it 3px low. */
+  box-sizing: border-box;
+}
+
 .settings-row select {
   min-width: 142px;
-  height: 32px;
+  height: var(--row-band);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -1896,6 +1929,7 @@ body.raw-mode:not(.raw-soft-wrap) #raw .source-input {
 
 .settings-segmented {
   display: flex;
+  align-items: center;
   gap: 2px;
   padding: 3px;
   border-radius: 9px;
@@ -1922,7 +1956,12 @@ body.raw-mode:not(.raw-soft-wrap) #raw .source-input {
 .settings-toggle {
   appearance: none;
   width: 36px;
-  height: 20px;
+  /* The one control that is a replaced element, so it is excluded from the
+     band rule above and centred in the band by margin instead. Given the band
+     as a min-height it stretches into a 32px pill. */
+  height: var(--row-toggle-height);
+  align-self: start;
+  margin-top: calc((var(--row-band) - var(--row-toggle-height)) / 2);
   border: 0;
   border-radius: 999px;
   background: oklch(0.88 0.005 285);
@@ -1953,6 +1992,7 @@ body.raw-mode:not(.raw-soft-wrap) #raw .source-input {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-height: var(--row-band);
 }
 
 .settings-slider input {
@@ -2036,7 +2076,7 @@ body.raw-mode:not(.raw-soft-wrap) #raw .source-input {
 
 .code-language-row select {
   min-width: 164px;
-  height: 32px;
+  height: var(--row-band);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -2568,4 +2608,18 @@ body.dark {
    size is the code-font setting rather than a page zoom. */
 body.app-empty .document-zoom {
   display: none;
+}
+
+/* Where the application says something transient — the only such place it has.
+   Added with the Reveal in Finder menu item: a menu command that silently does
+   nothing when it does not apply is the shape of #75, a control that renders
+   and has no effect. */
+#status-message {
+  color: var(--accent-ink);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+#status-message.showing {
+  opacity: 1;
 }
