@@ -55,6 +55,24 @@
         "edit": false,
         "delete": false
       }
+    },
+    {
+      "id": "icon-and-theme-need-not-match",
+      "title": "The icon and the internal theme need not match",
+      "summary": "The application's icon and its in-app accent are allowed to diverge. They are seen in different places and by different means, and holding them to one hue is a constraint nobody asked for. A review that notices the divergence should not record it as a defect or a residual.",
+      "category": "Design",
+      "criticality": "medium",
+      "order": 30,
+      "source": "maintainer",
+      "rationale": "Ruled by the maintainer on 2026-08-26. Raised twice as a residual — in the v1.6.1 ABORT and carried into v1.6.2 — after the icon was replaced with more saturated artwork while --accent stayed tuned to the previous icon's hue. Both were withdrawn. Recorded as a rule rather than only as a correction in those records, because the observation is easy to re-derive: the next reviewer to compare the Dock icon against the accent will see the same thing and, without this, reach the same wrong conclusion.",
+      "appliesTo": [
+        "Release review",
+        "Visual design"
+      ],
+      "protection": {
+        "edit": false,
+        "delete": false
+      }
     }
   ]
 }
