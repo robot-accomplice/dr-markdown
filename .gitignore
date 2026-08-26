@@ -24,3 +24,10 @@ docs/architext/.architext-write.lock/
 # exactly the kind of file `git add -A` sweeps in unnoticed. One already reached
 # a commit that way.
 docs/architext/data/**/*.bak
+
+# `go build ./tools/<x>` drops the compiled binary in the repo root under the
+# package name. They are build output, not source — one reached a commit.
+/genicon
+/genbanner
+/genbound
+/dr-markdown
