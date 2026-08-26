@@ -13,7 +13,7 @@
 #   tools/build-macos.sh --install       also copy the .app to /Applications
 #
 # Outputs:
-#   build/bin/Dr. Markdown.app   the app bundle
+#   build/bin/Dr Markdown.app    the app bundle
 #   build/dr-markdown.dmg       distributable disk image
 set -euo pipefail
 
@@ -40,16 +40,25 @@ fi
 
 # The bundle is named as the application is named. macOS shows an .app's
 # FILENAME in Finder, Launchpad and Spotlight — CFBundleName and
-# CFBundleDisplayName have said "Dr. Markdown" all along, and the launcher still
-# read "dr-markdown" off the file. The space is why every path here is quoted.
-APP="build/bin/Dr. Markdown.app"
+# CFBundleDisplayName have said so all along, and the launcher still read
+# "dr-markdown" off the file. The space is why every path here is quoted.
+#
+# NO PERIOD, deliberately. macOS strips a ".app" suffix for display only when
+# the basename has no other dot in it; with one, it cannot tell which dot begins
+# the extension and shows the whole filename. Measured:
+#
+#   Dr. Markdown.app -> "Dr. Markdown.app"   extension shown
+#   Dr Markdown.app  -> "Dr Markdown"        stripped
+#   Dr.Markdown.app  -> "Dr.Markdown.app"    extension shown
+#   DrMarkdown.app   -> "DrMarkdown"         stripped
+APP="build/bin/Dr Markdown.app"
 DMG="build/dr-markdown.dmg"
 STAGE="build/dmg"
 # The executable's name is what AppKit puts in the application menu — the first
 # menu in the bar, beside the Apple logo. It takes the PROCESS name there and
 # ignores CFBundleName, which is why that menu read "dr-markdown" while every
 # plist key already said "Dr. Markdown". It must match CFBundleExecutable.
-BIN="$APP/Contents/MacOS/Dr. Markdown"
+BIN="$APP/Contents/MacOS/Dr Markdown"
 
 echo "==> cleaning"
 rm -rf "$APP"
@@ -112,7 +121,7 @@ cp -R "$APP" "$STAGE/"
 ln -sf /Applications "$STAGE/Applications"
 
 echo "==> creating $DMG"
-hdiutil create -volname "Dr. Markdown" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "Dr Markdown" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 
 if [ "$INSTALL" -eq 1 ]; then

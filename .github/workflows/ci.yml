@@ -160,7 +160,7 @@ jobs:
       # plist substitution would leave malformed, which signing does not.
       - name: Verify the bundle
         run: |
-          APP="build/bin/Dr. Markdown.app"
+          APP="build/bin/Dr Markdown.app"
           test -d "$APP" || { echo "::error::no .app produced"; exit 1; }
           test -f "$APP/Contents/Info.plist" || { echo "::error::no Info.plist"; exit 1; }
           test -f "$APP/Contents/Resources/iconfile.icns" || { echo "::error::no icon"; exit 1; }
