@@ -89,6 +89,25 @@ func run() error {
 		{name: "raw", setup: `window.__app.setMode("raw").then(() => "ok")`},
 		{name: "split", setup: `window.__app.setMode("split").then(() => "ok")`},
 		{name: "settings", setup: `window.__app.openSettings().then(() => "ok")`},
+		// The diagram assistant, driven through its real ribbon button.
+		//
+		// Added at 1.6.1 because the four editing-surface shots are byte-identical
+		// across this release — the surfaces genuinely did not change — while the
+		// dialogs did, and nothing captured them. This one is where the preview
+		// used to overflow its box and run under the fields beside it.
+		{name: "diagram", setup: `(async () => {
+			// The shots run in sequence and each leaves the app as it found it,
+			// so Settings is still open from the previous one. Without this the
+			// diagram assistant is captured underneath it.
+			window.__app.closeSettings()
+			await new Promise((r) => setTimeout(r, 200))
+			window.__app.setMode("wysiwyg")
+			window.__app.activateRibbonTab("format")
+			await new Promise((r) => setTimeout(r, 200))
+			document.querySelector('[data-command="mermaid"]').click()
+			await new Promise((r) => setTimeout(r, 900))
+			return "ok"
+		})()`},
 	}
 
 	for _, state := range states {
