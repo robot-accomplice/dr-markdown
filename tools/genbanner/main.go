@@ -34,12 +34,17 @@ const (
 var (
 	// Sampled from build/icon-artwork.png so the banner, the app icon and the
 	// in-app mark are one colour rather than three that were matched by eye.
-	// The banner is the accent as a FIELD, where the icon is the accent as a
-	// mark on its light tile; both are the same hue family.
-	tealTop = color.RGBA{20, 60, 84, 255}  // gradient start (darker)
-	tealBot = color.RGBA{30, 83, 113, 255} // gradient end (#1e5371, the artwork's stroke navy)
+	// Resampled when the artwork changed: the previous values came from an
+	// illustration with a pale tile and navy strokes, and kept a claim of
+	// matching that had stopped being true.
+	//
+	// The icon's tile is a vertical gradient, so the banner runs the SAME
+	// gradient in the same direction — deep at the bottom, brighter at the top —
+	// rather than picking one colour out of it.
+	tealTop = color.RGBA{6, 49, 135, 255}   // the artwork's deepest blue
+	tealBot = color.RGBA{19, 110, 190, 255} // the artwork's brighter blue
 	white   = color.RGBA{255, 255, 255, 255}
-	tint    = color.RGBA{175, 223, 247, 255} // #afdff7, the artwork's tile, for the tagline
+	tint    = color.RGBA{150, 200, 240, 255} // a light step off the same blue, for the tagline
 )
 
 // The mark's design-space bounding box, including stroke caps. Shared by
