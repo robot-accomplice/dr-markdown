@@ -160,7 +160,7 @@ jobs:
       # plist substitution would leave malformed, which signing does not.
       - name: Verify the bundle
         run: |
-          APP=build/bin/dr-markdown.app
+          APP="build/bin/Dr. Markdown.app"
           test -d "$APP" || { echo "::error::no .app produced"; exit 1; }
           test -f "$APP/Contents/Info.plist" || { echo "::error::no Info.plist"; exit 1; }
           test -f "$APP/Contents/Resources/iconfile.icns" || { echo "::error::no icon"; exit 1; }
@@ -175,4 +175,13 @@ jobs:
           # An .icns that iconutil accepted can still be empty of the sizes the
           # Dock needs; the icon is generated per-size and that is worth checking.
           sips -g pixelWidth "$APP/Contents/Resources/iconfile.icns" >/dev/null
-          echo "bundle ok: version $version"
+          # The bundle's FILENAME is what Finder, Launchpad and Spotlight show.
+          # It read "dr-markdown" for several releases while the plist said
+          # "Dr. Markdown", because nothing compared them.
+          name=$(plutil -extract CFBundleName raw "$APP/Contents/Info.plist")
+          base=$(basename "$APP" .app)
+          if [ "$base" != "$name" ]; then
+            echo "::error::the bundle is named $base but calls itself $name"
+            exit 1
+          fi
+          echo "bundle ok: version $version, named $base"
