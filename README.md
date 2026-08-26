@@ -154,7 +154,7 @@ tools/build-macos.sh --install      # also copies the .app to /Applications
 
 Outputs:
 
-- `build/bin/dr-markdown.app` — the app bundle
+- `build/bin/Dr. Markdown.app` — the app bundle
 - `build/dr-markdown.dmg` — drag the app to Applications and you're done
 
 Builds carry only the linker's ad-hoc signature — they are neither Developer ID signed nor notarized — so on any machine but the build host Gatekeeper will refuse to open the app.

@@ -1,0 +1,76 @@
+{
+  "id": "v1-6-2-the-application-is-named-dr-markdown",
+  "version": "1.6.2",
+  "name": "The application is named Dr. Markdown",
+  "status": "complete",
+  "posture": "on-track",
+  "summary": "A small patch with one user-facing fix and one cleanup, cut so the version the maintainer settles on carries neither. The application presented itself as 'dr-markdown' in two places, and neither was governed by CFBundleName or CFBundleDisplayName, which had said 'Dr. Markdown' for releases: the bundle FILE is what Finder, Launchpad and Spotlight show, and the EXECUTABLE is what AppKit puts in the application menu, taking the process name there. Both are corrected, and CI now asserts the bundle's filename matches CFBundleName because nothing compared them. The rename would normally strand the old install beside the new one under the same identifier; it does not, because installing replaces by identifier rather than by path as of 1.6.1 — a fix that landed one release before it was needed. Alongside it, a repository sweep removed two dead files and corrected three records that described a system which no longer exists.",
+  "targetWindow": "Current milestone",
+  "lastUpdated": "2026-08-26T00:00:00.000Z",
+  "updateSource": "Cut after the 1.6.1 install surfaced the naming defect",
+  "scope": {
+    "required": [
+      {
+        "id": "application-name",
+        "title": "The application is named Dr. Markdown",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "identity",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "Reported from real use of the installed 1.6.1 build: the launcher and the application menu both read 'dr-markdown'. Two names, in two places, neither governed by CFBundleName or CFBundleDisplayName. The bundle FILE is what Finder, Launchpad and Spotlight display — it was dr-markdown.app and is now 'Dr. Markdown.app'. The EXECUTABLE is what AppKit puts in the application menu, because it takes the PROCESS name there and ignores CFBundleName — it was Contents/MacOS/dr-markdown and is now Contents/MacOS/Dr. Markdown, matching CFBundleExecutable. Measured: ps reports 'Dr. Markdown'. Every path in build-macos.sh was already quoted so the space needed no other change there; the CI packaging step's assignment was not. CI now asserts the bundle filename matches CFBundleName, which nothing did, and is how the file and the plist disagreed for several releases. Safe only because installing replaces by identifier rather than by path as of 1.6.1 — otherwise the old dr-markdown.app would survive beside it under the same identifier, which is the confusion that was reported during 1.6.1."
+      },
+      {
+        "id": "clear-the-remnants",
+        "title": "Clear the remnants",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "identity",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Two dead files removed: build/appicon.png, the OLD stethoscope icon at 0.8MB consumed by nothing, and build/darwin/Info.dev.plist, a template belonging to the framework eliminated in 0.6.0 and referenced by nothing. The second is a MISS from that elimination — the sweep covered .go, .js, .m, .h, .html and .sh but not .plist, so a tracked file went on naming the framework in Go template syntax through two releases that claimed it was gone. Three records were corrected because they described the system in the present tense as something it is not: the manifest summary, two glossary terms naming a binding path and a vendored bundle that no longer exist, and risk mitigations still listing #62 and #63 as open and pointing at a deleted file. Historical prose was left alone — decisions, past releases and roadmap items record what was true when written. 23 remote branches fully merged into develop were deleted; five unmerged ones were left standing for a maintainer decision."
+      }
+    ],
+    "planned": [],
+    "stretch": [],
+    "deferred": [],
+    "outOfScope": []
+  },
+  "workstreams": [
+    {
+      "id": "identity",
+      "name": "What the application says it is",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "How the application presents itself, and whether the repository agrees.",
+      "itemIds": [
+        "application-name",
+        "clear-the-remnants"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "wysiwyg-reserialization-class",
+      "title": "The WYSIWYG surface still re-serializes the whole document",
+      "severity": "high",
+      "status": "accepted",
+      "summary": "Carried forward unchanged. Only source-preserving editing would close the class. The unmerged probe/source-range-patching branch holds a spike at it, kept rather than deleted in this release's branch sweep for that reason."
+    }
+  ],
+  "milestones": [],
+  "dependencies": [],
+  "evidence": [
+    "full-test-suite",
+    "packaging",
+    "menu-check"
+  ]
+}
