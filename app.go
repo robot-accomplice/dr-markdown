@@ -130,17 +130,33 @@ type imageAssetPort interface {
 
 // NewApp takes its native operations rather than constructing them, so this
 // file names no host. main.go asks the host for them.
-func NewApp(native nativePort) *App {
-	store, err := preferences.DefaultStore()
-	if err != nil {
-		store = preferences.NewStore(filepath.Join(os.TempDir(), "Dr. Markdown"), time.Now)
-	}
+// NewEventLog opens the trail, separately from the App and BEFORE it.
+//
+// It used to be constructed inside NewApp, which put every line of NewApp
+// before it in a window where a panic left nothing at all: no record, no
+// dialog, and a process that simply stopped (#62). Opening the trail first is
+// the only way to cover the construction of the thing that owns it.
+//
+// It resolves its own directory and cannot fail: os.UserConfigDir falls back to
+// the temp directory, the same fallback NewApp already applied, and every
+// failure to write is swallowed by the log itself.
+func NewEventLog() *eventlog.Log {
 	logDir, err := os.UserConfigDir()
 	if err != nil {
 		logDir = os.TempDir()
 	}
+	return eventlog.New(filepath.Join(logDir, "Dr. Markdown"), appVersion, time.Now)
+}
+
+// NewApp builds the application around an already-open trail, so a panic during
+// construction has somewhere to be recorded.
+func NewApp(native nativePort, events *eventlog.Log) *App {
+	store, err := preferences.DefaultStore()
+	if err != nil {
+		store = preferences.NewStore(filepath.Join(os.TempDir(), "Dr. Markdown"), time.Now)
+	}
 	return newAppWithDependencies(appDependencies{
-		events:      eventlog.New(filepath.Join(logDir, "Dr. Markdown"), appVersion, time.Now),
+		events:      events,
 		native:      native,
 		documents:   documentAdapter{},
 		fonts:       fontAdapter{},
