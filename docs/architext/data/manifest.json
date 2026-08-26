@@ -3,7 +3,7 @@
   "project": {
     "id": "dr-markdown-md",
     "name": "dr-markdown-md",
-    "summary": "A local Wails desktop markdown editor with a backed editor shell, WYSIWYG/raw/split modes, native file operations, and vendored editor adapters. Targets macOS, Windows and Linux from one binary; only macOS is packaged today. Opened documents are UNTRUSTED input, so the webview is a trust boundary."
+    "summary": "A local macOS desktop markdown editor with a backed editor shell, WYSIWYG/raw/split modes, native file operations, and vendored editor adapters. The window, webview, asset scheme, menu bar and native dialogs are AppKit and WebKit directly, behind hostPort — the application framework it began on was removed in 0.6.0. Targets macOS today; Windows and Linux are planned from the same binary. Opened documents are UNTRUSTED input, so the webview is a trust boundary."
   },
   "generatedAt": "2026-08-07T05:35:27.617Z",
   "defaultViewId": "system-map",
