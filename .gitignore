@@ -18,3 +18,9 @@ docs/architext/.architext-write.lock/
 
 # Claude Code local scaffolding: personal workflow state, never shared.
 .claude/
+
+# architext doctor writes a timestamped backup beside any file it repairs. It is
+# working state to reconcile and delete, never a repository artifact — and it is
+# exactly the kind of file `git add -A` sweeps in unnoticed. One already reached
+# a commit that way.
+docs/architext/data/**/*.bak
