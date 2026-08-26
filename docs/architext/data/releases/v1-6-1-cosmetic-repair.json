@@ -40,14 +40,15 @@
         "id": "repeating-panic-evicts-trail",
         "title": "A repeating panic evicts the context needed to diagnose it",
         "kind": "bug-fix",
-        "status": "planned",
+        "status": "complete",
         "owner": "Project maintainers",
         "workstreamId": "diagnostics",
         "dependsOn": [],
         "evidence": [
+          "full-test-suite",
           "issue-63"
         ],
-        "summary": "GitHub #63. The event log is bounded at 2000 entries and trim keeps the newest, which is right in general and wrong for a repeating panic: a panic in a debounced path records once per tick, so the FIRST panic and everything leading to it are evicted and 2000 copies of the last are kept. That inverts what root-cause analysis needs. The refused-link-scheme precedent in this repo solves the same shape by capping per distinct key; of the three options the issue records, recording the first N occurrences then a periodic still-happening summary preserves the most diagnostic value and is the most code."
+        "summary": "GitHub #63. The event log is bounded at 2000 entries and trim keeps the newest, which is right in general and wrong for a repeating panic: a panic in a debounced path records once per tick, so the FIRST panic and everything leading to it are evicted and 2000 copies of the last are kept. That inverts what root-cause analysis needs. The refused-link-scheme precedent in this repo solves the same shape by capping per distinct key; of the three options the issue records, recording the first N occurrences then a periodic still-happening summary preserves the most diagnostic value and is the most code. FIXED in the log rather than in each caller: the trail is the thing being protected, so it protects itself. Record folds by a signature built from the event and its fields excluding volatile ones (stack, time) — a stack differs between occurrences and would make every repeat look distinct. The first 5 occurrences are recorded in full, then only at decade milestones carrying a repeats count, which is O(log n) records for n occurrences. Measured: 5000 repeats produce 11 records and the events leading up to the failure survive; without the fold the same input produces 2000 records and evicts all three. At most 64 distinct signatures are tracked, past which events record unfolded — a flood spread across thousands of DISTINCT signatures is a different problem, and suppressing to guess at it would drop records that are not repeats."
       },
       {
         "id": "close-dirty-cannot-fail",
@@ -129,6 +130,19 @@
           "packaged-app-check"
         ],
         "summary": "Reported from real use of the installed 0.6.0 build: the icon is an unreadable mess. Three faults. It was two artworks — a stethoscope illustration from 64px up and a mark drawn in Go below — so the Dock and the Finder list did not read as the same product. The illustration's tubing crossed the letterforms, which genicon's own comment called the worst case for downsampling before shipping exactly that. And mid-blue strokes on a pale blue tile carried almost no contrast, so at Dock size it read as a smudge. Replaced with maintainer-supplied artwork — the format's own M-arrow in white on a blue gradient — used at EVERY size, and checked at 16px before adoption rather than after: the notch and the arrowhead both still resolve there. genicon no longer draws anything, so the per-size branch and the drawing primitives are gone. tools/genbanner was resampled from the new artwork, because its colours came from the old one and its claim to match the icon had silently stopped being true."
+      },
+      {
+        "id": "install-replaces-by-identity",
+        "title": "Installing replaces an existing install by identity, not by path",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "Reported from real use. The install step removed only /Applications/dr-markdown.app, so a bundle carrying the same CFBundleIdentifier under a different name survived. Observed: a hand-renamed 'Dr. Markdown.app' at 0.5.1 sitting beside a freshly installed 0.6.0 with the same identifier. LaunchServices resolves documents by identifier rather than path, so double-clicking a .md file could open either, showing a version behind with nothing in the window to reveal which. The step now reads the identifier from the bundle being installed and removes every bundle in /Applications and ~/Applications that carries it, checking each candidate's identifier before removal so it can only ever remove another copy of this application. LIMIT: this governs the build script's --install. A DMG drag-install is Finder's, and Finder replaces only the same-named bundle; detecting duplicates from inside the running application is a separate decision, not taken here."
       }
     ],
     "planned": [],
@@ -157,7 +171,8 @@
         "image-reveal-route",
         "tab-indent-agrees",
         "diagram-dialog-bounds",
-        "icon-legible-at-every-size"
+        "icon-legible-at-every-size",
+        "install-replaces-by-identity"
       ]
     },
     {
