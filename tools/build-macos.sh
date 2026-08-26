@@ -13,7 +13,7 @@
 #   tools/build-macos.sh --install       also copy the .app to /Applications
 #
 # Outputs:
-#   build/bin/dr-markdown.app   the app bundle
+#   build/bin/Dr. Markdown.app   the app bundle
 #   build/dr-markdown.dmg       distributable disk image
 set -euo pipefail
 
@@ -38,10 +38,18 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-APP="build/bin/dr-markdown.app"
+# The bundle is named as the application is named. macOS shows an .app's
+# FILENAME in Finder, Launchpad and Spotlight — CFBundleName and
+# CFBundleDisplayName have said "Dr. Markdown" all along, and the launcher still
+# read "dr-markdown" off the file. The space is why every path here is quoted.
+APP="build/bin/Dr. Markdown.app"
 DMG="build/dr-markdown.dmg"
 STAGE="build/dmg"
-BIN="$APP/Contents/MacOS/dr-markdown"
+# The executable's name is what AppKit puts in the application menu — the first
+# menu in the bar, beside the Apple logo. It takes the PROCESS name there and
+# ignores CFBundleName, which is why that menu read "dr-markdown" while every
+# plist key already said "Dr. Markdown". It must match CFBundleExecutable.
+BIN="$APP/Contents/MacOS/Dr. Markdown"
 
 echo "==> cleaning"
 rm -rf "$APP"
@@ -111,8 +119,8 @@ if [ "$INSTALL" -eq 1 ]; then
     echo "==> installing to /Applications"
     # Replace by IDENTITY, not by path.
     #
-    # This removed only /Applications/dr-markdown.app, so a bundle carrying the
-    # same identifier under a different name survived the install. That is not
+    # This removed only one hard-coded path, so a bundle carrying the same
+    # identifier under a different name survived the install. That is not
     # hypothetical: a hand-renamed "Dr. Markdown.app" at 0.5.1 sat beside a
     # freshly installed 0.6.0 with the same CFBundleIdentifier, and because
     # LaunchServices resolves documents by identifier rather than by path,

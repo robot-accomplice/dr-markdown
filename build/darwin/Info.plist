@@ -8,7 +8,7 @@
         <key>CFBundleDisplayName</key>
         <string>Dr. Markdown</string>
         <key>CFBundleExecutable</key>
-        <string>dr-markdown</string>
+        <string>Dr. Markdown</string>
         <key>CFBundleIdentifier</key>
         <string>com.drmarkdown.app</string>
         <key>CFBundleVersion</key>
