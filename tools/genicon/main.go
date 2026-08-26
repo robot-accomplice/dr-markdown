@@ -1,25 +1,23 @@
 // Command genicon renders the Dr. Markdown, .MD macOS icon set.
 //
-// It writes a full .iconset — every size iconutil expects — rather than one
-// 1024px source for the build to downscale, because the icon is DIFFERENT
-// artwork at different sizes and that is deliberate.
+// ONE mark, at every size. The illustration this replaced — a stethoscope
+// looped through a ring around the mark — was used from 64px up with a drawn
+// mark below it, and the two did not read as the same product: the Dock showed
+// a stethoscope and the Finder list showed a bare M.
 //
-// Why per-size artwork. The illustration (build/icon-artwork.png: a stethoscope
-// looped through a ring around the M-arrow mark) is strong at 128px and above
-// and unreadable below it. Measured, by rendering the candidate at the sizes
-// that actually ship: at 32px the hairline tubing and the ring dissolve into a
-// blue smudge with no readable content, and the tubing CROSSES the M, which is
-// the worst case for downsampling — two thin strokes intersecting. The mark
-// this project shipped before failed the same way, and the note it left behind
-// said any future mark has to survive the Dock, not the 1024px source.
+// It was also unreadable, which is what actually retired it. The tubing crossed
+// the letterforms, and this file's own note called two thin strokes
+// intersecting the worst case for downsampling — then shipped exactly that.
+// Its palette compounded it: mid-blue strokes on a pale blue tile have almost
+// no contrast, so at Dock size it read as a smudge.
 //
-// So: the illustration is used from 64px up, and 16/32px get the bold M-arrow
-// drawn here in the same palette. iconutil supports exactly this, and the
-// alternative — one source scaled ten ways — forces the detail to survive 16px,
-// which no amount of care in the artwork can achieve.
+// What is here now is the mark the format itself uses — M with a down arrow —
+// in white on a deep blue tile. Nothing crosses anything, the contrast is
+// carried by the tile rather than by fine detail, and the same artwork is
+// scaled to every slot, so resizing the Dock changes the size and nothing else.
 //
-// The tile colour is constant across every size, so resizing the Dock changes
-// the detail without the icon appearing to change colour.
+// The cost is stated rather than hidden: the stethoscope carried the "Dr." of
+// the name, and this mark does not. Legibility at 16px won that trade.
 //
 // Usage:
 //
@@ -42,23 +40,24 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// Sampled from build/icon-artwork.png rather than chosen: the tile is the
-// artwork's own background, so the drawn sizes and the illustrated sizes agree
-// without anyone matching them by eye. See docs/architext rules on branding.
+// White on a deep blue tile. Contrast is the whole point: the palette this
+// replaced put mid-blue strokes on a pale blue tile, which is legible on a
+// 1024px canvas and a smudge at 16px. The blue is the application's own accent
+// darkened until white sits on it cleanly.
 var (
-	tile = color.RGBA{0xaf, 0xdf, 0xf7, 255} // #afdff7 artwork background
-	ink  = color.RGBA{0x1e, 0x53, 0x71, 255} // #1e5371 artwork stroke navy
+	tile = color.RGBA{0x1a, 0x4a, 0x78, 255} // deep accent blue
+	ink  = color.RGBA{0xff, 0xff, 0xff, 255} // white
 )
 
 // macOS icon grid: the squircle occupies 824 of a 1024 canvas, leaving the
 // margin the OS expects around every app icon. Expressed as ratios so every
 // size derives from the same geometry.
 const (
+	// The canvas every size is drawn on before being resampled down.
+	designCanvas = 1024
+
 	squircleRatio = 824.0 / 1024.0
 	radiusRatio   = 185.4 / 824.0
-	// Below this pixel size the illustration is not legible and the drawn
-	// mark is used instead. 32px was measured as already unreadable.
-	illustrationFloor = 64
 )
 
 type pt struct{ x, y float64 }
@@ -158,55 +157,84 @@ func applySquircle(img *image.RGBA) {
 	}
 }
 
-// illustrated scales the artwork to fill the squircle and masks it to shape.
-func illustrated(art image.Image, size int) *image.RGBA {
-	img := image.NewRGBA(image.Rect(0, 0, size, size))
-	// The artwork's own background is the tile colour, so it is scaled to the
-	// FULL canvas and then masked: scaling it to the squircle box instead would
-	// leave transparent corners with no colour to bleed into them.
-	xdraw.CatmullRom.Scale(img, img.Bounds(), art, art.Bounds(), xdraw.Src, nil)
-	applySquircle(img)
-	return img
-}
-
-// drawn renders the bold M-arrow on the tile, for sizes the illustration
-// cannot survive. Geometry is the mark this project already shipped, kept so
-// the small icon is a simplification of the brand rather than a new mark.
+// drawn renders the M-arrow mark on the tile, at every size.
+//
+// The geometry is chosen against the 16px slot rather than the 1024px one,
+// because 16px is where a mark either survives or turns to mush and every
+// larger size is forgiving. Two things were measured there:
+//
+//   - The M's notch must reach the BASELINE. With the vertex partway down, the
+//     two inner diagonals merge at 16px and the letter reads as an H.
+//   - The arrowhead must be a filled triangle. Drawn as two strokes meeting the
+//     stem, it merges with the stem at 16px and reads as a plus sign.
+//
+// The stroke is thinner and the mark larger than a 1024px-first design would
+// choose: weight that looks right on the hero is what closes the notch small.
 func drawn(size int) *image.RGBA {
 	const design = 1024.0
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	draw.Draw(img, img.Bounds(), &image.Uniform{tile}, image.Point{}, draw.Src)
 
-	// The mark is drawn at 88% about the canvas centre. At full size its box
-	// spans 70% of the canvas against a squircle of 80%, which leaves under a
-	// pixel of margin at 16px and reads as cramped against the tile edge.
-	const markScale = 0.88
+	const (
+		markScale   = 0.78
+		strokeRatio = 0.088
+		mLeft       = 225.0 // the M's left stem
+		mRight      = 600.0 // the M's right stem
+		mVertex     = 740.0 // the notch, on the baseline
+		arrowX      = 845.0
+		headHalf    = 170.0 // half-width of the arrowhead
+		headTop     = 580.0
+		arrowTip    = 760.0
+		glyphTop    = 300.0
+		baseline    = 740.0
+	)
+	// Centred on the whole mark, both glyphs included, so it sits in the middle
+	// of the tile rather than the M sitting in the middle and the arrow hanging.
+	const centreX = (mLeft + arrowX + headHalf) / 2
+
 	k := float64(size) / design * markScale
 	c := float64(size) / 2
-	P := func(x, y float64) pt { return pt{c + (x-45-design/2)*k, c + (y-8-design/2)*k} }
-	w := 84.0 * k
+	P := func(x, y float64) pt { return pt{c + (x-centreX)*k, c + (y-520)*k} }
+	w := design * strokeRatio * k
 
-	// "M" — four bold strokes.
-	stroke(img, P(240, 740), P(240, 300), w, ink)
-	stroke(img, P(240, 300), P(380, 500), w, ink)
-	stroke(img, P(380, 500), P(520, 300), w, ink)
-	stroke(img, P(520, 300), P(520, 740), w, ink)
-	// "↓" — stem and chevron at the M's weight, sharing its top and baseline
-	// so the two glyphs sit on one line rather than reading as two marks.
-	const ax = 760.0
-	stroke(img, P(ax, 300), P(ax, 660), w, ink)
-	stroke(img, P(ax-110, 566), P(ax, 740), w, ink)
-	stroke(img, P(ax+110, 566), P(ax, 740), w, ink)
+	// "M" — the notch runs to the baseline so it is still a notch at 16px.
+	mMid := (mLeft + mRight) / 2
+	stroke(img, P(mLeft, baseline), P(mLeft, glyphTop), w, ink)
+	stroke(img, P(mLeft, glyphTop), P(mMid, mVertex), w, ink)
+	stroke(img, P(mMid, mVertex), P(mRight, glyphTop), w, ink)
+	stroke(img, P(mRight, glyphTop), P(mRight, baseline), w, ink)
+
+	// "↓" — stem plus a filled head, sharing the M's top so the two glyphs sit
+	// on one line rather than reading as two marks.
+	stroke(img, P(arrowX, glyphTop), P(arrowX, headTop), w, ink)
+	fillPoly(img, []pt{
+		P(arrowX-headHalf, headTop),
+		P(arrowX+headHalf, headTop),
+		P(arrowX, arrowTip),
+	}, ink)
 
 	applySquircle(img)
 	return img
 }
 
-func render(art image.Image, size int) *image.RGBA {
-	if size >= illustrationFloor {
-		return illustrated(art, size)
+// render draws the mark large and resamples it down.
+//
+// drawn() rasterises polygons with hard pixel edges — it has no antialiasing of
+// its own — so asking it for a 16px icon directly produces exactly the mush
+// this icon was replaced for: the M's notch and the arrowhead both close up.
+// Drawing at 1024 and filtering down is what makes a 16px slot legible, and it
+// is why the resampler is imported here.
+//
+// A size at or above the design canvas is drawn directly; there is nothing to
+// gain from resampling 1:1.
+func render(size int) *image.RGBA {
+	if size >= designCanvas {
+		return drawn(size)
 	}
-	return drawn(size)
+	large := drawn(designCanvas)
+	out := image.NewRGBA(image.Rect(0, 0, size, size))
+	xdraw.CatmullRom.Scale(out, out.Bounds(), large, large.Bounds(), xdraw.Src, nil)
+	return out
 }
 
 func writePNG(path string, img image.Image) {
@@ -220,24 +248,7 @@ func writePNG(path string, img image.Image) {
 	}
 }
 
-func loadArtwork(path string) image.Image {
-	f, err := os.Open(path)
-	if err != nil {
-		log.Fatalf("artwork: %v", err)
-	}
-	defer f.Close()
-	im, _, err := image.Decode(f)
-	if err != nil {
-		log.Fatalf("artwork: %v", err)
-	}
-	if im.Bounds().Dx() != im.Bounds().Dy() {
-		log.Fatalf("artwork must be square, got %dx%d", im.Bounds().Dx(), im.Bounds().Dy())
-	}
-	return im
-}
-
 func main() {
-	artwork := flag.String("artwork", "build/icon-artwork.png", "source illustration (square)")
 	iconset := flag.String("iconset", "", "write a full .iconset directory here")
 	out := flag.String("out", "", "write a single 1024px PNG here")
 	flag.Parse()
@@ -245,10 +256,9 @@ func main() {
 	if *iconset == "" && *out == "" {
 		log.Fatal("need -iconset or -out")
 	}
-	art := loadArtwork(*artwork)
 
 	if *out != "" {
-		writePNG(*out, render(art, 1024))
+		writePNG(*out, render(1024))
 	}
 	if *iconset == "" {
 		return
@@ -261,7 +271,7 @@ func main() {
 	// count as the 1x entry of the next, and both are written from the same
 	// render, so a 32px @2x and a 32px 1x are identical bytes by construction.
 	for _, base := range []int{16, 32, 128, 256, 512} {
-		writePNG(filepath.Join(*iconset, fmt.Sprintf("icon_%dx%d.png", base, base)), render(art, base))
-		writePNG(filepath.Join(*iconset, fmt.Sprintf("icon_%dx%d@2x.png", base, base)), render(art, base*2))
+		writePNG(filepath.Join(*iconset, fmt.Sprintf("icon_%dx%d.png", base, base)), render(base))
+		writePNG(filepath.Join(*iconset, fmt.Sprintf("icon_%dx%d@2x.png", base, base)), render(base*2))
 	}
 }
