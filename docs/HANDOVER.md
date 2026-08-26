@@ -251,7 +251,7 @@ peach-block regression above.
 ## Packaging works
 
 `tools/build-macos.sh` replaces `wails build`, which no longer exists in this tree: compile, bundle,
-`Info.plist` from `VERSION`, `.icns` from `build/appicon.png`, ad-hoc sign, DMG. `--universal`
+`Info.plist` from `VERSION`, `.icns` generated per size by `tools/genicon` from `build/icon-artwork.png`, ad-hoc sign, DMG. `--universal`
 verified — `lipo -archs` reports `x86_64 arm64`. `wails.json` is deleted.
 
 ## Documentation is current
