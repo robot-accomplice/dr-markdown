@@ -40,14 +40,15 @@
         "id": "repeating-panic-evicts-trail",
         "title": "A repeating panic evicts the context needed to diagnose it",
         "kind": "bug-fix",
-        "status": "planned",
+        "status": "complete",
         "owner": "Project maintainers",
         "workstreamId": "diagnostics",
         "dependsOn": [],
         "evidence": [
+          "full-test-suite",
           "issue-63"
         ],
-        "summary": "GitHub #63. The event log is bounded at 2000 entries and trim keeps the newest, which is right in general and wrong for a repeating panic: a panic in a debounced path records once per tick, so the FIRST panic and everything leading to it are evicted and 2000 copies of the last are kept. That inverts what root-cause analysis needs. The refused-link-scheme precedent in this repo solves the same shape by capping per distinct key; of the three options the issue records, recording the first N occurrences then a periodic still-happening summary preserves the most diagnostic value and is the most code."
+        "summary": "GitHub #63. The event log is bounded at 2000 entries and trim keeps the newest, which is right in general and wrong for a repeating panic: a panic in a debounced path records once per tick, so the FIRST panic and everything leading to it are evicted and 2000 copies of the last are kept. That inverts what root-cause analysis needs. The refused-link-scheme precedent in this repo solves the same shape by capping per distinct key; of the three options the issue records, recording the first N occurrences then a periodic still-happening summary preserves the most diagnostic value and is the most code. FIXED in the log rather than in each caller: the trail is the thing being protected, so it protects itself. Record folds by a signature built from the event and its fields excluding volatile ones (stack, time) — a stack differs between occurrences and would make every repeat look distinct. The first 5 occurrences are recorded in full, then only at decade milestones carrying a repeats count, which is O(log n) records for n occurrences. Measured: 5000 repeats produce 11 records and the events leading up to the failure survive; without the fold the same input produces 2000 records and evicts all three. At most 64 distinct signatures are tracked, past which events record unfolded — a flood spread across thousands of DISTINCT signatures is a different problem, and suppressing to guess at it would drop records that are not repeats."
       },
       {
         "id": "close-dirty-cannot-fail",
