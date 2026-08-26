@@ -77,16 +77,58 @@ func TestExistingCodeBlockLanguageCanBeChangedFromTheBlockPicker(t *testing.T) {
 		t.Errorf("the second block's language was not changed to python:\n%s", picked)
 	}
 
-	// KNOWN DEVIATION, recorded rather than hidden: the editor's picker writes
-	// the language's DISPLAY name into the fence, so this produces "```Python"
-	// where every other route in this app writes "```python". Markdown treats
-	// info strings case-insensitively so nothing renders differently, but this
-	// project normalizes fence languages everywhere else, and a file that gains
-	// a capitalised fence purely because of which control the user reached for
-	// is an inconsistency. Asserted so it cannot change unnoticed in either
-	// direction.
-	if !strings.Contains(picked, "```Python") {
-		t.Logf("the picker now writes a normalized fence language; if that is deliberate, "+
-			"drop this assertion and the note above:\n%s", picked)
+	// The fence carries the NORMALIZED language, not the picker's display name.
+	//
+	// #78: the node view writes whatever the picker hands it, and the picker
+	// supplies CodeMirror's display name, so this produced "```Python" where
+	// every other route in this app writes "```python". Markdown treats info
+	// strings case-insensitively so nothing rendered differently, but this
+	// project holds a byte-identical round-trip corpus, and a file gaining a
+	// capitalised fence purely because of which control the user reached for is
+	// an inconsistency the corpus would have to encode.
+	if strings.Contains(picked, "```Python") {
+		t.Errorf("the picker wrote the display name into the fence:\n%s", picked)
+	}
+	if !strings.Contains(picked, "```python\nsecond = 2") {
+		t.Errorf("expected a normalized fence language from the picker:\n%s", picked)
+	}
+}
+
+// A fence the USER authored capitalised must come back capitalised.
+//
+// This is the other half of #78, and the reason the fix is at the picker rather
+// than on serialize. Normalizing on the way out would tidy this document too,
+// which the fidelity survey would correctly fail: a document must come back as
+// it went in, whatever the app would have written itself.
+func TestAUserAuthoredFenceKeepsItsOwnCasing(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	fixture := strings.Join([]string{
+		"```Python",
+		"already = 'capitalised'",
+		"```",
+		"",
+		"```JavaScript",
+		"const shouty = true",
+		"```",
+		"",
+	}, "\n")
+	var res string
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
+
+	var out string
+	evalJS(t, ctx, `(async () => {
+		await new Promise((r) => setTimeout(r, 600))
+		return window.__app.getEditorMarkdown()
+	})()`, &out)
+
+	for _, fence := range []string{"```Python", "```JavaScript"} {
+		if !strings.Contains(out, fence) {
+			t.Errorf("the document was opened with %s and came back without it — normalizing "+
+				"the user's own fence is a fidelity regression, not a fix:\n%s", fence, out)
+		}
 	}
 }
