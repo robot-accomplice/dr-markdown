@@ -83,14 +83,16 @@
         "id": "image-reveal-route",
         "title": "Image Reveal in Finder has no route in the UI",
         "kind": "bug-fix",
-        "status": "planned",
+        "status": "complete",
         "owner": "Project maintainers",
         "workstreamId": "surface",
         "dependsOn": [],
         "evidence": [
+          "full-test-suite",
+          "menu-check",
           "issue-85"
         ],
-        "summary": "GitHub #85, created by the v0.6.0 contextual-bar removal. Every other control in the bar's image group was duplication of what the editor already provides; Reveal was not, because it is a desktop capability that calls through to the host and no editor plugin can provide it. The capability is intact behind the API and still works when invoked; what it no longer has is anything to click. The awkwardness is that the image block is entirely vendored, unlike the mermaid preview the Diagram assistant was relocated onto, so appending to its operation group means injecting into DOM the node view owns and rebuilds. The app now builds its own menu bar, which is a route the bar-era options did not have."
+        "summary": "GitHub #85, created by the v0.6.0 contextual-bar removal. Every other control in the bar's image group was duplication of what the editor already provides; Reveal was not, because it is a desktop capability that calls through to the host and no editor plugin can provide it. The capability is intact behind the API and still works when invoked; what it no longer has is anything to click. The awkwardness is that the image block is entirely vendored, unlike the mermaid preview the Diagram assistant was relocated onto, so appending to its operation group means injecting into DOM the node view owns and rebuilds. The app now builds its own menu bar, which is a route the bar-era options did not have. FIXED as a View menu item. Not on the image block: that block is entirely vendored, so appending to its controls means injecting into DOM the node view owns and rebuilds, which is the pattern behind #77 and #80. The application builds its own menu bar now, which is a route the options recorded on the issue did not have when it was written. A menu cannot know whether an image is selected, so the command SAYS SO rather than doing nothing — a silently inert control is #75 again. That required giving the application somewhere to speak, which it had none of: a status-bar message area, which also makes an image-reveal FAILURE visible for the first time (that path previously only console.warn'd, invisible in a production build with no devtools). Asserted by the menu check and by two e2e tests covering both the selected and the nothing-selected paths."
       },
       {
         "id": "tab-indent-agrees",

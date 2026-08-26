@@ -2609,3 +2609,17 @@ body.dark {
 body.app-empty .document-zoom {
   display: none;
 }
+
+/* Where the application says something transient — the only such place it has.
+   Added with the Reveal in Finder menu item: a menu command that silently does
+   nothing when it does not apply is the shape of #75, a control that renders
+   and has no effect. */
+#status-message {
+  color: var(--accent-ink);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+#status-message.showing {
+  opacity: 1;
+}

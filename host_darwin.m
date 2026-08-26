@@ -306,6 +306,26 @@ static void installMenuBar(NSString *appName) {
                            @"globalThis.__app?.toggleSidePanel('left')")];
   [viewMenu addItem:jsItem(@"Toggle Outline", @"", 0,
                            @"globalThis.__app?.toggleSidePanel('right')")];
+  [viewMenu addItem:[NSMenuItem separatorItem]];
+  // The only route to Reveal in Finder (#85).
+  //
+  // Its previous home was the floating contextual bar, removed in #81. Every
+  // other control in that bar's image group duplicated something the editor
+  // already provides — resize handle, caption, upload, delete — but this one
+  // did not, because it calls through to the host to show the asset and no
+  // editor plugin can do that. The capability survived the removal; only the
+  // affordance was lost.
+  //
+  // It lives on the menu rather than on the image block because that block is
+  // entirely vendored: appending to its controls means injecting into DOM the
+  // node view owns and rebuilds, which is the pattern behind #77 and #80. The
+  // application builds its own menu bar now, which is a route the options
+  // recorded on the issue did not have when it was written.
+  //
+  // The menu cannot know whether an image is selected, so the command says so
+  // rather than doing nothing — a menu item that silently no-ops is #75 again.
+  [viewMenu addItem:jsItem(@"Reveal Image in Finder", @"", 0,
+                           @"globalThis.__app?.revealSelectedImage()")];
   viewItem.submenu = viewMenu;
   [bar addItem:viewItem];
 
