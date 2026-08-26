@@ -78,9 +78,9 @@
         "bugFixes": 10,
         "workstreams": 2,
         "blockers": 1,
-        "complete": 6,
+        "complete": 9,
         "inProgress": 0,
-        "planned": 3,
+        "planned": 1,
         "stretch": 0
       },
       "file": "v1-6-1-cosmetic-repair.json"
