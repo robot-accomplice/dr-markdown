@@ -29,6 +29,19 @@ import { INDENT } from './indent.js'
 // Returning undefined puts the block in its loading state until the callback
 // arrives; returning null means "no preview, show the source", which is the
 // answer for every language except mermaid.
+// The block language picker's normalizer, reachable from the vendored bundle.
+//
+// The node view writes whatever the picker hands it into the fence, and the
+// picker supplies CodeMirror's DISPLAY name — so it wrote ```Python where every
+// other route in this app writes ```python (#78). tools/vendor.sh routes that
+// one assignment through here, so what "normalized" means stays in app code
+// beside every other user of it rather than being spelled out in a shell script.
+//
+// It is deliberately NOT applied on serialize: that would rewrite fences the
+// user authored capitalised, and a document must come back as it went in.
+globalThis.drmd = globalThis.drmd || {}
+globalThis.drmd.normalizeLanguage = normalizeLanguage
+
 const mermaidDiagrams = new Map()
 
 function renderCodeBlockPreview(language, content, update) {
