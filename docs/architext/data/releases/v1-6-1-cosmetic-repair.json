@@ -53,14 +53,16 @@
         "id": "close-dirty-cannot-fail",
         "title": "-close-dirty cannot fail: both guard outcomes report PASS",
         "kind": "bug-fix",
-        "status": "planned",
+        "status": "complete",
         "owner": "Project maintainers",
         "workstreamId": "diagnostics",
         "dependsOn": [],
         "evidence": [
+          "full-test-suite",
+          "host-gates",
           "issue-100"
         ],
-        "summary": "GitHub #100, found while re-driving the host modes for v0.6.0. reportCloseDecision prints PASS on both branches because it does not know which mode it is running in, so under -close-dirty a guard that ALLOWS the close — the exact failure the mode exists to catch, unsaved work dropped silently — is reported as a passing clean close. The guard itself is correct; this is a reporting defect. A check that passes on every outcome is indistinguishable from a check that was never run."
+        "summary": "GitHub #100, found while re-driving the host modes for v0.6.0. reportCloseDecision prints PASS on both branches because it does not know which mode it is running in, so under -close-dirty a guard that ALLOWS the close — the exact failure the mode exists to catch, unsaved work dropped silently — is reported as a passing clean close. The guard itself is correct; this is a reporting defect. A check that passes on every outcome is indistinguishable from a check that was never run. FIXED: the judgement is now a pure function, judgeClose in closecheck.go, separated from the host so it can be tested without one — driving the window still needs a person, but whether an observation is a pass does not. Fourteen unit cases, nine of which must FAIL, including the exact defect: a dirty document that closes with no prompt. A dirty close has no single correct outcome, which is why the original could not just compare a boolean; it depends on the button, so the harness now records prompts raised and the answer chosen and asserts the PAIRING — Cancel must prevent, Don't Save must allow, Save must allow once the save completes, and a failed dialog must protect the work. One test asserts no verdict can describe a dirty observation as clean, which is what the old wording did."
       },
       {
         "id": "fence-casing",
