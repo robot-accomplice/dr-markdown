@@ -1,8 +1,8 @@
 {
   "terms": [
     {
-      "term": "Wails bridge",
-      "definition": "The JavaScript-to-Go binding path exposed as window.go.main.App and wrapped by frontend/dist/src/bridge.js."
+      "term": "Native bridge",
+      "definition": "The JavaScript-to-Go call path, exposed as globalThis.drmd.native and wrapped by frontend/dist/src/bridge.js. Named for the framework that once provided it; the host has been this project's own since 0.6.0."
     },
     {
       "term": "Dirty state",
@@ -10,7 +10,7 @@
     },
     {
       "term": "Raw mode",
-      "definition": "The source markdown editor mode backed by the vendored CodeMirror bundle."
+      "definition": "The source markdown editor mode, a textarea with a syntax-highlighted overlay drawn by frontend/dist/src/highlighter.js. It was backed by a vendored CodeMirror bundle until 0.6.0, when that bundle was deleted as unused."
     },
     {
       "term": "Formatted mode",
