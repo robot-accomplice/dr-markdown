@@ -69,14 +69,15 @@
         "id": "fence-casing",
         "title": "Code block language picker writes the display name into the fence",
         "kind": "bug-fix",
-        "status": "planned",
+        "status": "complete",
         "owner": "Project maintainers",
         "workstreamId": "surface",
         "dependsOn": [],
         "evidence": [
+          "full-test-suite",
           "issue-78"
         ],
-        "summary": "GitHub #78. The vendored node view's picker, adopted in #77 when the app stopped drawing its own chrome, sets the block language from LanguageDescription.name — the DISPLAY name — so a file gains a capitalised fence where every other route in the app writes the normalized lowercase id. Nothing renders differently and no content is lost, but this project holds a byte-identical round-trip corpus and a 49-construct fidelity survey, so an inconsistency that depends on which control the user reached for matters more here. Already asserted in e2e so it cannot change unnoticed in either direction. Normalizing on serialize is NOT the fix: it would rewrite user-authored capitalised fences, which the fidelity survey would correctly fail."
+        "summary": "GitHub #78. The vendored node view's picker, adopted in #77 when the app stopped drawing its own chrome, sets the block language from LanguageDescription.name — the DISPLAY name — so a file gains a capitalised fence where every other route in the app writes the normalized lowercase id. Nothing renders differently and no content is lost, but this project holds a byte-identical round-trip corpus and a 49-construct fidelity survey, so an inconsistency that depends on which control the user reached for matters more here. Already asserted in e2e so it cannot change unnoticed in either direction. Normalizing on serialize is NOT the fix: it would rewrite user-authored capitalised fences, which the fidelity survey would correctly fail. FIXED at the PICKER, not on serialize. The node view's setLanguage put the picked value straight into the language attribute; tools/vendor.sh now routes that one assignment through globalThis.drmd.normalizeLanguage, which is highlighter.js's own function, so what normalized means stays in app code beside every other user of it rather than being spelled out in a shell script. The hook falls back to the raw value if absent, so the bundle degrades rather than breaks. Serializing was rejected as the site because it would rewrite fences the USER authored capitalised — asserted by a new test that opens a document containing ```Python and ```JavaScript and requires both back unchanged, which is the fidelity guarantee the issue named."
       },
       {
         "id": "image-reveal-route",
