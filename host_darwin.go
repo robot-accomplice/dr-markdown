@@ -973,6 +973,10 @@ func hostReportMenu() {
 		{"Edit", "Select All", "a"},
 		{"View", "Formatted", "1"},
 		{"View", "Raw", "2"},
+		// The only route to Reveal in Finder since the contextual bar was
+		// removed (#85). No key equivalent: it is not frequent enough to spend
+		// one, and every unshifted letter is already taken by the editor.
+		{"View", "Reveal Image in Finder", ""},
 	}
 
 	failed := 0
