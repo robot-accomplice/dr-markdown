@@ -68,7 +68,7 @@
       "id": "v1-6-1-cosmetic-repair",
       "version": "1.6.1",
       "name": "Repair from use and the standing defect backlog",
-      "status": "in-progress",
+      "status": "complete",
       "posture": "on-track",
       "targetWindow": "Current milestone",
       "lastUpdated": "2026-08-25T00:00:00.000Z",
@@ -78,9 +78,9 @@
         "bugFixes": 10,
         "workstreams": 2,
         "blockers": 1,
-        "complete": 9,
+        "complete": 10,
         "inProgress": 0,
-        "planned": 1,
+        "planned": 0,
         "stretch": 0
       },
       "file": "v1-6-1-cosmetic-repair.json"
