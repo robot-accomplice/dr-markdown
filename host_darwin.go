@@ -398,6 +398,10 @@ var (
 // — one that arrives after the context was cancelled — never blocks the main
 // thread on send.
 func beginModal() (C.int, chan string) {
+	closeObsMu.Lock()
+	closeObs.prompts++
+	closeObsMu.Unlock()
+
 	modalMu.Lock()
 	defer modalMu.Unlock()
 	modalNextID++
@@ -493,8 +497,19 @@ func hostRequestClose() {
 	}()
 }
 
-// reportCloseDecision prints what the guard decided, so a close driven by the
-// window button is observable rather than merely effective.
+// What the close check observed while the guard ran. Written from the modal
+// path, read once by reportCloseDecision.
+var (
+	closeObsMu sync.Mutex
+	closeObs   closeObservation
+)
+
+// reportCloseDecision runs the close guard and judges what it did.
+//
+// It used to print PASS on both outcomes, which made -close-dirty incapable of
+// failing — including in the case it exists to catch (GitHub #100). The
+// judgement is judgeClose in closecheck.go, unit-tested there; this function
+// only gathers the observation and reports it.
 func reportCloseDecision() {
 	lifecycleMu.Lock()
 	guard := onBeforeClose
@@ -506,15 +521,32 @@ func reportCloseDecision() {
 		os.Exit(1)
 	}
 	go func() {
-		if guard(context.Background()) {
-			fmt.Println("CLOSE: guard PREVENTED the close")
-			fmt.Println("VERDICT: PASS — a dirty document was protected")
-			os.Exit(0)
+		prevented := guard(context.Background())
+
+		closeObsMu.Lock()
+		obs := closeObs
+		closeObsMu.Unlock()
+		obs.dirty = closeDirty
+		obs.prevented = prevented
+
+		fmt.Printf("CLOSE: mode=%s guard=%s prompts=%d answer=%q\n",
+			modeName(closeDirty), verb(prevented), obs.prompts, obs.answer)
+
+		ok, why := judgeClose(obs)
+		if !ok {
+			fmt.Println("VERDICT: FAIL —", why)
+			os.Exit(1)
 		}
-		fmt.Println("CLOSE: guard ALLOWED the close")
-		fmt.Println("VERDICT: PASS — a clean document closed without a prompt")
+		fmt.Println("VERDICT: PASS —", why)
 		os.Exit(0)
 	}()
+}
+
+func modeName(dirty bool) string {
+	if dirty {
+		return "dirty"
+	}
+	return "clean"
 }
 
 //export hostFileOpened
@@ -538,6 +570,10 @@ func hostShuttingDown() { beginShutdown() }
 //export hostModalResult
 func hostModalResult(id C.int, cresult *C.char) {
 	result := C.GoString(cresult)
+
+	closeObsMu.Lock()
+	closeObs.answer = result
+	closeObsMu.Unlock()
 
 	modalMu.Lock()
 	ch, ok := modalPending[int(id)]
