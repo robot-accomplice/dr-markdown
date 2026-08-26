@@ -147,6 +147,7 @@ const els = {
   recentFiles: document.getElementById('recent-files'),
   statusMode: document.getElementById('status-mode'),
   statusSync: document.getElementById('status-sync'),
+  statusMessage: document.getElementById('status-message'),
   statWords: document.getElementById('stat-words'),
   statReadTime: document.getElementById('stat-read-time'),
   fileSearchInput: document.getElementById('file-search-input'),
@@ -1125,14 +1126,42 @@ async function replaceSelectedImage() {
   await applyImageEdit((image) => ({ ...image, path: result.markdownPath }))
 }
 
+// How long a transient status message stays up. Long enough to read a short
+// sentence, short enough that it is gone before it becomes furniture.
+const STATUS_MESSAGE_MS = 3200
+let statusMessageTimer = null
+
+// Say something to the user, briefly.
+//
+// Added because a menu command that silently does nothing when it does not
+// apply is the shape of #75 — a control that renders and has no effect — and
+// this application had nowhere at all to say why. It is also the first time an
+// image reveal FAILURE becomes visible: that path used to console.warn, which
+// in a production build with no devtools is the same as saying nothing.
+function flashStatus(text) {
+  if (!els.statusMessage) return
+  els.statusMessage.textContent = text
+  els.statusMessage.classList.add('showing')
+  clearTimeout(statusMessageTimer)
+  statusMessageTimer = setTimeout(() => {
+    els.statusMessage.classList.remove('showing')
+  }, STATUS_MESSAGE_MS)
+}
+
 async function revealSelectedImage() {
   const doc = activeDoc()
   const target = selectedImageToken(doc?.markdown ?? '', state.editorContext.imageIndex)
-  if (!target) return
+  if (!target) {
+    // Reachable from the View menu, which cannot know whether an image is
+    // selected. Saying so is the difference between a command that does not
+    // apply and a command that is broken.
+    flashStatus('Select an image first, then Reveal in Finder.')
+    return
+  }
   try {
     await bridge.revealImageAsset(doc.path ?? '', parseImageToken(target.text).path)
   } catch (error) {
-    // The native side already reported a missing or unreachable asset.
+    flashStatus('That image could not be revealed.')
     console.warn('bridge: image reveal rejected', error)
     bridge.recordEvent('image.reveal-failed', { error: String(error?.message ?? error) })
   }
@@ -2385,6 +2414,8 @@ async function boot() {
     saveSettings,
     closeSettings,
     toggleSidePanel,
+    revealSelectedImage,
+    flashStatus,
     debugReplaceRaw: (text) => raw.replaceAll(text),
     debugSimulateEdit: (md) => markEdited(md),
   }
