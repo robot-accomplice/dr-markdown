@@ -2,12 +2,12 @@
   "id": "v1-6-1-cosmetic-repair",
   "version": "1.6.1",
   "name": "Repair from use and the standing defect backlog",
-  "status": "in-progress",
+  "status": "complete",
   "posture": "on-track",
   "summary": "The first release scoped from USING the packaged application rather than from review findings alone. v0.6.0's premortem carried one line a harness cannot close — install the DMG and use it — and closing it immediately returned a layout defect that five ABORT stations, the host gates and a 40-check screen walk had all passed over. This release carries that fix and clears the standing defect backlog: every open issue that is a defect rather than a roadmap milestone. Two of those defects were created by the v0.6.0 work itself — a UI route the contextual-bar removal took away, and a harness check that cannot fail — which is the argument for closing them here rather than carrying them further.",
   "targetWindow": "Current milestone",
   "lastUpdated": "2026-08-25T00:00:00.000Z",
-  "updateSource": "Scoped from use of the packaged v0.6.0 build",
+  "updateSource": "ABORT review passed 5/5; release candidate cut",
   "scope": {
     "required": [
       {
@@ -211,6 +211,11 @@
     "issue-63",
     "issue-78",
     "issue-85",
-    "issue-100"
+    "issue-100",
+    "abort-review",
+    "host-gates",
+    "screen-walk",
+    "menu-check",
+    "packaging"
   ]
 }
