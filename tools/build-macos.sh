@@ -52,7 +52,14 @@ STAGE="build/dmg"
 BIN="$APP/Contents/MacOS/Dr. Markdown"
 
 echo "==> cleaning"
-rm -rf "$APP"
+# Clean the whole output directory, not just this build's bundle.
+#
+# Removing only "$APP" leaves any PREVIOUSLY named bundle sitting beside it.
+# When the app was renamed from dr-markdown.app to Dr. Markdown.app in 1.6.2,
+# the old one stayed in build/bin — where macOS indexed it, so the launcher
+# offered a stale 1.6.1 alongside the current build. A build directory should
+# contain what this build produced and nothing else.
+rm -rf "$(dirname "$APP")"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # cgo means every architecture is a real compile, not a cross-link. clang is
