@@ -54,14 +54,16 @@
         "id": "close-dirty-cannot-fail",
         "title": "-close-dirty cannot fail: both guard outcomes report PASS",
         "kind": "bug-fix",
-        "status": "planned",
+        "status": "complete",
         "owner": "Project maintainers",
         "workstreamId": "diagnostics",
         "dependsOn": [],
         "evidence": [
+          "full-test-suite",
+          "host-gates",
           "issue-100"
         ],
-        "summary": "GitHub #100, found while re-driving the host modes for v0.6.0. reportCloseDecision prints PASS on both branches because it does not know which mode it is running in, so under -close-dirty a guard that ALLOWS the close — the exact failure the mode exists to catch, unsaved work dropped silently — is reported as a passing clean close. The guard itself is correct; this is a reporting defect. A check that passes on every outcome is indistinguishable from a check that was never run."
+        "summary": "GitHub #100, found while re-driving the host modes for v0.6.0. reportCloseDecision prints PASS on both branches because it does not know which mode it is running in, so under -close-dirty a guard that ALLOWS the close — the exact failure the mode exists to catch, unsaved work dropped silently — is reported as a passing clean close. The guard itself is correct; this is a reporting defect. A check that passes on every outcome is indistinguishable from a check that was never run. FIXED: the judgement is now a pure function, judgeClose in closecheck.go, separated from the host so it can be tested without one — driving the window still needs a person, but whether an observation is a pass does not. Fourteen unit cases, nine of which must FAIL, including the exact defect: a dirty document that closes with no prompt. A dirty close has no single correct outcome, which is why the original could not just compare a boolean; it depends on the button, so the harness now records prompts raised and the answer chosen and asserts the PAIRING — Cancel must prevent, Don't Save must allow, Save must allow once the save completes, and a failed dialog must protect the work. One test asserts no verdict can describe a dirty observation as clean, which is what the old wording did."
       },
       {
         "id": "fence-casing",
@@ -127,6 +129,19 @@
           "packaged-app-check"
         ],
         "summary": "Reported from real use of the installed 0.6.0 build: the icon is an unreadable mess. Three faults. It was two artworks — a stethoscope illustration from 64px up and a mark drawn in Go below — so the Dock and the Finder list did not read as the same product. The illustration's tubing crossed the letterforms, which genicon's own comment called the worst case for downsampling before shipping exactly that. And mid-blue strokes on a pale blue tile carried almost no contrast, so at Dock size it read as a smudge. Replaced with maintainer-supplied artwork — the format's own M-arrow in white on a blue gradient — used at EVERY size, and checked at 16px before adoption rather than after: the notch and the arrowhead both still resolve there. genicon no longer draws anything, so the per-size branch and the drawing primitives are gone. tools/genbanner was resampled from the new artwork, because its colours came from the old one and its claim to match the icon had silently stopped being true."
+      },
+      {
+        "id": "install-replaces-by-identity",
+        "title": "Installing replaces an existing install by identity, not by path",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "surface",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "Reported from real use. The install step removed only /Applications/dr-markdown.app, so a bundle carrying the same CFBundleIdentifier under a different name survived. Observed: a hand-renamed 'Dr. Markdown.app' at 0.5.1 sitting beside a freshly installed 0.6.0 with the same identifier. LaunchServices resolves documents by identifier rather than path, so double-clicking a .md file could open either, showing a version behind with nothing in the window to reveal which. The step now reads the identifier from the bundle being installed and removes every bundle in /Applications and ~/Applications that carries it, checking each candidate's identifier before removal so it can only ever remove another copy of this application. LIMIT: this governs the build script's --install. A DMG drag-install is Finder's, and Finder replaces only the same-named bundle; detecting duplicates from inside the running application is a separate decision, not taken here."
       }
     ],
     "planned": [],
@@ -155,7 +170,8 @@
         "image-reveal-route",
         "tab-indent-agrees",
         "diagram-dialog-bounds",
-        "icon-legible-at-every-size"
+        "icon-legible-at-every-size",
+        "install-replaces-by-identity"
       ]
     },
     {

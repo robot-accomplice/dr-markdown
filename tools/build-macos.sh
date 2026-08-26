@@ -109,8 +109,37 @@ rm -rf "$STAGE"
 
 if [ "$INSTALL" -eq 1 ]; then
     echo "==> installing to /Applications"
-    rm -rf "/Applications/dr-markdown.app"
+    # Replace by IDENTITY, not by path.
+    #
+    # This removed only /Applications/dr-markdown.app, so a bundle carrying the
+    # same identifier under a different name survived the install. That is not
+    # hypothetical: a hand-renamed "Dr. Markdown.app" at 0.5.1 sat beside a
+    # freshly installed 0.6.0 with the same CFBundleIdentifier, and because
+    # LaunchServices resolves documents by identifier rather than by path,
+    # double-clicking a .md file could open EITHER — showing a version behind
+    # with no way to tell from the window.
+    #
+    # The identifier is read from the bundle being installed, and every
+    # candidate is checked against it before removal, so this can only ever
+    # remove another copy of this application.
+    BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist")"
+    if [ -z "$BUNDLE_ID" ]; then
+        echo "error: the bundle being installed has no CFBundleIdentifier, so an" >&2
+        echo "       existing install cannot be identified. Refusing to install." >&2
+        exit 1
+    fi
+    for existing in /Applications/*.app "$HOME"/Applications/*.app; do
+        [ -d "$existing" ] || continue
+        id="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' \
+              "$existing/Contents/Info.plist" 2>/dev/null || true)"
+        [ "$id" = "$BUNDLE_ID" ] || continue
+        version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' \
+                   "$existing/Contents/Info.plist" 2>/dev/null || echo '?')"
+        echo "    replacing $existing ($version)"
+        rm -rf "$existing"
+    done
     cp -R "$APP" /Applications/
+    echo "    installed /Applications/$(basename "$APP") ($VERSION)"
 fi
 
 echo ""
