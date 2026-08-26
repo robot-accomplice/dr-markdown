@@ -27,14 +27,16 @@
         "id": "panic-before-app-exists",
         "title": "A panic before the App exists leaves no trail",
         "kind": "bug-fix",
-        "status": "planned",
+        "status": "complete",
         "owner": "Project maintainers",
         "workstreamId": "diagnostics",
         "dependsOn": [],
         "evidence": [
+          "full-test-suite",
+          "host-gates",
           "issue-62"
         ],
-        "summary": "GitHub #62. App.reportPanic covers every bound method, but not a panic raised before the App and its event log are constructed — inside NewApp(), or on the main goroutine before startup fires. Both kill the process with nothing recorded and no dialog. Closing it means changing construction order to open a trail that does not depend on the App, not adding another guard. NOTE: the issue's stated premise is now partly stale — it describes the replaced framework's Run() and its lifecycle callbacks, which no longer exist. The window it names is real, but its shape changed with the host replacement and must be re-measured against the current startup path before the fix is designed."
+        "summary": "GitHub #62. App.reportPanic covers every bound method, but not a panic raised before the App and its event log are constructed — inside NewApp(), or on the main goroutine before startup fires. Both kill the process with nothing recorded and no dialog. Closing it means changing construction order to open a trail that does not depend on the App, not adding another guard. NOTE: the issue's stated premise is now partly stale — it describes the replaced framework's Run() and its lifecycle callbacks, which no longer exist. The window it names is real, but its shape changed with the host replacement and must be re-measured against the current startup path before the fix is designed. RE-MEASURED first, as flagged. The issue's premise was stale and its window was WIDER than recorded: probing each candidate point showed a panic inside NewApp left no file at all, AND a panic after NewApp but before host.Run left nothing either — although the log existed by then — because nothing in main recovered. The boundary was never whether the App exists, it is whether a call is wrapped by reportPanic, and main is not. app.startup was already covered. Fixed both halves: NewEventLog opens the trail before NewApp so the App's own construction is covered, and recordStartupPanic recovers on the main goroutine, records with a phase field distinguishing it from a runtime panic, and RE-PANICS — a failure during startup means the application cannot run, so the crash is preserved and only the silence is fixed. Covers the main goroutine only; a panic on another goroutine cannot be recovered from main, which is Go rather than an oversight and is stated so this is not mistaken for total coverage."
       },
       {
         "id": "repeating-panic-evicts-trail",
