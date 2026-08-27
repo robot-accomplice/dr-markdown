@@ -25,7 +25,8 @@ import (
 //
 // Everything here is an operating-system concern and survives any answer to the
 // user-interface question — including drawing the interface directly instead of
-// hosting a webview. See docs/superpowers/specs/2026-08-10-host-boundary-design.md.
+// hosting a webview. The decision and its measurements are recorded in
+// docs/decisions/2026-08-10-host-replacement.md.
 type hostPort interface {
 	Native() nativePort
 	Run(cfg hostConfig) error
