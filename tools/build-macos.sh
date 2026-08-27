@@ -158,6 +158,32 @@ lipo -archs "$BIN"
 /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
 codesign --verify --deep --strict "$APP" && echo "signature ok"
 
+# The app is notarized and stapled BEFORE it is packaged, so the copy inside
+# the DMG carries its own ticket. Skipped entirely without credentials.
+if [ -n "${DRMD_NOTARY_PROFILE:-}" ] && [ -n "${DRMD_SIGN_IDENTITY:-}" ]; then
+    # Notarize and staple the APP first, before it is packaged.
+    #
+    # Stapling only the DMG leaves the application inside it without a ticket of
+    # its own. Measured: after a notarized DMG was stapled, `stapler validate` on
+    # the app inside reported "does not have a ticket stapled to it". Once a user
+    # drags that app to /Applications it carries no ticket, so Gatekeeper has to
+    # reach Apple on first launch — which is the exact situation stapling exists
+    # to avoid, and it fails on a machine with no network.
+    #
+    # The app is submitted as a zip because notarytool does not accept a bare
+    # bundle. The ticket is then stapled to the bundle itself, and the DMG is
+    # built from the stapled copy.
+    echo "==> notarizing the app"
+    APPZIP="build/app-for-notarization.zip"
+    rm -f "$APPZIP"
+    ditto -c -k --keepParent "$APP" "$APPZIP"
+    xcrun notarytool submit "$APPZIP" --keychain-profile "$DRMD_NOTARY_PROFILE" --wait
+    rm -f "$APPZIP"
+    echo "==> stapling the app"
+    xcrun stapler staple "$APP"
+    xcrun stapler validate "$APP"
+fi
+
 echo "==> staging DMG in $STAGE"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
