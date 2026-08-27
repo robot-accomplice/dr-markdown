@@ -7,6 +7,9 @@ Fetched by `tools/vendor.sh`. Do not hand-edit.
 | `crepe.bundle.mjs` + `theme/` | `@milkdown/crepe` | 7.22.0 | MIT | https://github.com/Milkdown/milkdown |
 | `highlight.min.js` | `highlight.js` | 11.11.1 | BSD-3-Clause | https://github.com/highlightjs/highlight.js |
 | `mermaid.min.js` | `mermaid` | 11.6.0 | MIT | https://github.com/mermaid-js/mermaid |
+| `markdown-it.bundle.mjs` | `markdown-it` | 14.1.0 | MIT | https://github.com/markdown-it/markdown-it |
+| `markdown-it-footnote.bundle.mjs` | `markdown-it-footnote` | 4.0.0 | MIT | https://github.com/markdown-it/markdown-it-footnote |
+| `markdown-it-task-lists.bundle.mjs` | `markdown-it-task-lists` | 2.1.1 | ISC | https://github.com/revin/markdown-it-task-lists |
 
 Milkdown bundles ProseMirror (MIT, https://prosemirror.net) and CodeMirror
 (@codemirror/* and @lezer/*, MIT, https://github.com/codemirror), so the code
@@ -35,3 +38,9 @@ reviewed. The recorded digest is the only durable record.
 
 Verification never touches the network, so it checks what is committed rather
 than what a fresh download happens to return today.
+
+markdown-it renders the split preview and the print/PDF surface, which are the
+two places that are not the editor. The two plugins exist because this dialect
+is CommonMark PLUS GFM while markdown-it's core is CommonMark alone: without
+them a task list keeps its literal brackets and `[^1]` is read as a shortcut
+reference link, which is correct CommonMark and wrong here.

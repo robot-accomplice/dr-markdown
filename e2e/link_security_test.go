@@ -31,7 +31,11 @@ func TestDocumentLinksOpenExternallyAndNeverNavigateTheAppWindow(t *testing.T) {
 		await window.__app.setMarkdown('[docs](https://example.com/page)\n')
 		await window.__app.setMode('split')
 		const before = location.href
-		const a = document.querySelector('#split-preview a')
+		// Split shows the real editor, so this is the anchor the user actually
+		// clicks. The handler under test is bound to the whole document
+		// precisely so it covers any anchor that reaches it, not only ones the
+		// app's own renderer built.
+		const a = document.querySelector('#wysiwyg a')
 		if (!a) return 'NO-ANCHOR'
 		a.click()
 		await new Promise((r) => setTimeout(r, 50))
@@ -90,8 +94,8 @@ func TestObfuscatedSchemesAreRefusedInRenderedLinks(t *testing.T) {
 			var got string
 			evalJS(t, ctx, `(async () => {
 				await window.__app.setMarkdown(`+string(doc)+`)
-				await window.__app.setMode('split')
-				const a = document.querySelector('#split-preview a')
+				await window.__app.printDocument('print')
+				const a = document.querySelector('#print-root a')
 				if (!a) return 'NO-ANCHOR'
 				return a.dataset.blockedHref === 'true' ? 'BLOCKED' : a.protocol
 			})()`, &got)

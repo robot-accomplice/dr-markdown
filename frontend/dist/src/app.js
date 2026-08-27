@@ -8,6 +8,7 @@ import {
   firstCodeFenceDescriptor, rewriteCodeFenceLanguage, rewriteMermaidFenceSource,
 } from './markdown/fences.js'
 import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
+import { renderMarkdown } from './markdown/render.js'
 import { safeLinkHref } from './markdown/links.js'
 import { detectLineEnding, toEditorText, toFileText, titleForPath } from './markdown/text.js'
 import { applyCommand, appendBlock } from './markdown/commands.js'
@@ -122,7 +123,8 @@ const els = {
   split: document.getElementById('split'),
   splitSource: document.getElementById('split-source'),
   splitSourceHighlight: document.getElementById('split-source-highlight'),
-  splitPreview: document.getElementById('split-preview'),
+  splitFormatted: document.querySelector('[data-split-pane="formatted"]'),
+  editorHost: document.getElementById('editor-host'),
   insertPopoverRoot: document.getElementById('insert-popover-root'),
   fileMenuRoot: document.getElementById('file-menu-root'),
   btnFileMenu: document.getElementById('btn-file-menu'),
@@ -283,8 +285,24 @@ function activeDoc() {
 }
 
 
+// Which split pane the user is editing.
+//
+// Split shows the REAL editor in its formatted pane, not a rendering of the
+// document, so both panes are live editors over one document and each one's
+// refresh fires the other's change handler. Without an authority the two fight:
+// the pane being typed into gets rebuilt from the pane that is merely echoing
+// it, and the caret jumps on every keystroke. The pane the user last touched
+// wins, and the other is refreshed from it.
+let splitAuthority = 'source'
+let splitFormattedTimer = null
+
 function getMarkdown() {
-  if (state.mode === 'split') return els.splitSource.value
+  // Read the surface the user is editing rather than the cached document, for
+  // the same reason the other two modes do: the cache is written by a handler
+  // that may not have run yet.
+  if (state.mode === 'split') {
+    return splitAuthority === 'formatted' ? wysiwyg.getMarkdown() : els.splitSource.value
+  }
   return state.mode === 'raw' ? raw.getMarkdown() : activeDoc()?.markdown ?? wysiwyg.getMarkdown()
 }
 
@@ -294,7 +312,7 @@ async function setMarkdown(md, { markSaved = false } = {}) {
   if (state.mode === 'split') {
     els.splitSource.value = md
     refreshSplitSourceHighlight()
-    await refreshSplitPreview(md)
+    await renderWysiwyg(md)
   } else if (state.mode === 'raw') {
     raw.replaceAll(md)
   } else {
@@ -765,7 +783,7 @@ async function mountMarkdown(md) {
   if (state.mode === 'split') {
     els.splitSource.value = md
     refreshSplitSourceHighlight()
-    await refreshSplitPreview(md)
+    await renderWysiwyg(md)
   } else if (state.mode === 'raw') {
     raw.replaceAll(md)
   } else {
@@ -877,10 +895,19 @@ async function setMode(mode) {
     raw.open(els.raw, md, onEdited, state.rawOptions)
   } else if (mode === 'split') {
     els.split.hidden = false
+    // The editor ELEMENT moves; the editor instance is not rebuilt to move it.
+    // Reparenting a live ProseMirror tree preserves its content, its
+    // editability and its serialization — measured before this was built on.
+    els.splitFormatted.append(els.wysiwyg)
+    els.wysiwyg.hidden = false
+    splitAuthority = 'source'
     els.splitSource.value = md
     refreshSplitSourceHighlight()
-    await refreshSplitPreview(md)
+    await renderWysiwyg(md)
   } else {
+    // Back to the document card. insertBefore rather than append, so the host's
+    // children keep the order the stylesheet is written against.
+    els.editorHost.insertBefore(els.wysiwyg, els.raw)
     els.wysiwyg.hidden = false
     await renderWysiwyg(md)
   }
@@ -1597,10 +1624,26 @@ function refreshThemeDraftButtons(content) {
 }
 
 function onSplitEdited() {
+  splitAuthority = 'source'
   const md = els.splitSource.value
   refreshSplitSourceHighlight()
-  refreshSplitPreview(md)
   markEdited(md)
+  scheduleSplitFormattedRefresh(md)
+}
+
+// Rebuilding the formatted pane is rebuilding a real editor, which is far more
+// expensive than replacing a preview's children — so it waits for a pause in
+// typing rather than running on every keystroke.
+//
+// The authority is re-checked when the timer fires, not only when it is set: by
+// then the user may have clicked into the formatted pane, and rebuilding it
+// underneath them would discard what they had started typing there.
+function scheduleSplitFormattedRefresh(md) {
+  clearTimeout(splitFormattedTimer)
+  splitFormattedTimer = setTimeout(() => {
+    if (state.mode !== 'split' || splitAuthority !== 'source') return
+    renderWysiwyg(md)
+  }, 250)
 }
 
 function refreshSplitSourceHighlight() {
@@ -1610,11 +1653,11 @@ function refreshSplitSourceHighlight() {
 function syncSplitSourceScroll() {
   els.splitSourceHighlight.scrollTop = els.splitSource.scrollTop
   els.splitSourceHighlight.scrollLeft = els.splitSource.scrollLeft
-  syncSplitScroll(els.splitSource, els.splitPreview)
+  syncSplitScroll(els.splitSource, els.wysiwyg)
 }
 
-function syncSplitPreviewScroll() {
-  syncSplitScroll(els.splitPreview, els.splitSource)
+function syncSplitFormattedScroll() {
+  syncSplitScroll(els.wysiwyg, els.splitSource)
   els.splitSourceHighlight.scrollTop = els.splitSource.scrollTop
 }
 
@@ -1630,57 +1673,22 @@ function syncSplitScroll(source, target) {
   })
 }
 
-async function refreshSplitPreview(md) {
-  els.splitPreview.replaceChildren(...await renderMarkdownPreview(md))
-  await resolveImageAssets(els.splitPreview)
-}
-
+// Both surfaces that are not the editor render through one function now. See
+// markdown/render.js for what the renderer this replaced got wrong, and why it
+// mattered most for print.
 async function renderMarkdownPreview(md) {
-  const nodes = []
-  const lines = md.split('\n')
-  let codeFenceIndex = -1
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const heading = line.match(/^(#{1,6})\s+(.+)$/)
-    if (heading) {
-      const h = document.createElement(`h${heading[1].length}`)
-      h.textContent = heading[2]
-      nodes.push(h)
-    } else if (/^```/.test(line)) {
-      codeFenceIndex++
-      const language = line.replace(/^```\s*/, '').trim().split(/\s+/)[0] || ''
-      const body = []
-      i++
-      while (i < lines.length && !/^```/.test(lines[i])) body.push(lines[i++])
-      if (normalizeLanguage(language) === 'mermaid') {
-        const diagram = document.createElement('div')
-        diagram.className = 'mermaid-render'
-        diagram.dataset.language = 'mermaid'
-        diagram.innerHTML = await renderMermaidDiagram(body.join('\n'))
-        nodes.push(diagram)
-        continue
-      }
-      nodes.push(codeBlockElement(body.join('\n'), language, codeFenceIndex))
-    } else if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) {
-      const p = document.createElement('p')
-      p.textContent = line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '• ')
-      nodes.push(p)
-    } else if (/^>\s?/.test(line)) {
-      const q = document.createElement('blockquote')
-      q.textContent = line.replace(/^>\s?/, '')
-      nodes.push(q)
-    } else if (/^---+$/.test(line.trim())) {
-      nodes.push(document.createElement('hr'))
-    } else if (line.trim()) {
-      const p = document.createElement('p')
-      p.append(...inlineMarkdownNodes(line))
-      nodes.push(p)
-    }
-  }
-  return nodes.length ? nodes : [document.createElement('p')]
+  return renderMarkdown(md, {
+    codeBlock: codeBlockElement,
+    onRefused: ({ kind, value }) => recordRefusedResource(kind, value),
+  })
 }
 
-function codeBlockElement(source, language = '', fenceIndex = null) {
+// The shell around a fenced code block on the preview and print surfaces:
+// language label, copy button, language picker, and the assistant on
+// right-click. It is passed INTO the renderer rather than imported by it,
+// because all four of those are application behaviour and the renderer is not
+// allowed to depend on this module.
+function codeBlockElement({ source, language = '', fenceIndex = null }) {
   const normalized = normalizeLanguage(language)
   const figure = document.createElement('figure')
   figure.className = 'code-block-shell'
@@ -1728,23 +1736,6 @@ function codeLanguageTool(fenceIndex, language) {
   return button
 }
 
-function inlineMarkdownNodes(text) {
-  const nodes = []
-  // Images must precede the link alternative: `![alt](src)` otherwise matches
-  // as a link and renders the leading `!` as stray text.
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|!\[[^\]]*\]\([^)]+\)|<img\b[^>]*>|\[[^\]]+\]\([^)]+\))/g
-  let cursor = 0
-  let match = pattern.exec(text)
-  while (match) {
-    if (match.index > cursor) nodes.push(document.createTextNode(text.slice(cursor, match.index)))
-    nodes.push(inlineMarkdownNode(match[0]))
-    cursor = match.index + match[0].length
-    match = pattern.exec(text)
-  }
-  if (cursor < text.length) nodes.push(document.createTextNode(text.slice(cursor)))
-  return nodes
-}
-
 // --- image block model ---
 //
 // Images exist in two on-disk forms. `![alt](path)` is the portable default;
@@ -1782,10 +1773,20 @@ const REFUSED_LINK_RECORD_CAP = 32
 const refusedLinks = new Set()
 
 function recordRefusedLink(href) {
-  const key = String(href ?? '')
+  recordRefusedResource('link', href)
+}
+
+// Images are refused on their own scheme rule (safeImageSrc), and a refused
+// image is the same kind of silent autonomous decision as a refused link — an
+// embedded image that simply does not appear looks like a broken document
+// rather than a judgement the app made. Kind is part of the dedupe key so the
+// two cannot mask each other.
+function recordRefusedResource(kind, value) {
+  const href = String(value ?? '')
+  const key = `${kind}:${href}`
   if (refusedLinks.has(key) || refusedLinks.size >= REFUSED_LINK_RECORD_CAP) return
   refusedLinks.add(key)
-  bridge.recordEvent('link.refused', { href: key })
+  bridge.recordEvent(`${kind}.refused`, { href })
 }
 
 // The href was already filtered by safeLinkHref when the anchor was built, but
@@ -2258,6 +2259,14 @@ async function applyTemplate(name) {
 function onEdited(md) {
   const doc = activeDoc()
   if (!doc) return
+  if (state.mode === 'split') {
+    // Every rebuild of the formatted pane serializes and reports its content.
+    // Only an edit the user made THERE should reach the source pane; letting
+    // the echo through would overwrite whatever they are typing here.
+    if (splitAuthority !== 'formatted') return
+    els.splitSource.value = md
+    refreshSplitSourceHighlight()
+  }
   markEdited(md)
 }
 
@@ -2325,7 +2334,20 @@ function wire() {
   })
   els.splitSource.addEventListener('input', onSplitEdited)
   els.splitSource.addEventListener('scroll', syncSplitSourceScroll)
-  els.splitPreview.addEventListener('scroll', syncSplitPreviewScroll)
+  els.wysiwyg.addEventListener('scroll', syncSplitFormattedScroll)
+  // Keystrokes and pointer presses name the authority, not focus changes.
+  //
+  // Focus was tried first and measured wrong: the editor already holds focus
+  // when split mode opens, so focusin never fires for the formatted pane and it
+  // could never become authoritative — typing there reached the document and
+  // never reached the source pane. Focus is also the one signal a rebuild can
+  // raise by itself, since the editor takes focus when it mounts, which would
+  // have let an echo pass for an edit.
+  for (const [pane, owner] of [[els.splitSource, 'source'], [els.splitFormatted, 'formatted']]) {
+    for (const event of ['keydown', 'pointerdown']) {
+      pane.addEventListener(event, () => { splitAuthority = owner })
+    }
+  }
   els.btnInsertMenu.addEventListener('click', toggleInsertPopover)
   els.btnFileMenu.addEventListener('click', toggleFileMenu)
   els.btnSettings.addEventListener('click', openSettings)

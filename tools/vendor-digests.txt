@@ -1,5 +1,8 @@
 b49426df682f08f6f4128a0b667cd807659746f9ec3734ad5218bee023e2de32  ./crepe.bundle.mjs
 c4a399dd6f488bc97a3546e3476747b3e714c99c57b9473154c6fb8d259b9381  ./highlight.min.js
+65e39cb32b7be7f92290e853ca47d17b8c48cebe9bafbc4386b12ae62592a6aa  ./markdown-it-footnote.bundle.mjs
+bf883a408925b43e38f410bb174c7d18aa45e92137a970532b5839f828bd18ad  ./markdown-it-task-lists.bundle.mjs
+2812c3ed8c99108de4686948c1f4502522466f9a0a230b5249804182fa8471b5  ./markdown-it.bundle.mjs
 3a93016a73dc82ba890d919f9bbb176f3da9d98341650c0b517f2595cc68fef8  ./mermaid.min.js
 96588dd7c55f95d3fc5bee24f95c4ee19ff883a1da84af52170d1f418d0c2c97  ./theme/common/ai.css
 064dc9dd824e61981fb55df674b0c0ba8f07c812845f337cd4123cdace193d7f  ./theme/common/block-edit.css

@@ -192,9 +192,11 @@
                 <textarea id="split-source" class="source-input" spellcheck="false"></textarea>
               </div>
             </section>
+            <!-- The formatted pane hosts the real editor: #wysiwyg is moved in
+                 here on entering split mode and back to #editor-host on leaving,
+                 so both panes are live editors on one document. -->
             <section class="split-pane" data-split-pane="formatted">
               <div class="split-header">Formatted · scroll locked</div>
-              <div id="split-preview"></div>
             </section>
           </div>
         </div>

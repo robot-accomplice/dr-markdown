@@ -26,6 +26,38 @@ fetch() {
   curl -fsSL "$1" -o "$2"
 }
 
+# markdown-it: markdown -> HTML for the print surface and the split preview.
+#
+# Those two surfaces used to share a 43-line hand-written renderer that matched
+# headings and fences with regular expressions and handled almost nothing else.
+# Measured across sixteen ordinary constructs, SIXTEEN were wrong: a GFM table
+# came out as three paragraphs of pipe characters, an ordered list lost its
+# numbers and became bullets, nested lists flattened, task lists showed literal
+# brackets, inline emphasis inside a heading or a quote stayed as asterisks, a
+# wrapped paragraph split into two, and footnotes, reference links, setext
+# headings, indented code and two of the three thematic-break spellings were
+# emitted verbatim.
+#
+# That renderer also fed PRINT and PDF EXPORT, which is the artifact that leaves
+# the application and cannot be corrected afterwards.
+MARKDOWN_IT_VERSION="14.1.0"
+fetch "https://esm.sh/markdown-it@${MARKDOWN_IT_VERSION}/es2022/markdown-it.bundle.mjs" \
+  "$VENDOR/markdown-it.bundle.mjs"
+
+# Two plugins, because this application's dialect is CommonMark PLUS GFM and
+# markdown-it's core is CommonMark alone. Without them the renderer disagrees
+# with the editor on exactly two constructs, and both are in the dialect:
+#
+#   task list   core emits <li>[ ] todo</li>; the editor draws a checkbox
+#   footnote    core reads [^1] as a shortcut reference LINK, which is correct
+#               CommonMark and wrong here — the editor renders a footnote, and
+#               the fidelity work already treats footnote definitions as a
+#               construct this app preserves
+fetch "https://esm.sh/markdown-it-footnote@4.0.0/es2022/markdown-it-footnote.bundle.mjs" \
+  "$VENDOR/markdown-it-footnote.bundle.mjs"
+fetch "https://esm.sh/markdown-it-task-lists@2.1.1/es2022/markdown-it-task-lists.bundle.mjs" \
+  "$VENDOR/markdown-it-task-lists.bundle.mjs"
+
 # Milkdown Crepe editor: one self-contained ESM bundle (~2.8 MB).
 fetch "https://esm.sh/@milkdown/crepe@${CREPE_VERSION}/es2022/crepe.bundle.mjs" \
   "$VENDOR/crepe.bundle.mjs"
