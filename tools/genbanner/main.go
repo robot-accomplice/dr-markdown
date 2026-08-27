@@ -1,7 +1,7 @@
-// Command genbanner renders the Dr. Markdown, .MD 1600x420 README banner: a
+// Command genbanner renders the Dr Markdown 1600x420 README banner: a
 // medical-scrubs teal full-bleed background with a subtle vertical gradient,
 // the white "M↓" mark on the left (same stroke geometry as tools/genicon),
-// and the full "Dr. Markdown, .MD" wordmark plus tagline on
+// and the full "Dr Markdown" wordmark plus tagline on
 // the right. The mark is pure stdlib polygon filling; the text is rendered
 // with golang.org/x/image/font from a macOS system font.
 //
@@ -107,17 +107,6 @@ func stroke(img *image.RGBA, a, b pt, w float64, c color.RGBA) {
 				if math.Hypot(float64(x)+0.5-p.x, float64(y)+0.5-p.y) <= r {
 					img.SetRGBA(x, y, c)
 				}
-			}
-		}
-	}
-}
-
-// disc fills a solid disc of radius r centered at p.
-func disc(img *image.RGBA, p pt, r float64, c color.RGBA) {
-	for y := int(p.y - r); y <= int(p.y+r); y++ {
-		for x := int(p.x - r); x <= int(p.x+r); x++ {
-			if math.Hypot(float64(x)+0.5-p.x, float64(y)+0.5-p.y) <= r {
-				img.SetRGBA(x, y, c)
 			}
 		}
 	}
@@ -252,7 +241,7 @@ func main() {
 	}
 	log.Printf("font: %s", fontDesc)
 
-	const wordmark = "Dr. Markdown, .MD"
+	const wordmark = "Dr Markdown"
 	const tagline = "A native WYSIWYG markdown editor"
 
 	// Target sizes, scaled down uniformly if the row would overflow.

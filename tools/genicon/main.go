@@ -1,4 +1,4 @@
-// Command genicon renders the Dr. Markdown, .MD macOS icon set.
+// Command genicon renders the Dr Markdown macOS icon set.
 //
 // ONE artwork, scaled to every slot. This file previously used a stethoscope
 // illustration from 64px up and a mark drawn in Go below it, on the theory that

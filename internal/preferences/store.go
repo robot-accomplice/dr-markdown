@@ -47,6 +47,10 @@ func DefaultStore() (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("locate user config dir: %w", err)
 	}
+	// The directory keeps the ORIGINAL name. Renaming it to match the
+	// application would silently abandon the user's settings and recents on
+	// upgrade, which is a worse outcome than a directory whose name is a
+	// release behind. The user never sees it.
 	return NewStore(filepath.Join(dir, "Dr. Markdown"), time.Now), nil
 }
 
