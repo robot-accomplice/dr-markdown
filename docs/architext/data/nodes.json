@@ -881,7 +881,8 @@
         "Parse and format image tokens in both markdown and <img> form, because CommonMark has no size syntax",
         "Decide whether a link href is safe to assign, normalizing it exactly as the URL parser will before checking the scheme",
         "Detect and apply a document's line-ending convention, and derive the title shown for a path",
-        "Apply an editor command to a document given the selection, returning the new document"
+        "Apply an editor command to a document given the selection, returning the new document",
+        "Find and replace text as offset ranges into the markdown source, which is the one coordinate the three view substrates share, and rewrite the source rather than driving the edit through the editor"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -890,7 +891,8 @@
         "frontend/dist/src/markdown/images.js",
         "frontend/dist/src/markdown/links.js",
         "frontend/dist/src/markdown/text.js",
-        "frontend/dist/src/markdown/commands.js"
+        "frontend/dist/src/markdown/commands.js",
+        "frontend/dist/src/markdown/search.js"
       ],
       "runtime": "Embedded webview JavaScript",
       "interfaces": [

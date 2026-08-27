@@ -176,6 +176,33 @@
           </div>
           <p class="empty-shortcuts">&#8984;&#8679;R toggles raw &middot; &#8984;&#8679;S opens split</p>
         </div>
+        <!-- Find bar. Hidden until the shortcut, and it OVERLAYS the document
+             rather than displacing it: a bar that reflows the page moves the
+             text you were looking for out from under your eyes as it opens. -->
+        <div id="find-bar" role="search" aria-label="Find in document" hidden>
+          <div class="find-row">
+            <input id="find-input" type="text" placeholder="Find" spellcheck="false"
+                   aria-label="Find in document" autocomplete="off">
+            <span id="find-count" class="find-count" role="status" aria-live="polite">No results</span>
+            <div class="find-toggles">
+              <button id="find-case" type="button" aria-pressed="false"
+                      title="Match case" aria-label="Match case">Aa</button>
+              <button id="find-word" type="button" aria-pressed="false"
+                      title="Whole word" aria-label="Whole word">Ab</button>
+              <button id="find-regex" type="button" aria-pressed="false"
+                      title="Regular expression" aria-label="Regular expression">.*</button>
+            </div>
+            <button id="find-prev" type="button" title="Previous match" aria-label="Previous match">&#8249;</button>
+            <button id="find-next" type="button" title="Next match" aria-label="Next match">&#8250;</button>
+            <button id="find-close" type="button" title="Close find bar" aria-label="Close find bar">&#215;</button>
+          </div>
+          <div class="find-row" data-find-replace-row>
+            <input id="replace-input" type="text" placeholder="Replace" spellcheck="false"
+                   aria-label="Replace with" autocomplete="off">
+            <button id="replace-one" type="button">Replace</button>
+            <button id="replace-all" type="button">All</button>
+          </div>
+        </div>
         <div id="document-zoom" class="document-zoom" aria-label="Document zoom">
           <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out">&#8722;</button>
           <button type="button" data-zoom="reset" data-zoom-level aria-label="Reset zoom to 100%" title="Reset zoom">100%</button>

@@ -296,6 +296,25 @@ static void installMenuBar(NSString *appName) {
   [editMenu addItem:sel(@"Copy", @selector(copy:), @"c", NSEventModifierFlagCommand)];
   [editMenu addItem:sel(@"Paste", @selector(paste:), @"v", NSEventModifierFlagCommand)];
   [editMenu addItem:sel(@"Select All", @selector(selectAll:), @"a", NSEventModifierFlagCommand)];
+  [editMenu addItem:[NSMenuItem separatorItem]];
+  // Find (#132). These are jsItem rather than the standard performFindPanelAction:
+  // selector: that selector drives AppKit's own find panel against an NSTextView,
+  // and this document is not one — it is a markdown string shown in three
+  // different substrates, searched in the source coordinate they share.
+  //
+  // The menu is also the reason these key equivalents work at all in a WKWebView:
+  // a menu item's key equivalent is matched before the web content sees the
+  // event, so claiming them here is what stops Cmd-F reaching the page unhandled.
+  [editMenu addItem:jsItem(@"Find…", @"f", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.openFind()")];
+  [editMenu addItem:jsItem(@"Find and Replace…", @"f",
+                           NSEventModifierFlagCommand | NSEventModifierFlagOption,
+                           @"globalThis.__app?.openFind({ replace: true })")];
+  [editMenu addItem:jsItem(@"Find Next", @"g", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.findNext()")];
+  [editMenu addItem:jsItem(@"Find Previous", @"g",
+                           NSEventModifierFlagCommand | NSEventModifierFlagShift,
+                           @"globalThis.__app?.findPrevious()")];
   editItem.submenu = editMenu;
   [bar addItem:editItem];
 

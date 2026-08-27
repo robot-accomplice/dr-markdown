@@ -341,6 +341,31 @@
         "edit-markdown-document",
         "switch-editor-mode"
       ]
+    },
+    {
+      "id": "search-is-a-source-coordinate",
+      "status": "accepted",
+      "title": "Find and replace work on the markdown source, in every mode",
+      "context": "The application had no document search at all; the only search in it filtered the file list. The obstacle was never the text box: the document is shown in three substrates — a textarea in Raw, a ProseMirror document in Formatted, and both at once in Split — and a search over whichever surface happened to be visible would answer differently in each. Split is the worst case, because it would be one document, searched twice, disagreeing with itself about how many matches exist. Replace raised a second problem: an edit driven through the editor re-serializes the whole document, so a replace-all could rewrite lines the user never touched.",
+      "decision": "A match is an offset range into the MARKDOWN SOURCE, which is the only coordinate every mode shares, and replace is a string-to-string transform on that source followed by a remount — the same shape as tables.js, fences.js and commands.js. Each surface is responsible only for REVEALING a source range in its own terms.",
+      "consequences": [
+        "All three modes report the same match count, because they are all counting in the same document rather than in their own rendering of it.",
+        "Raw and Split's source pane select the matched characters exactly. Split reveals in both halves at once — the source pane selects and the formatted pane marks the block — since both are visible.",
+        "Formatted has no source offsets, so a match is revealed by the BLOCK it falls in. That is derived from the same source string as the match, so it cannot disagree with the count; a second search over the rendered DOM would have counted different things, because markdown syntax characters are not in the rendered text. Exact in-place selection there needs source-to-model mapping, which is a separate piece of work (probe/source-range-patching) rather than something skipped.",
+        "Replace carries exactly the risk every other document command already carries, and no more. Replacements are applied from the end backwards, because a forward pass shifts every later match by the difference in length and corrupts the document whenever the replacement is a different size.",
+        "The replacement is literal even in regex mode: capture-group substitution is a second syntax in a box that mostly holds ordinary words, and it silently mangles any replacement containing a dollar sign.",
+        "An unusable regular expression is reported on the field rather than answered with 'No results', which is indistinguishable from a document that genuinely lacks the text.",
+        "Find is on the Edit menu, not only on a document key handler. A menu item's key equivalent is matched before web content sees the event, so claiming Cmd-F there is what stops it reaching the page unhandled."
+      ],
+      "relatedNodes": [
+        "markdown-domain",
+        "frontend-shell",
+        "raw-editor"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
     }
   ]
 }

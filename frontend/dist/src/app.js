@@ -9,6 +9,7 @@ import {
 } from './markdown/fences.js'
 import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
 import { renderMarkdown } from './markdown/render.js'
+import { findMatches, replaceMatch, replaceAllMatches, nextMatchIndex, sourceBlockIndex } from './markdown/search.js'
 import { safeLinkHref } from './markdown/links.js'
 import { detectLineEnding, toEditorText, toFileText, titleForPath } from './markdown/text.js'
 import { applyCommand, appendBlock } from './markdown/commands.js'
@@ -124,6 +125,10 @@ const els = {
   splitSource: document.getElementById('split-source'),
   splitSourceHighlight: document.getElementById('split-source-highlight'),
   splitFormatted: document.querySelector('[data-split-pane="formatted"]'),
+  findBar: document.getElementById('find-bar'),
+  findInput: document.getElementById('find-input'),
+  findCount: document.getElementById('find-count'),
+  replaceInput: document.getElementById('replace-input'),
   editorHost: document.getElementById('editor-host'),
   insertPopoverRoot: document.getElementById('insert-popover-root'),
   fileMenuRoot: document.getElementById('file-menu-root'),
@@ -1623,6 +1628,226 @@ function refreshThemeDraftButtons(content) {
   })
 }
 
+// --- find and replace ---
+//
+// Every match is an offset range into the MARKDOWN SOURCE. See
+// markdown/search.js for why that is the only coordinate this can use: the
+// document is shown in three substrates, and a search over whichever one is
+// visible would answer differently in each — and in Split, differently from
+// itself. What varies per mode is only how a source range is REVEALED.
+const find = {
+  open: false,
+  query: '',
+  matches: [],
+  index: -1,
+  options: { caseSensitive: false, wholeWord: false, regex: false },
+}
+
+function openFind({ replace = false } = {}) {
+  find.open = true
+  els.findBar.hidden = false
+  if (replace) els.findBar.dataset.replace = 'true'
+  // Opening plain find over an open replace does not take replace away: the
+  // user asked to find, not to lose the replacement they had typed.
+
+  // Seed from the selection, the way a find bar is expected to. Only within one
+  // line — a multi-line selection is a range the user chose, not a term.
+  const selected = selectedSourceText()
+  if (selected && !selected.includes('\n')) {
+    els.findInput.value = selected
+  }
+  els.findInput.focus()
+  els.findInput.select()
+  runFind()
+}
+
+function closeFind() {
+  find.open = false
+  els.findBar.hidden = true
+  delete els.findBar.dataset.replace
+  find.matches = []
+  find.index = -1
+  clearFindHighlight()
+  focusEditorSurface()
+}
+
+// Closing the find bar hands focus back to what the user was editing, rather
+// than leaving it on a hidden input where the next keystroke goes nowhere.
+function focusEditorSurface() {
+  if (state.mode === 'raw') els.raw.querySelector('textarea')?.focus()
+  else if (state.mode === 'split') els.splitSource.focus()
+  else els.wysiwyg.querySelector('[contenteditable="true"]')?.focus()
+}
+
+function selectedSourceText() {
+  if (state.mode === 'split') {
+    const el = els.splitSource
+    return el.value.slice(el.selectionStart, el.selectionEnd)
+  }
+  if (state.mode === 'raw') return String(window.getSelection?.() ?? '')
+  return String(window.getSelection?.() ?? '')
+}
+
+// runFind recomputes from the document, which is the only thing that can have
+// changed. `keepIndex` holds the caret still across a replace, so replacing the
+// third of seven leaves you at the third and not back at the top.
+function runFind({ keepIndex = false } = {}) {
+  const query = els.findInput.value
+  find.query = query
+  const source = getMarkdown()
+  try {
+    find.matches = findMatches(source, query, find.options)
+    els.findInput.removeAttribute('aria-invalid')
+    els.findInput.removeAttribute('title')
+  } catch (error) {
+    // A bad regular expression is reported on the field. Answering "no results"
+    // instead is indistinguishable from a document that does not contain the
+    // text, which is how a typo reads as an answer.
+    find.matches = []
+    find.index = -1
+    els.findInput.setAttribute('aria-invalid', 'true')
+    els.findInput.title = error.message
+    els.findCount.textContent = 'Invalid pattern'
+    clearFindHighlight()
+    return
+  }
+  if (!find.matches.length) {
+    find.index = -1
+    els.findCount.textContent = query ? 'No results' : ''
+    clearFindHighlight()
+    return
+  }
+  if (!keepIndex || find.index < 0) {
+    find.index = nextMatchIndex(find.matches, caretOffset(), true)
+  }
+  find.index = Math.min(find.index, find.matches.length - 1)
+  showFindPosition()
+  revealMatch(find.matches[find.index])
+}
+
+function showFindPosition() {
+  els.findCount.textContent = `${find.index + 1} of ${find.matches.length}`
+}
+
+function stepFind(delta) {
+  if (!find.matches.length) return
+  find.index = (find.index + delta + find.matches.length) % find.matches.length
+  showFindPosition()
+  revealMatch(find.matches[find.index])
+}
+
+// caretOffset is where "next match" counts from. Only the source substrates can
+// answer it; from the formatted editor the caret is a model position, not a
+// source offset, so searching starts at the top rather than reporting a
+// position in the wrong coordinate system.
+function caretOffset() {
+  if (state.mode === 'raw') return rawCaretOffset()
+  if (state.mode === 'split') return els.splitSource.selectionStart ?? 0
+  return 0
+}
+
+function rawCaretOffset() {
+  const textarea = els.raw.querySelector('textarea')
+  return textarea?.selectionStart ?? 0
+}
+
+// revealMatch shows one source range on whichever surfaces are visible.
+//
+// In Split BOTH are, so both are told: the source pane selects the exact
+// characters and the formatted pane marks the block. Showing it in only one
+// half of a split view is the thing that made the old two-renderer split
+// confusing in the first place.
+function revealMatch(match) {
+  if (!match) return
+  clearFindHighlight()
+  if (state.mode === 'raw') {
+    raw.selectRange(match.start, match.end)
+    return
+  }
+  if (state.mode === 'split') {
+    selectSourceRange(els.splitSource, match.start, match.end)
+  }
+  markMatchBlock(sourceBlockIndex(getMarkdown(), match.start))
+}
+
+function selectSourceRange(textarea, start, end) {
+  textarea.setSelectionRange(start, end)
+  const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 18
+  const line = textarea.value.slice(0, start).split('\n').length - 1
+  textarea.scrollTop = Math.max(0, line * lineHeight - textarea.clientHeight / 2)
+  refreshSplitSourceHighlight()
+}
+
+// The formatted surface has no source offsets, so a match is shown by marking
+// the BLOCK it falls in. Block granularity is what can be derived from the
+// source without a full source-to-model mapping, and — the part that matters —
+// it cannot disagree with the match count, which a second search over the
+// rendered DOM would have done.
+function markMatchBlock(index) {
+  const root = els.wysiwyg.querySelector('.ProseMirror')
+  const block = root?.children?.[index]
+  if (!block) return
+  block.classList.add('find-hit-current')
+  block.scrollIntoView({ block: 'center' })
+}
+
+function clearFindHighlight() {
+  els.wysiwyg.querySelectorAll('.find-hit-current').forEach((el) => el.classList.remove('find-hit-current'))
+}
+
+// Replace rewrites the SOURCE and remounts, exactly as every other document
+// command does. Driving it through the editor instead would re-serialize the
+// whole document, which is the standing hazard this project warns about — a
+// replace-all could rewrite lines the user never touched.
+async function replaceCurrentMatch() {
+  const match = find.matches[find.index]
+  if (!match) return
+  const next = replaceMatch(getMarkdown(), match, els.replaceInput.value)
+  await applyFindEdit(next)
+  runFind({ keepIndex: true })
+}
+
+async function replaceEveryMatch() {
+  if (!find.query) return
+  const { text, count } = replaceAllMatches(getMarkdown(), find.query, els.replaceInput.value, find.options)
+  if (!count) return
+  await applyFindEdit(text)
+  runFind()
+  flashStatus(`Replaced ${count} ${count === 1 ? 'match' : 'matches'}`)
+}
+
+async function applyFindEdit(text) {
+  await mountMarkdown(text)
+  markEdited(text)
+}
+
+function wireFindBar() {
+  els.findInput.addEventListener('input', () => runFind())
+  els.findInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    stepFind(e.shiftKey ? -1 : 1)
+  })
+  els.replaceInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    replaceCurrentMatch()
+  })
+  document.getElementById('find-next').addEventListener('click', () => stepFind(1))
+  document.getElementById('find-prev').addEventListener('click', () => stepFind(-1))
+  document.getElementById('find-close').addEventListener('click', closeFind)
+  document.getElementById('replace-one').addEventListener('click', replaceCurrentMatch)
+  document.getElementById('replace-all').addEventListener('click', replaceEveryMatch)
+  for (const [id, option] of [['find-case', 'caseSensitive'], ['find-word', 'wholeWord'], ['find-regex', 'regex']]) {
+    const button = document.getElementById(id)
+    button.addEventListener('click', () => {
+      find.options[option] = !find.options[option]
+      button.setAttribute('aria-pressed', String(find.options[option]))
+      runFind()
+    })
+  }
+}
+
 function onSplitEdited() {
   splitAuthority = 'source'
   const md = els.splitSource.value
@@ -2413,14 +2638,26 @@ function wire() {
       else runCommand(button.dataset.command)
     })
   })
+  wireFindBar()
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      // The find bar closes before anything else: it is the surface the user
+      // is looking at when they press Escape while it is open.
+      if (find.open) {
+        closeFind()
+        return
+      }
       closeTransientSurfaces()
       return
     }
     const mod = e.ctrlKey || e.metaKey
     if (!mod) return
     const key = e.key.toLowerCase()
+    if (key === 'f') {
+      e.preventDefault()
+      openFind({ replace: e.altKey })
+      return
+    }
     if (key === 'r' && e.shiftKey) {
       e.preventDefault()
       toggleMode()
@@ -2498,6 +2735,10 @@ async function boot() {
     closeActiveTab,
     runCommand,
     printDocument,
+    openFind,
+    closeFind,
+    findNext: () => stepFind(1),
+    findPrevious: () => stepFind(-1),
     setImageAltText,
     setImageWidth,
     handleDroppedFiles,
