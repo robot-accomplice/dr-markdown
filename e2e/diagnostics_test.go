@@ -60,9 +60,9 @@ func TestFailureSurfacesRecordDurableEvents(t *testing.T) {
 				LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 				RecordClientEvent: (event) => { globalThis.__events.push(event) },
 				SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-			} } 
+			} } ; window.print = () => {} 
 			await window.__app.setMarkdown('[click me](javascript:alert(1))\n')
-			await window.__app.setMode('split')
+			await window.__app.printDocument('print')
 			await new Promise((r) => setTimeout(r, 100))
 			return (globalThis.__events || []).join(',')
 		})()`, &events)
@@ -95,13 +95,14 @@ func TestFailureSurfacesRecordDurableEvents(t *testing.T) {
 				LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
 				RecordClientEvent: (event) => { globalThis.__events.push(event) },
 				SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-			} } 
+			} } ; window.print = () => {} 
 			await window.__app.setMarkdown('[a](javascript:alert(1))\n')
-			await window.__app.setMode('split')
-			// Re-render the same refused link the way it actually repeats.
-			for (let i = 0; i < 8; i++) {
-				await window.__app.setMode('wysiwyg')
-				await window.__app.setMode('split')
+			// Re-render the same refused link the way it actually repeats. The
+			// driver is a repeated PRINT rather than a mode switch: the refusal
+			// is made by the renderer, and since split became the real editor
+			// the renderer runs for print and nothing else.
+			for (let i = 0; i < 9; i++) {
+				await window.__app.printDocument('print')
 			}
 			await new Promise((r) => setTimeout(r, 100))
 			return (globalThis.__events || []).filter((e) => e === 'link.refused').length
@@ -132,7 +133,7 @@ func TestFailureSurfacesRecordDurableEvents(t *testing.T) {
 				ImportDroppedImage: async () => { throw new Error('document must be saved first') },
 				RecordClientEvent: (event) => { globalThis.__events.push(event) },
 				SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
-			} } 
+			} } ; window.print = () => {} 
 			await window.__app.handleDroppedFiles(['/tmp/shot.png'])
 			await new Promise((r) => setTimeout(r, 100))
 			return (globalThis.__events || []).join(',')

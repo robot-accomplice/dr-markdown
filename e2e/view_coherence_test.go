@@ -49,8 +49,10 @@ func TestCodeLooksTheSameInEverySurface(t *testing.T) {
 
 	var formatted, split map[string]string
 	evalJS(t, ctx, `(`+read+`)('#wysiwyg .cm-content')`, &formatted)
-	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
-	evalJS(t, ctx, `(`+read+`)('#split-preview .code-block-shell code')`, &split)
+	// Split shows the real editor now, so comparing it against the editor would
+	// be tautological. Print is the surface that can still drift.
+	evalJS(t, ctx, "window.__app.printDocument('print').then(() => 'ok')", &res)
+	evalJS(t, ctx, `(`+read+`)('#print-root .code-block-shell code')`, &split)
 	evalJS(t, ctx, "window.__app.setMode('raw').then(() => 'ok')", &res)
 	var raw map[string]string
 	evalJS(t, ctx, `(`+read+`)('#raw textarea')`, &raw)

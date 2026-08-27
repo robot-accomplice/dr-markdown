@@ -316,6 +316,31 @@
         "edit-markdown-document",
         "switch-editor-mode"
       ]
+    },
+    {
+      "id": "split-shows-the-real-editor",
+      "status": "accepted",
+      "title": "Split shows the real editor, not a second rendering of the document",
+      "context": "Split mode's formatted pane was a preview drawn by a separate renderer. That renderer disagreed with the editor about sixteen ordinary markdown constructs, carried its own typography scale — h1 at 32px against the editor's 36px, its own blockquote and pre styling — and fell further behind every time the editor gained something it did not have. It also made the pane read-only, so the formatted half of split was the one surface in a WYSIWYG editor you could not type into. Two renderings of one document is the defect; fixing the renderer only narrows the gap.",
+      "decision": "Move the editor ELEMENT into the split formatted pane on entering split mode, and back to the document card on leaving. The editor instance is not rebuilt to move it: reparenting a live ProseMirror tree preserves its content, editability and serialization, which was measured before the design was built on it.",
+      "consequences": [
+        "The two surfaces cannot drift apart in typography, highlighting or construct coverage, because there is only one of them. The second typography scale was deleted rather than corrected.",
+        "The formatted pane is editable, which is what the rest of the product already promised.",
+        "Both panes are live editors over one document, so each one's refresh fires the other's change handler. An explicit authority — the pane the user last pressed a key or pointer in — decides which one wins; without it the pane being typed into is rebuilt from the pane merely echoing it, and the caret jumps every keystroke.",
+        "The authority is driven by keydown and pointerdown rather than focus. Focus was tried and measured wrong: the editor already holds focus when split opens, so focusin never fires for the formatted pane, and focus is also the one signal a rebuild raises by itself.",
+        "Rebuilding the formatted pane is rebuilding a real editor, so it waits for a pause in typing rather than running per keystroke, and re-checks the authority when it fires.",
+        "markdown/render.js now has exactly one consumer, the print surface. Every assertion about it moved there, and the print arm is the one that mattered most anyway.",
+        "Code-block chrome geometry can only be measured under emulated print media now. A display:none element measures 0 for every rect, which reported a layout fault where the CSS was untouched."
+      ],
+      "relatedNodes": [
+        "frontend-shell",
+        "wysiwyg-editor",
+        "document-html-renderer"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
     }
   ]
 }

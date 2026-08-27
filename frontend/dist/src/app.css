@@ -1706,53 +1706,22 @@ body.source-hide-markers .source-highlight .markdown-marker {
   padding: 34px 22px;
 }
 
-#split-preview {
+/* The formatted pane IS the editor in split mode, so it drops the document
+   card's chrome — border, radius, shadow and the 52px/60px page inset are the
+   look of a standalone page, not of one half of a split. Everything else about
+   the editor is untouched, which is the point: the two surfaces cannot drift
+   apart in typography or highlighting when there is only one of them. The
+   block replaced here was the second typography scale, and the drift itself:
+   it set h1 to 32px where the editor sets 36px, and restyled blockquote and
+   pre on its own terms. */
+.split-pane > #wysiwyg {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   padding: 34px 44px;
-  user-select: text;
-  font-family: var(--document-font);
-}
-
-#split-preview h1,
-#split-preview h2,
-#split-preview h3,
-#split-preview p,
-#split-preview blockquote,
-#split-preview pre,
-#split-preview .code-block-shell {
-  margin: 0 0 18px;
-}
-
-#split-preview h1 {
-  font-size: 32px;
-  letter-spacing: -0.02em;
-}
-
-#split-preview h2 {
-  font-size: 22px;
-}
-
-#split-preview p,
-#split-preview blockquote {
-  color: var(--ink-2);
-  font-size: var(--document-font-size);
-  line-height: 1.6;
-}
-
-#split-preview blockquote {
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 14px;
-  background: var(--canvas);
-}
-
-#split-preview pre {
-  font-family: var(--code-font);
-  font-variant-ligatures: var(--code-ligatures);
-  font-feature-settings: var(--code-font-features);
-  white-space: pre-wrap;
 }
 
 #raw .cm-editor {

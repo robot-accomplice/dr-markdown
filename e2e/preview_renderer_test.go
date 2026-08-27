@@ -1,9 +1,27 @@
 package e2e
 
 import (
+	"context"
 	"strconv"
 	"testing"
 )
+
+// renderToPrintRoot renders markdown into #print-root.
+//
+// Since split mode became the real editor, print is the ONLY surface that is
+// not the editor, and therefore the only consumer of markdown/render.js left in
+// the application. Every assertion about that renderer belongs here.
+func renderToPrintRoot(t *testing.T, ctx context.Context, markdown string) {
+	t.Helper()
+	var res string
+	evalJS(t, ctx, `globalThis.drmd = { native: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => ({ dataURI: '', exists: false }),
+		SetDirty: async () => {}, UpdateContent: async () => {}
+	} } ; window.print = () => {}; 'ok'`, &res)
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(markdown)+").then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.printDocument('print').then(() => 'ok')", &res)
+}
 
 // The split preview and the print/PDF surface used to share a hand-written
 // renderer built from regular expressions over lines. Measured across the
@@ -27,7 +45,7 @@ func TestPreviewRendersOrdinaryMarkdownConstructs(t *testing.T) {
 		name     string
 		markdown string
 		// probe returns true when the construct rendered correctly. It runs
-		// against #split-preview.
+		// against #print-root.
 		probe string
 	}{
 		{
@@ -140,18 +158,16 @@ func TestPreviewRendersOrdinaryMarkdownConstructs(t *testing.T) {
 			url := serveFrontend(t)
 			bootApp(t, ctx, url)
 
-			var res string
-			evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(tc.markdown)+").then(() => 'ok')", &res)
-			evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
+			renderToPrintRoot(t, ctx, tc.markdown)
 
 			var ok bool
 			evalJS(t, ctx, `(() => {
-				const p = document.querySelector('#split-preview')
+				const p = document.querySelector('#print-root')
 				return Boolean(`+tc.probe+`)
 			})()`, &ok)
 			if !ok {
 				var got string
-				evalJS(t, ctx, `document.querySelector('#split-preview').innerHTML.slice(0, 400)`, &got)
+				evalJS(t, ctx, `document.querySelector('#print-root').innerHTML.slice(0, 400)`, &got)
 				t.Errorf("construct rendered wrongly.\nmarkdown: %q\ngot: %s", tc.markdown, got)
 			}
 		})
@@ -211,18 +227,18 @@ func TestPreviewRefusesHostileDocumentHTML(t *testing.T) {
 		{
 			"event handler attributes are stripped",
 			"<img src=\"x.png\" onerror=\"globalThis.__pwned = true\">\n",
-			`document.querySelectorAll('#split-preview [onerror]').length === 0`,
+			`document.querySelectorAll('#print-root [onerror]').length === 0`,
 		},
 		{
 			"script elements are dropped with their contents",
 			"<script>globalThis.__pwned = true</script>\n",
-			`document.querySelectorAll('#split-preview script').length === 0 &&
+			`document.querySelectorAll('#print-root script').length === 0 &&
 			 globalThis.__pwned === undefined`,
 		},
 		{
 			"iframes are dropped",
 			"<iframe src=\"https://example.com\"></iframe>\n",
-			`document.querySelectorAll('#split-preview iframe').length === 0`,
+			`document.querySelectorAll('#print-root iframe').length === 0`,
 		},
 		{
 			// getElementById returns the first match in document order, so a
@@ -230,12 +246,13 @@ func TestPreviewRefusesHostileDocumentHTML(t *testing.T) {
 			// queries meant for the app.
 			"a document cannot claim an application element id",
 			"<div id=\"print-root\">not the print root</div>\n",
-			`document.getElementById('print-root')?.closest('#split-preview') === null`,
+			`document.querySelectorAll('#print-root [id]').length === 0 &&
+			 document.getElementById('print-root').parentElement.id !== 'print-root'`,
 		},
 		{
 			"javascript hrefs are refused and marked",
 			"[click me](javascript:alert(1))\n",
-			`document.querySelector('#split-preview a')?.dataset.blockedHref === 'true'`,
+			`document.querySelector('#print-root a')?.dataset.blockedHref === 'true'`,
 		},
 		{
 			// An <img> renders SVG passively, but a document is not allowed to
@@ -243,14 +260,14 @@ func TestPreviewRefusesHostileDocumentHTML(t *testing.T) {
 			// scripting surface of its own.
 			"inline svg is dropped",
 			"<svg onload=\"globalThis.__pwned = true\"><circle r=\"5\"/></svg>\n",
-			`document.querySelectorAll('#split-preview svg').length === 0`,
+			`document.querySelectorAll('#print-root svg').length === 0`,
 		},
 		{
 			// The ordinary case must still work, or the sanitizer has simply
 			// broken images rather than secured them.
 			"an ordinary relative image survives",
 			"![alt](notes.assets/photo.png)\n",
-			`document.querySelector('#split-preview img[alt="alt"]') !== null`,
+			`document.querySelector('#print-root img[alt="alt"]') !== null`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -259,15 +276,13 @@ func TestPreviewRefusesHostileDocumentHTML(t *testing.T) {
 			url := serveFrontend(t)
 			bootApp(t, ctx, url)
 
-			var res string
-			evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(tc.markdown)+").then(() => 'ok')", &res)
-			evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
+			renderToPrintRoot(t, ctx, tc.markdown)
 
 			var ok bool
 			evalJS(t, ctx, "Boolean("+tc.probe+")", &ok)
 			if !ok {
 				var got string
-				evalJS(t, ctx, `document.querySelector('#split-preview').innerHTML.slice(0, 400)`, &got)
+				evalJS(t, ctx, `document.querySelector('#print-root').innerHTML.slice(0, 400)`, &got)
 				t.Errorf("hostile construct survived rendering.\nmarkdown: %q\ngot: %s", tc.markdown, got)
 			}
 		})

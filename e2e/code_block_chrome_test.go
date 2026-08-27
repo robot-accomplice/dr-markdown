@@ -1,8 +1,10 @@
 package e2e
 
 import (
-	"strconv"
 	"testing"
+
+	"github.com/chromedp/cdproto/emulation"
+	"github.com/chromedp/chromedp"
 )
 
 // headerPadding mirrors `.code-block-header { padding: 0 12px }` in app.css.
@@ -38,13 +40,23 @@ func TestCodeBlockChromeIsLaidOutAsDesigned(t *testing.T) {
 	bootApp(t, ctx, url)
 
 	fixture := "```go\nfunc main() {}\n```\n"
-	var res string
-	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
-	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
+	// Split shows the real editor now, so the app-injected shell survives only
+	// on the print surface.
+	renderToPrintRoot(t, ctx, fixture)
 
-	if !waitForJS(t, ctx, `document.querySelector('#split-preview .code-block-shell .code-block-header') !== null`) {
-		t.Fatal("no code block chrome rendered in the split preview")
+	if !waitForJS(t, ctx, `document.querySelector('#print-root .code-block-shell .code-block-header') !== null`) {
+		t.Fatal("no code block chrome rendered on the print surface")
 	}
+
+	// The shell is laid out only under print media: #print-root is display:none
+	// on screen, and a display:none element measures 0 for every rect — which is
+	// how this check silently reported "jammed against the border" while the CSS
+	// was untouched. Computed style still resolves on a hidden element, which is
+	// why the padding assertion below kept passing and the geometry did not.
+	if err := chromedp.Run(ctx, emulation.SetEmulatedMedia().WithMedia("print")); err != nil {
+		t.Fatalf("emulating print media: %v", err)
+	}
+	defer chromedp.Run(ctx, emulation.SetEmulatedMedia().WithMedia("screen"))
 
 	var m struct {
 		LabelInset int `json:"labelInset"`
@@ -52,7 +64,7 @@ func TestCodeBlockChromeIsLaidOutAsDesigned(t *testing.T) {
 		HeaderPadL int `json:"headerPadL"`
 	}
 	evalJS(t, ctx, `(() => {
-		const shell = document.querySelector('#split-preview .code-block-shell')
+		const shell = document.querySelector('#print-root .code-block-shell')
 		const label = shell.querySelector('.code-block-language')
 		const copy = shell.querySelector('.code-block-copy')
 		const s = shell.getBoundingClientRect()

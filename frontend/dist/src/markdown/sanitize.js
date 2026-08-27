@@ -49,8 +49,8 @@ const KEEP = new Set([
 // Attributes allowed on any kept element.
 //
 // `id` is deliberately NOT here. The preview renders inside the app's own
-// document, next to elements the app finds by id — #print-root, #split-preview
-// — and getElementById returns the first match in document order. A document
+// document, next to elements the app finds by id — #print-root, #wysiwyg —
+// and getElementById returns the first match in document order. A document
 // that names one of them would be answering queries meant for the application.
 // Nothing this renderer generates needs an id; only document-authored anchors
 // do, and they lose their targets rather than the app losing its own.

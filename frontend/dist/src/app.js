@@ -123,7 +123,8 @@ const els = {
   split: document.getElementById('split'),
   splitSource: document.getElementById('split-source'),
   splitSourceHighlight: document.getElementById('split-source-highlight'),
-  splitPreview: document.getElementById('split-preview'),
+  splitFormatted: document.querySelector('[data-split-pane="formatted"]'),
+  editorHost: document.getElementById('editor-host'),
   insertPopoverRoot: document.getElementById('insert-popover-root'),
   fileMenuRoot: document.getElementById('file-menu-root'),
   btnFileMenu: document.getElementById('btn-file-menu'),
@@ -284,8 +285,24 @@ function activeDoc() {
 }
 
 
+// Which split pane the user is editing.
+//
+// Split shows the REAL editor in its formatted pane, not a rendering of the
+// document, so both panes are live editors over one document and each one's
+// refresh fires the other's change handler. Without an authority the two fight:
+// the pane being typed into gets rebuilt from the pane that is merely echoing
+// it, and the caret jumps on every keystroke. The pane the user last touched
+// wins, and the other is refreshed from it.
+let splitAuthority = 'source'
+let splitFormattedTimer = null
+
 function getMarkdown() {
-  if (state.mode === 'split') return els.splitSource.value
+  // Read the surface the user is editing rather than the cached document, for
+  // the same reason the other two modes do: the cache is written by a handler
+  // that may not have run yet.
+  if (state.mode === 'split') {
+    return splitAuthority === 'formatted' ? wysiwyg.getMarkdown() : els.splitSource.value
+  }
   return state.mode === 'raw' ? raw.getMarkdown() : activeDoc()?.markdown ?? wysiwyg.getMarkdown()
 }
 
@@ -295,7 +312,7 @@ async function setMarkdown(md, { markSaved = false } = {}) {
   if (state.mode === 'split') {
     els.splitSource.value = md
     refreshSplitSourceHighlight()
-    await refreshSplitPreview(md)
+    await renderWysiwyg(md)
   } else if (state.mode === 'raw') {
     raw.replaceAll(md)
   } else {
@@ -766,7 +783,7 @@ async function mountMarkdown(md) {
   if (state.mode === 'split') {
     els.splitSource.value = md
     refreshSplitSourceHighlight()
-    await refreshSplitPreview(md)
+    await renderWysiwyg(md)
   } else if (state.mode === 'raw') {
     raw.replaceAll(md)
   } else {
@@ -878,10 +895,19 @@ async function setMode(mode) {
     raw.open(els.raw, md, onEdited, state.rawOptions)
   } else if (mode === 'split') {
     els.split.hidden = false
+    // The editor ELEMENT moves; the editor instance is not rebuilt to move it.
+    // Reparenting a live ProseMirror tree preserves its content, its
+    // editability and its serialization — measured before this was built on.
+    els.splitFormatted.append(els.wysiwyg)
+    els.wysiwyg.hidden = false
+    splitAuthority = 'source'
     els.splitSource.value = md
     refreshSplitSourceHighlight()
-    await refreshSplitPreview(md)
+    await renderWysiwyg(md)
   } else {
+    // Back to the document card. insertBefore rather than append, so the host's
+    // children keep the order the stylesheet is written against.
+    els.editorHost.insertBefore(els.wysiwyg, els.raw)
     els.wysiwyg.hidden = false
     await renderWysiwyg(md)
   }
@@ -1598,10 +1624,26 @@ function refreshThemeDraftButtons(content) {
 }
 
 function onSplitEdited() {
+  splitAuthority = 'source'
   const md = els.splitSource.value
   refreshSplitSourceHighlight()
-  refreshSplitPreview(md)
   markEdited(md)
+  scheduleSplitFormattedRefresh(md)
+}
+
+// Rebuilding the formatted pane is rebuilding a real editor, which is far more
+// expensive than replacing a preview's children — so it waits for a pause in
+// typing rather than running on every keystroke.
+//
+// The authority is re-checked when the timer fires, not only when it is set: by
+// then the user may have clicked into the formatted pane, and rebuilding it
+// underneath them would discard what they had started typing there.
+function scheduleSplitFormattedRefresh(md) {
+  clearTimeout(splitFormattedTimer)
+  splitFormattedTimer = setTimeout(() => {
+    if (state.mode !== 'split' || splitAuthority !== 'source') return
+    renderWysiwyg(md)
+  }, 250)
 }
 
 function refreshSplitSourceHighlight() {
@@ -1611,11 +1653,11 @@ function refreshSplitSourceHighlight() {
 function syncSplitSourceScroll() {
   els.splitSourceHighlight.scrollTop = els.splitSource.scrollTop
   els.splitSourceHighlight.scrollLeft = els.splitSource.scrollLeft
-  syncSplitScroll(els.splitSource, els.splitPreview)
+  syncSplitScroll(els.splitSource, els.wysiwyg)
 }
 
-function syncSplitPreviewScroll() {
-  syncSplitScroll(els.splitPreview, els.splitSource)
+function syncSplitFormattedScroll() {
+  syncSplitScroll(els.wysiwyg, els.splitSource)
   els.splitSourceHighlight.scrollTop = els.splitSource.scrollTop
 }
 
@@ -1629,11 +1671,6 @@ function syncSplitScroll(source, target) {
   requestAnimationFrame(() => {
     syncingSplitScroll = false
   })
-}
-
-async function refreshSplitPreview(md) {
-  els.splitPreview.replaceChildren(...await renderMarkdownPreview(md))
-  await resolveImageAssets(els.splitPreview)
 }
 
 // Both surfaces that are not the editor render through one function now. See
@@ -2222,6 +2259,14 @@ async function applyTemplate(name) {
 function onEdited(md) {
   const doc = activeDoc()
   if (!doc) return
+  if (state.mode === 'split') {
+    // Every rebuild of the formatted pane serializes and reports its content.
+    // Only an edit the user made THERE should reach the source pane; letting
+    // the echo through would overwrite whatever they are typing here.
+    if (splitAuthority !== 'formatted') return
+    els.splitSource.value = md
+    refreshSplitSourceHighlight()
+  }
   markEdited(md)
 }
 
@@ -2289,7 +2334,20 @@ function wire() {
   })
   els.splitSource.addEventListener('input', onSplitEdited)
   els.splitSource.addEventListener('scroll', syncSplitSourceScroll)
-  els.splitPreview.addEventListener('scroll', syncSplitPreviewScroll)
+  els.wysiwyg.addEventListener('scroll', syncSplitFormattedScroll)
+  // Keystrokes and pointer presses name the authority, not focus changes.
+  //
+  // Focus was tried first and measured wrong: the editor already holds focus
+  // when split mode opens, so focusin never fires for the formatted pane and it
+  // could never become authoritative — typing there reached the document and
+  // never reached the source pane. Focus is also the one signal a rebuild can
+  // raise by itself, since the editor takes focus when it mounts, which would
+  // have let an echo pass for an edit.
+  for (const [pane, owner] of [[els.splitSource, 'source'], [els.splitFormatted, 'formatted']]) {
+    for (const event of ['keydown', 'pointerdown']) {
+      pane.addEventListener(event, () => { splitAuthority = owner })
+    }
+  }
   els.btnInsertMenu.addEventListener('click', toggleInsertPopover)
   els.btnFileMenu.addEventListener('click', toggleFileMenu)
   els.btnSettings.addEventListener('click', openSettings)

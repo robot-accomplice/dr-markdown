@@ -122,7 +122,8 @@
         "Resolve rendered image sources through the asset bridge on every render surface",
         "Target image-local controls at the selected image block",
         "Filter dropped files to importable image extensions",
-        "Delegate document transforms to the markdown domain modules rather than implementing them: tables, fenced code, image tokens, link safety, line endings and commands"
+        "Delegate document transforms to the markdown domain modules rather than implementing them: tables, fenced code, image tokens, link safety, line endings and commands",
+        "Move the editor element between the document card and the split formatted pane on a mode change, and arbitrate which split pane is authoritative so the two live editors over one document do not overwrite each other"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -672,7 +673,7 @@
       "id": "vendored-editor-assets",
       "type": "module",
       "name": "Vendored editor assets",
-      "summary": "Bundled Crepe, Highlight.js, Mermaid and editor theme assets served from embedded frontend files. The Crepe bundle is patched after download and so matches no upstream artifact, which is why tools/vendor-digests.txt is the only durable record of the bytes shipped. A standalone CodeMirror bundle was vendored here until 2026-08-10 and imported by nothing; it was removed once measurement showed it could not supply what the Crepe bundle is missing either. Since 1.6.3 it also carries markdown-it and its footnote and task-list plugins, which render the split preview and the print surface; those three are shipped as downloaded, unpatched.",
+      "summary": "Bundled Crepe, Highlight.js, Mermaid and editor theme assets served from embedded frontend files. The Crepe bundle is patched after download and so matches no upstream artifact, which is why tools/vendor-digests.txt is the only durable record of the bytes shipped. A standalone CodeMirror bundle was vendored here until 2026-08-10 and imported by nothing; it was removed once measurement showed it could not supply what the Crepe bundle is missing either. Since 1.6.3 it also carries markdown-it and its footnote and task-list plugins, which render the print surface; those three are shipped as downloaded, unpatched.",
       "responsibilities": [
         "Provide editor, syntax-highlighting, and Mermaid runtime bundles without npm install at runtime",
         "Provide theme CSS loaded by the WYSIWYG adapter",
@@ -998,9 +999,9 @@
       "id": "document-html-renderer",
       "type": "module",
       "name": "Document HTML renderer",
-      "summary": "Renders markdown to DOM nodes for the two surfaces that are not the editor: the split preview and the print/PDF surface. Until 1.6.3 these shared a 43-line hand-written renderer that matched constructs with regular expressions over lines; measured across sixteen ordinary constructs, sixteen were wrong, and the same renderer fed print and PDF export. It now parses with vendored markdown-it plus the footnote and task-list plugins, and every rendered tree passes through sanitize.js before it is inserted.",
+      "summary": "Renders markdown to DOM nodes for the print/PDF surface, which since the split pane became the real editor is the only surface in the application that is not the editor. It previously fed the split preview as well, and both shared a 43-line hand-written renderer that matched constructs with regular expressions over lines; measured across sixteen ordinary constructs, sixteen were wrong. It now parses with vendored markdown-it plus the footnote and task-list plugins, and every rendered tree passes through sanitize.js before it is inserted.",
       "responsibilities": [
-        "Parse markdown to HTML with a CommonMark-plus-GFM dialect that matches what the editor renders",
+        "Parse markdown to HTML with a CommonMark-plus-GFM dialect that matches what the editor renders, since print is the one surface that cannot simply BE the editor",
         "Sanitize every rendered tree before insertion, because an opened document is untrusted input and this DOM shares an origin with the native bindings",
         "Emit a slot for each fenced block and build the drawn diagram or the code-block chrome into the tree afterwards, since neither is expressible as an HTML string",
         "Number code fences by source position via the shared fences.js helper, so an index handed to the assistant names the block the rewriter will edit"
@@ -1041,7 +1042,8 @@
         "switch-editor-mode"
       ],
       "relatedDecisions": [
-        "one-renderer-for-preview-and-print"
+        "one-renderer-for-preview-and-print",
+        "split-shows-the-real-editor"
       ],
       "knownRisks": [
         "document-html-reaches-the-dom"
