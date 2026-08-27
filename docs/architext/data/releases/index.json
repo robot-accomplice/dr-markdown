@@ -137,11 +137,11 @@
       "lastUpdated": "2026-08-27T00:00:00.000Z",
       "summary": "A patch cut from installing 1.6.2 and looking at it. The launcher showed the application as 'Dr. Markdown.app' — with the extension — and showed it more than once. Both had causes worth recording rather than working around. macOS strips a .app suffix for display only when the basename has no other dot in it, so the period in 'Dr.' was the whole reason the extension appeared; the name is now Dr Markdown everywhere, one name right in every place it shows. The duplicates were build artifacts: the clean step removed only the current bundle so a previously named one survived beside it, and the DMG staging copy was registered by macOS and its registration outlived the directory being deleted. Separately, and larger: docs/superpowers was tracked and shipping — 38 files, 384K — because .gitignore covered .superpowers/ and not this. It had become load-bearing, cited 33 times including three comments in shipping code, so every live citation was repointed at a durable record before the files were untracked.",
       "counts": {
-        "features": 0,
+        "features": 1,
         "bugFixes": 2,
-        "workstreams": 2,
+        "workstreams": 3,
         "blockers": 1,
-        "complete": 5,
+        "complete": 7,
         "inProgress": 0,
         "planned": 0,
         "stretch": 0
