@@ -331,9 +331,12 @@ function refreshRibbonState() {
   els.btnModeFormatted.classList.toggle('active', state.mode === 'wysiwyg')
   els.btnModeRaw.classList.toggle('active', state.mode === 'raw')
   els.btnSplit.classList.toggle('active', state.mode === 'split')
-  els.btnModeFormatted.setAttribute('aria-pressed', state.mode === 'wysiwyg' ? 'true' : 'false')
-  els.btnModeRaw.setAttribute('aria-pressed', state.mode === 'raw' ? 'true' : 'false')
-  els.btnSplit.setAttribute('aria-pressed', state.mode === 'split' ? 'true' : 'false')
+  // aria-checked, not aria-pressed: three exclusive choices are radios. A screen
+  // reader should say "2 of 3", not announce three separate toggles that happen
+  // to sit next to each other.
+  els.btnModeFormatted.setAttribute('aria-checked', state.mode === 'wysiwyg' ? 'true' : 'false')
+  els.btnModeRaw.setAttribute('aria-checked', state.mode === 'raw' ? 'true' : 'false')
+  els.btnSplit.setAttribute('aria-checked', state.mode === 'split' ? 'true' : 'false')
   els.statusMode.textContent = state.mode === 'raw' ? 'RAW' : state.mode === 'split' ? 'SPLIT' : 'FORMATTED'
   document.body.classList.toggle('raw-mode', state.mode === 'raw')
   document.body.classList.toggle('split-mode', state.mode === 'split')
@@ -2250,7 +2253,11 @@ function wire() {
   els.btnModeRaw.addEventListener('click', () => {
     if (state.mode !== 'raw') setMode('raw')
   })
-  els.btnSplit.addEventListener('click', toggleSplit)
+  // Selects, like its peers. It used to toggle back to Formatted, which is what
+  // made Split read as a modifier on a mode rather than a mode of its own.
+  els.btnSplit.addEventListener('click', () => {
+    if (state.mode !== 'split') setMode('split')
+  })
   els.splitSource.addEventListener('input', onSplitEdited)
   els.splitSource.addEventListener('scroll', syncSplitSourceScroll)
   els.splitPreview.addEventListener('scroll', syncSplitPreviewScroll)
