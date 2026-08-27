@@ -2405,20 +2405,6 @@ func TestSidePanelsCanBeHiddenIndependently(t *testing.T) {
 	}
 }
 
-func tableSection(md string, header string) string {
-	lines := strings.Split(md, "\n")
-	for i, line := range lines {
-		if strings.Contains(line, header) {
-			end := i
-			for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
-				end++
-			}
-			return strings.Join(lines[i:end], "\n")
-		}
-	}
-	return ""
-}
-
 func TestNativeInteractionAndAccessibilityState(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()

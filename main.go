@@ -38,7 +38,7 @@ func main() {
 	app := NewApp(host.Native(), events)
 
 	err := host.Run(hostConfig{
-		Title:         "Dr. Markdown",
+		Title:         "Dr Markdown",
 		Width:         1440,
 		Height:        900,
 		Assets:        assets,

@@ -16,7 +16,7 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-const sampleMarkdown = `# Dr. Markdown
+const sampleMarkdown = `# Dr Markdown
 
 Build a native markdown document with formatted editing, raw source, code, diagrams, and tables.
 

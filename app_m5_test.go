@@ -30,7 +30,7 @@ func TestAppOpenDocumentRecordsRecentAndUpdatesTitle(t *testing.T) {
 	if len(prefs.recorded) != 1 || prefs.recorded[0] != "/tmp/opened.md" {
 		t.Fatalf("recent file was not recorded: %#v", prefs.recorded)
 	}
-	if native.title != "Dr. Markdown — /tmp/opened.md" {
+	if native.title != "Dr Markdown — /tmp/opened.md" {
 		t.Fatalf("title = %q", native.title)
 	}
 }
@@ -62,7 +62,7 @@ func TestAppSaveAsRoutesThroughDialogPersistsRecentAndClearsDirty(t *testing.T) 
 	if len(prefs.recorded) != 1 || prefs.recorded[0] != "/tmp/saved.md" {
 		t.Fatalf("saved file was not recorded as recent: %#v", prefs.recorded)
 	}
-	if native.title != "Dr. Markdown — /tmp/saved.md" {
+	if native.title != "Dr Markdown — /tmp/saved.md" {
 		t.Fatalf("title = %q", native.title)
 	}
 	if app.ResolveUnsavedChanges() != true {

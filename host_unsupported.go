@@ -20,7 +20,7 @@ type unsupportedHost struct{}
 func (unsupportedHost) Native() nativePort { return unsupportedNative{} }
 
 func (unsupportedHost) Run(hostConfig) error {
-	return fmt.Errorf("Dr. Markdown has no host for this platform yet; macOS only")
+	return fmt.Errorf("Dr Markdown has no host for this platform yet; macOS only")
 }
 
 // unsupportedNative satisfies nativePort so the rest of the application type

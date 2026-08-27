@@ -56,9 +56,9 @@ func (a *App) reportPanic(operation string) {
 }
 
 func (a *App) showPanicDialog(operation string) {
-	a.native.ShowError(a.ctx, "Dr. Markdown hit an internal error", fmt.Sprintf(
+	a.native.ShowError(a.ctx, "Dr Markdown hit an internal error", fmt.Sprintf(
 		"An internal error interrupted %s, and the app may no longer be in a state it understands.\n\n"+
-			"Copy any unsaved text into another app, then restart Dr. Markdown.\n\n"+
+			"Copy any unsaved text into another app, then restart Dr Markdown.\n\n"+
 			"The details were written to the event log beside your preferences.",
 		operation))
 }

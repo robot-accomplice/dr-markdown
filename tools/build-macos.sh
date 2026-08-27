@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-macos.sh — production macOS packaging for Dr. Markdown.
+# build-macos.sh - production macOS packaging for Dr Markdown.
 #
 # Replaces the framework build command this project no longer depends on. That
 # did five things and only one of them was interesting: it compiled the binary,
