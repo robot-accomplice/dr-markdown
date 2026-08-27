@@ -91,30 +91,38 @@ func TestFileOperationsAreReachableFromTheRibbon(t *testing.T) {
 		Actions    []string `json:"actions"`
 		Unwired    []string `json:"unwired"`
 	}
-	evalJS(t, ctx, `(() => {
-		window.__app.activateRibbonTab('file')
-		const panel = document.querySelector('[data-ribbon-panel="file"]')
-		const actions = panel ? Array.from(panel.querySelectorAll('[data-file-action]')).map((b) => b.dataset.fileAction) : []
-		// Every file action in the document must be one the app knows how to run;
-		// a button wired to nothing is the defect this app has a rule against.
-		const known = ['new', 'open', 'save', 'save-as']
-		const unwired = Array.from(document.querySelectorAll('[data-file-action]'))
-			.map((b) => b.dataset.fileAction).filter((a) => !known.includes(a))
+	evalJS(t, ctx, `(async () => {
+		// File is a MENU now, not a tab: every other tab changes what the ribbon
+		// offers for the document you are editing, and File acts on the document
+		// as a whole. Its commands moved rather than disappeared, so this still
+		// checks that every one of them is present and wired.
+		document.getElementById('btn-file-menu').click()
+		await new Promise((r) => setTimeout(r, 250))
+		const menu = document.querySelector('[data-file-menu]')
+		const actions = menu ? Array.from(menu.querySelectorAll('[data-file-menu-action]'))
+			.map((b) => b.dataset.fileMenuAction) : []
+		// Every action in the document must be one the app knows how to run; a
+		// button wired to nothing is the defect this app has a rule against.
+		const known = ['new', 'open', 'save', 'save-as', 'print', 'pdf']
+		const unwired = Array.from(document.querySelectorAll('[data-file-menu-action], [data-file-action]'))
+			.map((b) => b.dataset.fileMenuAction || b.dataset.fileAction)
+			.filter((a) => !known.includes(a))
 		return {
-			hasFileTab: !!panel,
+			hasFileTab: document.querySelector('[data-ribbon-panel="file"]') !== null,
 			hasHomeTab: document.querySelector('[data-ribbon-panel="home"]') !== null,
 			actions,
 			unwired: [...new Set(unwired)],
 		}
 	})()`, &out)
 
-	if !out.HasFileTab {
-		t.Fatal("there should be a File tab")
+	if out.HasFileTab {
+		t.Error("File is still a ribbon tab: it acts on the document as a whole, not on " +
+			"what you are editing, so it belongs in a menu")
 	}
 	if out.HasHomeTab {
 		t.Error("the Home tab should be gone: it duplicated Format and Insert entirely")
 	}
-	for _, want := range []string{"new", "open", "save", "save-as"} {
+	for _, want := range []string{"new", "open", "save", "save-as", "print", "pdf"} {
 		found := false
 		for _, got := range out.Actions {
 			if got == want {
@@ -122,7 +130,7 @@ func TestFileOperationsAreReachableFromTheRibbon(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("the File tab should offer %q; it has %v", want, out.Actions)
+			t.Errorf("the File menu should offer %q; it has %v", want, out.Actions)
 		}
 	}
 	if len(out.Unwired) > 0 {

@@ -2658,3 +2658,87 @@ body.app-empty .document-zoom {
 #status-message.showing {
   opacity: 1;
 }
+
+/* The File menu, and the button that opens it.
+
+   Shaped to read as a macOS menu rather than as a web dropdown: a tight radius,
+   a hairline border, a real shadow, generous horizontal padding for the shortcut
+   column, and a full-width accent highlight on the hovered row rather than a
+   rounded pill inside it. A native menu highlights the ROW; a web dropdown
+   highlights a box within it, and that difference is most of why one reads as
+   part of the system and the other does not. */
+.file-menu-button {
+  height: 28px;
+  margin-right: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--ink);
+  padding: 0 11px;
+  font-size: 12.5px;
+  font-weight: 550;
+}
+
+.file-menu-button:hover {
+  background: var(--hover);
+}
+
+.file-menu-button[aria-expanded="true"] {
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+}
+
+#file-menu-root {
+  position: absolute;
+  top: 46px;
+  left: 8px;
+  z-index: 60;
+}
+
+.native-menu {
+  min-width: 220px;
+  padding: 4px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  box-shadow: 0 12px 32px oklch(0.3 0.02 285 / 0.18);
+}
+
+.native-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 4px 14px;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.native-menu button:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* The shortcut column greys out on hover too, or it stays dark on the accent
+   and reads as a different element than the row it belongs to. */
+.native-menu kbd {
+  color: var(--muted);
+  font: inherit;
+}
+
+.native-menu button:hover kbd {
+  color: #fff;
+  opacity: 0.75;
+}
+
+.native-menu-separator {
+  height: 1px;
+  margin: 4px 10px;
+  background: var(--line);
+}

@@ -268,6 +268,14 @@ static void installMenuBar(NSString *appName) {
   // webview — taking it would silently break a documented shortcut.
   [fileMenu addItem:jsItem(@"Save As…", @"", 0, @"globalThis.__app?.saveAs()")];
   [fileMenu addItem:[NSMenuItem separatorItem]];
+  // Export lives here too. It was the one File command that existed only in
+  // the shell, so the menu bar was incomplete in exactly the place a Mac user
+  // looks first.
+  [fileMenu addItem:jsItem(@"Print…", @"p", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.printDocument('print')")];
+  [fileMenu addItem:jsItem(@"Export as PDF…", @"", 0,
+                           @"globalThis.__app?.printDocument('pdf')")];
+  [fileMenu addItem:[NSMenuItem separatorItem]];
   // Cmd-W closes the TAB here, matching the application. The window gets
   // Shift-Cmd-W, which is the convention when Cmd-W is a tab.
   [fileMenu addItem:jsItem(@"Close Tab", @"w", NSEventModifierFlagCommand,

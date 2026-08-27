@@ -1319,14 +1319,19 @@ func TestRibbonCompletionCommandsAreBacked(t *testing.T) {
 		t.Fatal("Share should remain hidden until collaboration behavior is backed")
 	}
 
-	evalJS(t, ctx, "window.__app.activateRibbonTab('home'); 'ok'", &res)
-	evalJS(t, ctx, `document.querySelector('[data-export-toggle]').click(); 'ok'`, &res)
+	// Print and PDF moved out of a ribbon dropdown and into the File menu when
+	// File stopped being a tab. The guarantee is unchanged: both must be present
+	// and backed, not merely drawn.
 	var exportOpen bool
-	evalJS(t, ctx, `document.querySelector('[data-export-menu]') !== null &&
-		document.querySelector('[data-export-action="print"]') !== null &&
-		document.querySelector('[data-export-action="pdf"]') !== null`, &exportOpen)
+	evalJS(t, ctx, `(async () => {
+		document.getElementById('btn-file-menu').click()
+		await new Promise((r) => setTimeout(r, 250))
+		return document.querySelector('[data-file-menu]') !== null &&
+			document.querySelector('[data-file-menu-action="print"]') !== null &&
+			document.querySelector('[data-file-menu-action="pdf"]') !== null
+	})()`, &exportOpen)
 	if !exportOpen {
-		t.Fatal("Export should open a backed menu with Print and PDF actions")
+		t.Fatal("the File menu should offer backed Print and PDF actions")
 	}
 }
 
@@ -2423,7 +2428,7 @@ func TestNativeInteractionAndAccessibilityState(t *testing.T) {
 		t.Fatal("Escape should close settings")
 	}
 
-	evalJS(t, ctx, `document.querySelector('[data-export-toggle]').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.getElementById('btn-file-menu').click(); 'ok'`, &res)
 	chromedp.Run(ctx, chromedp.KeyEvent("\u001b"))
 	evalJS(t, ctx, `document.querySelector('[data-export-menu]') === null`, &closed)
 	if !closed {
@@ -2485,8 +2490,8 @@ func TestPrintAndPDFExportUseFormattedPrintPipeline(t *testing.T) {
 	var beforePrint string
 	evalJS(t, ctx, "window.__app.getMarkdown()", &beforePrint)
 
-	evalJS(t, ctx, `document.querySelector('[data-export-toggle]').click(); 'ok'`, &res)
-	evalJS(t, ctx, `document.querySelector('[data-export-action="print"]').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.getElementById('btn-file-menu').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.querySelector('[data-file-menu-action="print"]').click(); 'ok'`, &res)
 	var printState string
 	evalJS(t, ctx, `[
 		window.__printCalls,
@@ -2506,8 +2511,8 @@ func TestPrintAndPDFExportUseFormattedPrintPipeline(t *testing.T) {
 		t.Fatalf("print should not mutate markdown:\n%q", md)
 	}
 
-	evalJS(t, ctx, `document.querySelector('[data-export-toggle]').click(); 'ok'`, &res)
-	evalJS(t, ctx, `document.querySelector('[data-export-action="pdf"]').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.getElementById('btn-file-menu').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.querySelector('[data-file-menu-action="pdf"]').click(); 'ok'`, &res)
 	var pdfState string
 	evalJS(t, ctx, `[window.__printCalls, document.body.dataset.lastExportAction, document.body.dataset.pdfExportVia].join('|')`, &pdfState)
 	if pdfState != "2|pdf|print-dialog" {
@@ -2547,7 +2552,7 @@ func TestVisualBaselineScreensRenderWithoutOverflow(t *testing.T) {
 				scrollWidth: document.documentElement.scrollWidth,
 				appWidth: document.getElementById('app-shell').getBoundingClientRect().width,
 				ribbonWidth: document.getElementById('ribbon').getBoundingClientRect().width,
-				exportRight: document.querySelector('[data-export-toggle]').getBoundingClientRect().right
+				exportRight: document.getElementById('btn-file-menu').getBoundingClientRect().right
 			})`, &overflowReport)
 			t.Fatalf("%s baseline overflows the viewport: %s", state.name, overflowReport)
 		}
@@ -2562,7 +2567,7 @@ func TestVisualBaselineScreensRenderWithoutOverflow(t *testing.T) {
 
 	var exportVisible bool
 	evalJS(t, ctx, `(() => {
-		const button = document.querySelector('[data-export-toggle]')
+		const button = document.getElementById('btn-file-menu')
 		const rect = button.getBoundingClientRect()
 		return rect.left >= 0 && rect.right <= window.innerWidth && rect.width > 0
 	})()`, &exportVisible)
@@ -2593,13 +2598,13 @@ func TestResponsiveShellAdaptsToReducedWindowWidths(t *testing.T) {
 				width: window.innerWidth,
 				scrollWidth: document.documentElement.scrollWidth,
 				ribbonWidth: document.getElementById('ribbon').getBoundingClientRect().width,
-				export: document.querySelector('[data-export-toggle]').getBoundingClientRect().toJSON?.() || {}
+				export: document.getElementById('btn-file-menu').getBoundingClientRect().toJSON?.() || {}
 			})`, &report)
 			t.Fatalf("responsive shell should not overflow at %dpx: %s", width, report)
 		}
 		var exportVisible bool
 		evalJS(t, ctx, `(() => {
-			const rect = document.querySelector('[data-export-toggle]').getBoundingClientRect()
+			const rect = document.getElementById('btn-file-menu').getBoundingClientRect()
 			return rect.left >= 0 && rect.right <= window.innerWidth && rect.width > 0
 		})()`, &exportVisible)
 		if !exportVisible {
