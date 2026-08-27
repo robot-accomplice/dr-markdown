@@ -159,7 +159,7 @@
       "security": [
         "A Content-Security-Policy in index.html restricts script, style, image, font and connect sources; object-src, base-uri, form-action and frame-ancestors are 'none'",
         "Document links are routed to the OS browser via OpenExternalURL instead of navigating the app window",
-        "Rendered document links pass a scheme allowlist (http, https, mailto). The candidate is normalized exactly as the URL parser normalizes it \u2014 tabs, CR and LF stripped \u2014 because the check must refuse what the BROWSER navigates to, not what the raw string looks like",
+        "Rendered document links pass a scheme allowlist (http, https, mailto). The candidate is normalized exactly as the URL parser normalizes it — tabs, CR and LF stripped — because the check must refuse what the BROWSER navigates to, not what the raw string looks like",
         "Suppresses browser context menu and drag/drop navigation in the shell",
         "safeLinkHref returns the href to assign rather than a boolean, so a caller cannot validate one string and use another"
       ],
@@ -672,11 +672,12 @@
       "id": "vendored-editor-assets",
       "type": "module",
       "name": "Vendored editor assets",
-      "summary": "Bundled Crepe, Highlight.js, Mermaid and editor theme assets served from embedded frontend files. The Crepe bundle is patched after download and so matches no upstream artifact, which is why tools/vendor-digests.txt is the only durable record of the bytes shipped. A standalone CodeMirror bundle was vendored here until 2026-08-10 and imported by nothing; it was removed once measurement showed it could not supply what the Crepe bundle is missing either.",
+      "summary": "Bundled Crepe, Highlight.js, Mermaid and editor theme assets served from embedded frontend files. The Crepe bundle is patched after download and so matches no upstream artifact, which is why tools/vendor-digests.txt is the only durable record of the bytes shipped. A standalone CodeMirror bundle was vendored here until 2026-08-10 and imported by nothing; it was removed once measurement showed it could not supply what the Crepe bundle is missing either. Since 1.6.3 it also carries markdown-it and its footnote and task-list plugins, which render the split preview and the print surface; those three are shipped as downloaded, unpatched.",
       "responsibilities": [
         "Provide editor, syntax-highlighting, and Mermaid runtime bundles without npm install at runtime",
         "Provide theme CSS loaded by the WYSIWYG adapter",
-        "Patch the Crepe bundle's undefined CodeMirror basicSetup extension, which esm.sh leaves undefined because it resolves the bare specifier `codemirror` to v5; unpatched, every code block throws on mount and can never be edited (#77)"
+        "Patch the Crepe bundle's undefined CodeMirror basicSetup extension, which esm.sh leaves undefined because it resolves the bare specifier `codemirror` to v5; unpatched, every code block throws on mount and can never be edited (#77)",
+        "Provide the markdown-it parser and the footnote and task-list plugins used by the preview and print renderer"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -910,7 +911,7 @@
         "It returns the href to assign rather than a boolean, so a caller cannot validate one string and use another"
       ],
       "observability": [
-        "e2e/markdown_unit_test.go \u2014 each module driven directly in one browser boot"
+        "e2e/markdown_unit_test.go — each module driven directly in one browser boot"
       ],
       "relatedFlows": [
         "edit-markdown-document"
@@ -936,7 +937,7 @@
       "responsibilities": [
         "Open the window and run the AppKit event loop",
         "Serve the embedded frontend over a custom URL scheme, in-process, with no socket",
-        "Install the menu bar \u2014 WITHOUT it a Cocoa app has no Cmd-C, Cmd-V, Cmd-X, Cmd-A or Cmd-Q",
+        "Install the menu bar — WITHOUT it a Cocoa app has no Cmd-C, Cmd-V, Cmd-X, Cmd-A or Cmd-Q",
         "Dispatch bound calls with types generated from app.go, and REJECT the promise when one panics",
         "Answer dialogs asynchronously over a channel, so a modal never pins a thread and a context can cancel",
         "Deliver operating-system file drops inward and frontend events outward",
@@ -967,10 +968,10 @@
       "security": [
         "The host is the trust boundary between the operating system and the application: dropped paths, OS-routed file-open paths and dialog results all enter here and are untrusted until the application checks them",
         "OpenExternalURL passes a URL the application already re-checked in Go; the boundary deliberately does not re-decide scheme safety, so there is exactly one place that does",
-        "Assets reach the view through the host's in-process URL scheme handler, not a TCP listener \u2014 the application opens no socket"
+        "Assets reach the view through the host's in-process URL scheme handler, not a TCP listener — the application opens no socket"
       ],
       "observability": [
-        "TestOnlyTheHostFilesReachTheOperatingSystem \u2014 only the host files import \"C\"",
+        "TestOnlyTheHostFilesReachTheOperatingSystem — only the host files import \"C\"",
         "-gates: boot, bound call, panic rejection, events, drop, document round trip",
         "-walk: 40 checks across the whole UI surface",
         "-menu: the menu bar exists and steals no editor shortcut"
@@ -991,6 +992,64 @@
         "TestTheBoundaryDetectorActuallyReadsGoFiles",
         "TestGeneratedDispatchMatchesAppGo",
         "TestFileDropSubscriptionAndEmissionAreSeparate"
+      ]
+    },
+    {
+      "id": "document-html-renderer",
+      "type": "module",
+      "name": "Document HTML renderer",
+      "summary": "Renders markdown to DOM nodes for the two surfaces that are not the editor: the split preview and the print/PDF surface. Until 1.6.3 these shared a 43-line hand-written renderer that matched constructs with regular expressions over lines; measured across sixteen ordinary constructs, sixteen were wrong, and the same renderer fed print and PDF export. It now parses with vendored markdown-it plus the footnote and task-list plugins, and every rendered tree passes through sanitize.js before it is inserted.",
+      "responsibilities": [
+        "Parse markdown to HTML with a CommonMark-plus-GFM dialect that matches what the editor renders",
+        "Sanitize every rendered tree before insertion, because an opened document is untrusted input and this DOM shares an origin with the native bindings",
+        "Emit a slot for each fenced block and build the drawn diagram or the code-block chrome into the tree afterwards, since neither is expressible as an HTML string",
+        "Number code fences by source position via the shared fences.js helper, so an index handed to the assistant names the block the rewriter will edit"
+      ],
+      "owner": "Project maintainers",
+      "sourcePaths": [
+        "frontend/dist/src/markdown/render.js",
+        "frontend/dist/src/markdown/sanitize.js",
+        "frontend/dist/src/markdown/fences.js",
+        "frontend/dist/vendor/markdown-it.bundle.mjs"
+      ],
+      "runtime": "Embedded webview JavaScript",
+      "interfaces": [
+        "renderMarkdown",
+        "sanitizeInto",
+        "safeImageSrc"
+      ],
+      "dependencies": [
+        "vendored-editor-assets",
+        "diagram-renderer",
+        "markdown-domain"
+      ],
+      "dataHandled": [
+        "markdown-document"
+      ],
+      "security": [
+        "Element, attribute and URL-scheme allowlists, never denylists; an unknown element is unwrapped rather than trusted",
+        "markdown-it's own validateLink is disabled so the sanitizer is the single URL authority: its allowlist is strictly stronger than markdown-it's four-scheme denylist, and a refusal made during parsing leaves no element and therefore no record",
+        "Document-authored id and style attributes are dropped, so a document cannot answer a getElementById query meant for the application",
+        "Refusals are recorded as link.refused and image.refused, deduped per distinct value and capped, so a document already judged hostile cannot evict the rest of the trail"
+      ],
+      "observability": [
+        "link.refused and image.refused client events",
+        "e2e/preview_renderer_test.go"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ],
+      "relatedDecisions": [
+        "one-renderer-for-preview-and-print"
+      ],
+      "knownRisks": [
+        "document-html-reaches-the-dom"
+      ],
+      "verification": [
+        "e2e/preview_renderer_test.go pins all sixteen constructs by structure, and pins the hostile-HTML refusals",
+        "e2e/link_security_test.go covers obfuscated scheme spellings",
+        "e2e/diagnostics_test.go requires a refused link to be recorded and requires the record to be flood-resistant"
       ]
     }
   ]

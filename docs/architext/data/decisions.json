@@ -293,6 +293,29 @@
       ],
       "relatedNodes": [],
       "relatedFlows": []
+    },
+    {
+      "id": "one-renderer-for-preview-and-print",
+      "status": "accepted",
+      "title": "One parser renders the preview and the print surface, behind an allowlist sanitizer",
+      "context": "The split preview and print/PDF export shared a 43-line renderer built from regular expressions over lines. Enumerated against sixteen ordinary constructs, sixteen rendered wrongly: a GFM table became paragraphs of pipe characters, an ordered list lost its numbering, nested lists flattened, task lists kept literal brackets, emphasis inside a heading or blockquote stayed as asterisks, and a hard-wrapped paragraph split in two. The editor surface was correct throughout, so the two disagreed about the same document. The weight is on print rather than preview: a PDF leaves the application, reaches a reader who never sees the source, and cannot be corrected afterwards.",
+      "decision": "Render both surfaces with vendored markdown-it plus markdown-it-footnote and markdown-it-task-lists, configured html:true and linkify:false, and pass every rendered tree through an allowlist sanitizer before it is inserted. markdown-it's own validateLink is turned off so that the sanitizer is the single authority on which URLs survive.",
+      "consequences": [
+        "All sixteen constructs now render correctly on both surfaces, verified construct-by-construct rather than by markup comparison.",
+        "html:true is what makes the sanitizer mandatory rather than defensive: it hands untrusted document bytes to a DOM that shares an origin with the native bindings. The renderer it replaced was safe from this only by accident, because it emitted text nodes and never built hostile markup into elements at all.",
+        "Disabling validateLink is not a relaxation. markdown-it refuses four schemes by denylist; the sanitizer runs an allowlist, so everything markdown-it refused is still refused. What changes is that the refusal now happens where it can be seen and recorded: a link dissolved during parsing leaves no element, so nothing downstream could tell a refused link from a document that never had one.",
+        "Fenced blocks render through a slot rather than as HTML, because the diagram and the code-block chrome are event listeners as much as markup, and those belong to the application rather than to the renderer.",
+        "A document embedding raw inline <svg> now shows nothing for it, and document-authored id and style attributes are dropped. Both are real fidelity losses accepted deliberately: inline SVG is a second sanitizer's worth of rules, and a document-authored id can answer a getElementById query meant for the application."
+      ],
+      "relatedNodes": [
+        "document-html-renderer",
+        "vendored-editor-assets",
+        "markdown-domain"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
     }
   ]
 }

@@ -8,6 +8,7 @@ import {
   firstCodeFenceDescriptor, rewriteCodeFenceLanguage, rewriteMermaidFenceSource,
 } from './markdown/fences.js'
 import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
+import { renderMarkdown } from './markdown/render.js'
 import { safeLinkHref } from './markdown/links.js'
 import { detectLineEnding, toEditorText, toFileText, titleForPath } from './markdown/text.js'
 import { applyCommand, appendBlock } from './markdown/commands.js'
@@ -1635,52 +1636,22 @@ async function refreshSplitPreview(md) {
   await resolveImageAssets(els.splitPreview)
 }
 
+// Both surfaces that are not the editor render through one function now. See
+// markdown/render.js for what the renderer this replaced got wrong, and why it
+// mattered most for print.
 async function renderMarkdownPreview(md) {
-  const nodes = []
-  const lines = md.split('\n')
-  let codeFenceIndex = -1
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const heading = line.match(/^(#{1,6})\s+(.+)$/)
-    if (heading) {
-      const h = document.createElement(`h${heading[1].length}`)
-      h.textContent = heading[2]
-      nodes.push(h)
-    } else if (/^```/.test(line)) {
-      codeFenceIndex++
-      const language = line.replace(/^```\s*/, '').trim().split(/\s+/)[0] || ''
-      const body = []
-      i++
-      while (i < lines.length && !/^```/.test(lines[i])) body.push(lines[i++])
-      if (normalizeLanguage(language) === 'mermaid') {
-        const diagram = document.createElement('div')
-        diagram.className = 'mermaid-render'
-        diagram.dataset.language = 'mermaid'
-        diagram.innerHTML = await renderMermaidDiagram(body.join('\n'))
-        nodes.push(diagram)
-        continue
-      }
-      nodes.push(codeBlockElement(body.join('\n'), language, codeFenceIndex))
-    } else if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) {
-      const p = document.createElement('p')
-      p.textContent = line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '• ')
-      nodes.push(p)
-    } else if (/^>\s?/.test(line)) {
-      const q = document.createElement('blockquote')
-      q.textContent = line.replace(/^>\s?/, '')
-      nodes.push(q)
-    } else if (/^---+$/.test(line.trim())) {
-      nodes.push(document.createElement('hr'))
-    } else if (line.trim()) {
-      const p = document.createElement('p')
-      p.append(...inlineMarkdownNodes(line))
-      nodes.push(p)
-    }
-  }
-  return nodes.length ? nodes : [document.createElement('p')]
+  return renderMarkdown(md, {
+    codeBlock: codeBlockElement,
+    onRefused: ({ kind, value }) => recordRefusedResource(kind, value),
+  })
 }
 
-function codeBlockElement(source, language = '', fenceIndex = null) {
+// The shell around a fenced code block on the preview and print surfaces:
+// language label, copy button, language picker, and the assistant on
+// right-click. It is passed INTO the renderer rather than imported by it,
+// because all four of those are application behaviour and the renderer is not
+// allowed to depend on this module.
+function codeBlockElement({ source, language = '', fenceIndex = null }) {
   const normalized = normalizeLanguage(language)
   const figure = document.createElement('figure')
   figure.className = 'code-block-shell'
@@ -1728,23 +1699,6 @@ function codeLanguageTool(fenceIndex, language) {
   return button
 }
 
-function inlineMarkdownNodes(text) {
-  const nodes = []
-  // Images must precede the link alternative: `![alt](src)` otherwise matches
-  // as a link and renders the leading `!` as stray text.
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|!\[[^\]]*\]\([^)]+\)|<img\b[^>]*>|\[[^\]]+\]\([^)]+\))/g
-  let cursor = 0
-  let match = pattern.exec(text)
-  while (match) {
-    if (match.index > cursor) nodes.push(document.createTextNode(text.slice(cursor, match.index)))
-    nodes.push(inlineMarkdownNode(match[0]))
-    cursor = match.index + match[0].length
-    match = pattern.exec(text)
-  }
-  if (cursor < text.length) nodes.push(document.createTextNode(text.slice(cursor)))
-  return nodes
-}
-
 // --- image block model ---
 //
 // Images exist in two on-disk forms. `![alt](path)` is the portable default;
@@ -1782,10 +1736,20 @@ const REFUSED_LINK_RECORD_CAP = 32
 const refusedLinks = new Set()
 
 function recordRefusedLink(href) {
-  const key = String(href ?? '')
+  recordRefusedResource('link', href)
+}
+
+// Images are refused on their own scheme rule (safeImageSrc), and a refused
+// image is the same kind of silent autonomous decision as a refused link — an
+// embedded image that simply does not appear looks like a broken document
+// rather than a judgement the app made. Kind is part of the dedupe key so the
+// two cannot mask each other.
+function recordRefusedResource(kind, value) {
+  const href = String(value ?? '')
+  const key = `${kind}:${href}`
   if (refusedLinks.has(key) || refusedLinks.size >= REFUSED_LINK_RECORD_CAP) return
   refusedLinks.add(key)
-  bridge.recordEvent('link.refused', { href: key })
+  bridge.recordEvent(`${kind}.refused`, { href })
 }
 
 // The href was already filtered by safeLinkHref when the anchor was built, but

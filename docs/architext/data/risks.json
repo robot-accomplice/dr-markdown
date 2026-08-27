@@ -200,6 +200,29 @@
       "relatedFlows": [
         "open-save-document"
       ]
+    },
+    {
+      "id": "document-html-reaches-the-dom",
+      "title": "Document-authored HTML reaches the preview and print DOM",
+      "category": "security",
+      "severity": "high",
+      "status": "accepted",
+      "summary": "The preview and print renderer parses with html:true, because this dialect preserves inline HTML and the fidelity survey records it round-tripping byte-identically. That hands every byte of an opened document — untrusted input, since the product exists to open arbitrary markdown — into a DOM that shares an origin with the native bindings, where a javascript: URL reaches SaveDocument and OpenRecentDocument with no path restriction. The renderer this replaced was safe only by accident: it emitted text nodes, so hostile markup never became an element. Mitigated by sanitize.js, which runs element, attribute and URL-scheme ALLOWLISTS over every tree before insertion and records what it refuses. The residual risk is that the allowlists are load-bearing: widening KEEP without checking what the new element can load or execute reopens this directly.",
+      "mitigations": [
+        "sanitize.js runs element, attribute and URL-scheme allowlists over every rendered tree before it is inserted, unwrapping unknown elements and dropping the ones whose content is code or a fetch instruction",
+        "markdown-it's validateLink is disabled so the sanitizer is the single URL authority, which makes every refusal visible to something that can record it",
+        "Refused hrefs and image sources are recorded as link.refused and image.refused, deduped per distinct value and capped so a hostile document cannot evict the rest of the trail",
+        "Document-authored id and style attributes are dropped, so a document cannot answer a getElementById query meant for the application",
+        "e2e/preview_renderer_test.go and e2e/link_security_test.go assert the refusals; e2e/diagnostics_test.go asserts that a refusal is recorded"
+      ],
+      "relatedNodes": [
+        "document-html-renderer",
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
     }
   ]
 }
