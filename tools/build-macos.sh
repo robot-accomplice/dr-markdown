@@ -123,8 +123,35 @@ rm -rf "$ICONSET"
 # Ad-hoc signature, matching what shipped before. It is NOT notarization and
 # does not remove Gatekeeper's warning on first open; it exists so the bundle
 # has a stable identity and so macOS will honour its document-type claims.
-echo "==> ad-hoc signing"
-codesign --force --deep --sign - "$APP"
+# Signing. Developer ID when an identity is supplied, ad-hoc otherwise.
+#
+# Set DRMD_SIGN_IDENTITY to a Developer ID Application identity to produce a
+# build a stranger can open. Without it the build is ad-hoc signed exactly as
+# before, which is what CI does and what a contributor without a certificate
+# gets — the difference must not be a build failure.
+#
+# It NEVER falls back silently. If an identity is named and signing fails, the
+# build stops: a request to produce a distributable artifact that quietly
+# produces an undistributable one is the failure this project keeps finding.
+if [ -n "${DRMD_SIGN_IDENTITY:-}" ]; then
+    echo "==> signing with $DRMD_SIGN_IDENTITY"
+    # --options runtime is the hardened runtime, which notarization requires.
+    # --timestamp is a secure timestamp, and it is not merely required: it
+    # proves the signature was made while the certificate was valid, so the
+    # application keeps opening after that certificate expires.
+    #
+    # No entitlements file, deliberately. Measured against this bundle: it links
+    # only system frameworks, contains exactly one executable with no nested
+    # code, and its JavaScript runs in WebKit's own process rather than in this
+    # one. None of allow-jit, allow-unsigned-executable-memory or a
+    # library-validation exception applies, and adding an entitlement that is
+    # not needed widens what the process is permitted to do.
+    codesign --force --options runtime --timestamp \
+             --sign "$DRMD_SIGN_IDENTITY" "$APP"
+else
+    echo "==> ad-hoc signing"
+    codesign --force --deep --sign - "$APP"
+fi
 
 echo "==> verifying the bundle"
 lipo -archs "$BIN"
@@ -194,6 +221,38 @@ fi
 # only if it was not just installed from.
 if [ "$INSTALL" -eq 0 ]; then
     unregister_app "$APP"
+fi
+
+# Notarization. Only when a credential profile is named AND the app was signed
+# with a real identity — notarizing an ad-hoc build is rejected by Apple, and
+# attempting it would turn a working developer build into a failed one.
+#
+# Create the profile once:
+#   xcrun notarytool store-credentials drmd-notary --key <p8> \
+#         --key-id <id> --issuer <issuer-uuid>
+#
+# The DMG is signed before submission and stapled after. Stapling is what lets
+# the application open on a machine with no network: without the ticket
+# attached, Gatekeeper has to reach Apple on first launch.
+if [ -n "${DRMD_NOTARY_PROFILE:-}" ]; then
+    if [ -z "${DRMD_SIGN_IDENTITY:-}" ]; then
+        echo "error: DRMD_NOTARY_PROFILE is set but DRMD_SIGN_IDENTITY is not." >&2
+        echo "       Apple rejects an ad-hoc signed submission, so this would fail" >&2
+        echo "       after the upload rather than before it. Set both or neither." >&2
+        exit 1
+    fi
+    echo "==> signing the DMG"
+    codesign --force --sign "$DRMD_SIGN_IDENTITY" "$DMG"
+    echo "==> notarizing (this waits on Apple, typically 2-5 minutes)"
+    xcrun notarytool submit "$DMG" --keychain-profile "$DRMD_NOTARY_PROFILE" --wait
+    echo "==> stapling the ticket"
+    xcrun stapler staple "$DMG"
+    echo "==> verifying as Gatekeeper will see it"
+    xcrun stapler validate "$DMG"
+    spctl -a -vvv -t install "$DMG" || {
+        echo "error: the notarized DMG did not pass Gatekeeper assessment." >&2
+        exit 1
+    }
 fi
 
 echo ""
