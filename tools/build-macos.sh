@@ -33,6 +33,16 @@ done
 # TestAppVersionComesFromTheVersionFile pins that they agree — so the bundle and
 # the event trail cannot disagree about which build this is.
 VERSION="$(tr -d '[:space:]' < VERSION)"
+
+# Withdraw a bundle from LaunchServices, so a build artifact does not appear in
+# Launchpad and Spotlight beside the installed application — same icon, same
+# name, indistinguishable. Safe to call on a path that is about to be deleted;
+# it must be called BEFORE the delete, because a registration outlives its files.
+unregister_app() {
+    local lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    [ -x "$lsregister" ] || return 0
+    "$lsregister" -u "$1" >/dev/null 2>&1 || true
+}
 if [ -z "$VERSION" ]; then
     echo "error: VERSION is empty" >&2
     exit 1
@@ -61,7 +71,14 @@ STAGE="build/dmg"
 BIN="$APP/Contents/MacOS/Dr Markdown"
 
 echo "==> cleaning"
-rm -rf "$APP"
+# Clean the whole output directory, not just this build's bundle.
+#
+# Removing only "$APP" leaves any PREVIOUSLY named bundle sitting beside it.
+# When the app was renamed from dr-markdown.app to Dr. Markdown.app in 1.6.2,
+# the old one stayed in build/bin — where macOS indexed it, so the launcher
+# offered a stale 1.6.1 alongside the current build. A build directory should
+# contain what this build produced and nothing else.
+rm -rf "$(dirname "$APP")"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # cgo means every architecture is a real compile, not a cross-link. clang is
@@ -122,6 +139,12 @@ ln -sf /Applications "$STAGE/Applications"
 
 echo "==> creating $DMG"
 hdiutil create -volname "Dr Markdown" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+# Withdraw the staged copy BEFORE deleting it. macOS registers an .app the
+# moment it appears, and that registration OUTLIVES the files — deleting the
+# staging directory leaves a launcher entry pointing at a path that no longer
+# exists, which is how a second "Dr Markdown" kept coming back after every
+# build with nothing on disk to explain it.
+unregister_app "$STAGE/$(basename "$APP")"
 rm -rf "$STAGE"
 
 if [ "$INSTALL" -eq 1 ]; then
@@ -157,6 +180,20 @@ if [ "$INSTALL" -eq 1 ]; then
     done
     cp -R "$APP" /Applications/
     echo "    installed /Applications/$(basename "$APP") ($VERSION)"
+fi
+
+# Keep build artifacts out of the launcher.
+#
+# macOS registers any .app it finds, so a bundle built inside the repository
+# shows up in Launchpad and Spotlight beside the installed one — same icon, same
+# name, indistinguishable. That is not a stale-file problem the clean step can
+# solve: it happens the moment a fresh build exists, and it was reported three
+# times before this line existed.
+#
+# The installed copy is unaffected; only the one under build/ is withdrawn, and
+# only if it was not just installed from.
+if [ "$INSTALL" -eq 0 ]; then
+    unregister_app "$APP"
 fi
 
 echo ""
