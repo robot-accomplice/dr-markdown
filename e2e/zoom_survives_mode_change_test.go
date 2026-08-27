@@ -1,0 +1,83 @@
+package e2e
+
+import (
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// A 1600x420 PNG. The size matters: an image narrower than the pane never fills
+// it, so it can never be measured short of it, and the defect is invisible.
+const wideImageB64 = "iVBORw0KGgoAAAANSUhEUgAABkAAAAGkCAIAAADmHH7qAAALnUlEQVR4nO3YMQHAIADAMJgGhCERqXPAS49EQe/Otc8AAAAAgKrvdQAAAAAA3BhYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAKQZWAAAAACkGVgAAAAApBlYAAAAAIyyH+GjBEwEe5WUAAAAAElFTkSuQmCC"
+
+// An image stays as wide as its pane across a mode change, at any zoom.
+//
+// Reported from real use: switching to Split and back, after changing the zoom,
+// left images rendered too small and clipped. Measured at 90% on a 1600x420
+// image:
+//
+//	initial            img 598   pane 598    fills exactly
+//	zoom to 90%        img 538   pane 538    still exact
+//	split -> wysiwyg   img 484   pane 538    54px SHORT
+//
+// 538 = 598 x 0.9 and 484 = 538 x 0.9. The vendored image node view sized the
+// image by measuring its block with getBoundingClientRect().width and writing an
+// explicit pixel height back onto the <img>. Under the document zoom — CSS
+// `zoom` on #editor-host — the rect is already scaled while the style is applied
+// inside that same scaled context, so the zoom was counted twice. It only
+// appeared after a mode change because that is when setMode rebuilds the editor
+// and the image loads again, this time with a zoom already in effect.
+//
+// tools/vendor.sh now measures clientWidth, which is the layout width.
+//
+// This asserts the INVARIANT rather than the numbers: whatever the zoom, the
+// image fills its pane and the round trip does not change that.
+func TestAnImageKeepsItsPaneWidthAcrossAModeChange(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	fixture := strings.Join([]string{"# Wide", "",
+		"![banner](data:image/png;base64," + wideImageB64 + ")", "", "text", ""}, "\n")
+	var res string
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
+
+	type shot struct {
+		Img  float64 `json:"img"`
+		Pane float64 `json:"pane"`
+	}
+	var m struct{ Initial, Zoomed, AfterRoundTrip shot }
+	evalJS(t, ctx, `(async () => {
+		const probe = () => {
+			const img = document.querySelector('#wysiwyg img')
+			const pm  = document.querySelector('#wysiwyg .ProseMirror')
+			return { img: img ? img.getBoundingClientRect().width : 0,
+			         pane: pm ? pm.getBoundingClientRect().width : 0 }
+		}
+		await new Promise(r=>setTimeout(r,1600))
+		const Initial = probe()
+		document.documentElement.style.setProperty('--doc-zoom','0.9')
+		await new Promise(r=>setTimeout(r,700))
+		const Zoomed = probe()
+		window.__app.setMode('split');   await new Promise(r=>setTimeout(r,1300))
+		window.__app.setMode('wysiwyg'); await new Promise(r=>setTimeout(r,1600))
+		const AfterRoundTrip = probe()
+		return { Initial, Zoomed, AfterRoundTrip }
+	})()`, &m)
+
+	for _, c := range []struct {
+		when string
+		s    shot
+	}{{"initially", m.Initial}, {"after zooming to 90%", m.Zoomed},
+		{"after a Split round trip at 90%", m.AfterRoundTrip}} {
+		t.Logf("%-32s img %.0f  pane %.0f", c.when, c.s.Img, c.s.Pane)
+		if c.s.Pane == 0 {
+			t.Fatalf("%s: no pane measured", c.when)
+		}
+		if diff := c.s.Pane - c.s.Img; diff > 1 || diff < -1 {
+			t.Errorf("%s: the image is %.0fpx wide in a %.0fpx pane, %.0fpx short. "+
+				"An image that fills its pane must go on filling it.", c.when, c.s.Img, c.s.Pane, diff)
+		}
+	}
+}
