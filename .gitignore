@@ -31,3 +31,17 @@ docs/architext/data/**/*.bak
 /genbanner
 /genbound
 /dr-markdown
+
+# Ephemeral workflow documentation is NEVER committed. Plans, specs, scratch
+# analysis, session notes, skill scaffolding — by-products of how the work was
+# done, not artefacts the project needs.
+#
+# `.superpowers/` was ignored; `docs/superpowers/` was not, so 38 files and 384K
+# were tracked on main and shipped in every release for weeks, and were cited 33
+# times from decision and release records before anyone noticed.
+#
+# Durable reasoning goes in a normal location — docs/decisions, docs/releases,
+# the README — not behind a link to a file that should not be in the repository.
+docs/superpowers/
+.claude/skills/**/output/
+**/scratchpad/

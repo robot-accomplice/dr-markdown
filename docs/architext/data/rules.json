@@ -73,6 +73,24 @@
         "edit": false,
         "delete": false
       }
+    },
+    {
+      "id": "no-ephemeral-docs-in-git",
+      "title": "Ephemeral documentation is never committed",
+      "summary": "Plans, specs, scratch analysis, session notes and skill scaffolding are by-products of how work was done, not artefacts the project needs. They are never committed. Durable reasoning belongs in a normal location — docs/decisions, docs/releases, the README — and a durable record must never cite an ephemeral file.",
+      "category": "Development",
+      "criticality": "high",
+      "order": 15,
+      "source": "maintainer",
+      "rationale": "Violated silently and at scale. .gitignore covered .superpowers/ but not docs/superpowers/, so 38 plan and spec files (384K) were tracked on main and shipped in every release for weeks. They then became load-bearing: 33 citations from decision records, release records, roadmap data and three Go source comments pointed at them, so scaffolding that should never have been in the repository had been woven into the durable record. Removing it required repointing every live citation first.",
+      "appliesTo": [
+        "Repository hygiene",
+        "Documentation"
+      ],
+      "protection": {
+        "edit": false,
+        "delete": false
+      }
     }
   ]
 }

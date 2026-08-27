@@ -4,7 +4,7 @@ package main
 
 // A walk of the entire UI surface, driven inside the real host.
 //
-// The surface is taken from docs/superpowers/plans/2026-08-06-current-screen-functionality-inventory.md,
+// The surface is taken from an inventory of every control the shell draws,
 // which is what this project walked when the screen was first made honest. The
 // point is not to re-test the frontend — e2e/ does that in Chrome — but to
 // establish that NOTHING in it breaks when the host underneath changes. A host
