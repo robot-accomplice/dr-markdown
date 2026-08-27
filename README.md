@@ -98,6 +98,10 @@ visible editor behavior, and commit the refreshed files under
 
 ![Dr Markdown split editor](docs/assets/screenshots/split.png)
 
+### File menu
+
+![Dr Markdown file menu](docs/assets/screenshots/file-menu.png)
+
 ### Diagram assistant
 
 ![Dr Markdown diagram assistant](docs/assets/screenshots/diagram.png)

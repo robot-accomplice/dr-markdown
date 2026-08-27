@@ -95,6 +95,14 @@ func run() error {
 		// across this release — the surfaces genuinely did not change — while the
 		// dialogs did, and nothing captured them. This one is where the preview
 		// used to overflow its box and run under the fields beside it.
+		// The File menu, which replaced the File ribbon tab.
+		{name: "file-menu", setup: `(async () => {
+			window.__app.closeSettings()
+			await new Promise((r) => setTimeout(r, 200))
+			document.getElementById('btn-file-menu').click()
+			await new Promise((r) => setTimeout(r, 400))
+			return "ok"
+		})()`},
 		{name: "diagram", setup: `(async () => {
 			// The shots run in sequence and each leaves the app as it found it,
 			// so Settings is still open from the previous one. Without this the

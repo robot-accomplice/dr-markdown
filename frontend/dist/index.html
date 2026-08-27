@@ -40,10 +40,11 @@
   <div id="app-shell">
     <section id="ribbon" aria-label="Editor ribbon">
       <div class="ribbon-tabs-row">
+        <button id="btn-file-menu" class="file-menu-button" type="button"
+                aria-haspopup="menu" aria-expanded="false">File</button>
         <nav class="ribbon-tabs" aria-label="Ribbon tabs">
-          <button class="active" type="button" data-ribbon-tab="file">File</button>
+          <button class="active" type="button" data-ribbon-tab="format">Format</button>
           <button type="button" data-ribbon-tab="insert">Insert</button>
-          <button type="button" data-ribbon-tab="format">Format</button>
           <button type="button" data-ribbon-tab="view">View</button>
           <button type="button" data-ribbon-tab="help">Help</button>
         </nav>
@@ -58,24 +59,6 @@
       </div>
 
       <div class="ribbon-panels">
-        <section class="ribbon-panel" data-ribbon-panel="file" aria-label="File">
-          <div class="ribbon-group">
-            <div class="ribbon-controls labelled">
-              <button data-file-action="new" aria-label="New document" title="New document" data-collapse-glyph="+" type="button"><span class="button-label">New</span></button>
-              <button data-file-action="open" aria-label="Open a file" title="Open a file" data-collapse-glyph="⌥" type="button"><span class="button-label">Open</span></button>
-              <button data-file-action="save" aria-label="Save" title="Save" data-collapse-glyph="↓" type="button"><span class="button-label">Save</span></button>
-              <button data-file-action="save-as" aria-label="Save As" title="Save As" data-collapse-glyph="⇪" type="button"><span class="button-label">Save As</span></button>
-            </div>
-            <h2>Document</h2>
-          </div>
-          <div class="ribbon-separator"></div>
-          <div class="ribbon-group">
-            <div class="ribbon-controls labelled">
-              <button data-export-toggle="true" aria-label="Export" title="Export" data-collapse-glyph="↗" type="button"><span class="button-label">Export ▾</span></button>
-            </div>
-            <h2>Share</h2>
-          </div>
-        </section>
 
         <section class="ribbon-panel" data-ribbon-panel="insert" aria-label="Insert" hidden>
           <div class="ribbon-group">
@@ -93,7 +76,7 @@
           </div>
         </section>
 
-        <section class="ribbon-panel" data-ribbon-panel="format" aria-label="Format" hidden>
+        <section class="ribbon-panel" data-ribbon-panel="format" aria-label="Format">
           <div class="ribbon-group">
             <div class="ribbon-controls">
               <select id="block-style" title="Paragraph style">
@@ -252,6 +235,7 @@
 
     <button id="btn-close-tab" hidden type="button">Close</button>
   <div id="insert-popover-root"></div>
+  <div id="file-menu-root"></div>
   <div id="code-assistant-root"></div>
   <div id="diagram-assistant-root"></div>
   <div id="settings-root"></div>

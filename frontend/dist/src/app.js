@@ -124,6 +124,8 @@ const els = {
   splitSourceHighlight: document.getElementById('split-source-highlight'),
   splitPreview: document.getElementById('split-preview'),
   insertPopoverRoot: document.getElementById('insert-popover-root'),
+  fileMenuRoot: document.getElementById('file-menu-root'),
+  btnFileMenu: document.getElementById('btn-file-menu'),
   codeAssistantRoot: document.getElementById('code-assistant-root'),
   diagramAssistantRoot: document.getElementById('diagram-assistant-root'),
   settingsRoot: document.getElementById('settings-root'),
@@ -1931,6 +1933,69 @@ async function printDocument(action = 'print') {
   window.print()
 }
 
+// The File menu.
+//
+// File left the ribbon because it did not belong there: every other tab changes
+// what the ribbon offers for the document you are editing, and File acts on the
+// document as a whole. The consequence was that the application opened showing
+// commands you use once a session while the formatting controls you use
+// constantly sat behind another tab.
+//
+// It is a menu rather than a tab so that reaching it costs you nothing: the
+// ribbon stays on whatever you were doing. Every command here is also in the
+// native menu bar, which is where a Mac user looks first; this is the affordance
+// for someone who does not.
+function fileMenuItem(action, label, shortcut) {
+  return `<button type="button" role="menuitem" data-file-menu-action="${action}">` +
+    `<span>${label}</span><kbd>${shortcut}</kbd></button>`
+}
+
+function toggleFileMenu() {
+  if (els.fileMenuRoot.firstChild) return closeFileMenu()
+  const menu = document.createElement('div')
+  menu.className = 'native-menu'
+  menu.setAttribute('role', 'menu')
+  menu.dataset.fileMenu = 'true'
+  menu.innerHTML = [
+    fileMenuItem('new', 'New', '\u2318N'),
+    fileMenuItem('open', 'Open…', '\u2318O'),
+    '<div class="native-menu-separator"></div>',
+    fileMenuItem('save', 'Save', '\u2318S'),
+    fileMenuItem('save-as', 'Save As…', '\u21e7\u2318S'),
+    '<div class="native-menu-separator"></div>',
+    fileMenuItem('print', 'Print…', '\u2318P'),
+    fileMenuItem('pdf', 'Export as PDF…', ''),
+  ].join('')
+  menu.querySelectorAll('[data-file-menu-action]').forEach((button) => {
+    button.addEventListener('click', () => runFileMenuAction(button.dataset.fileMenuAction))
+  })
+  els.fileMenuRoot.replaceChildren(menu)
+  els.btnFileMenu.setAttribute('aria-expanded', 'true')
+  // A menu closes on the next click anywhere, and on Escape, because that is
+  // what a menu does. Registered once the menu exists so the opening click does
+  // not immediately close it.
+  setTimeout(() => {
+    document.addEventListener('click', closeFileMenuOnOutsideClick, { once: true })
+  }, 0)
+}
+
+function closeFileMenu() {
+  els.fileMenuRoot.replaceChildren()
+  els.btnFileMenu.setAttribute('aria-expanded', 'false')
+}
+
+function closeFileMenuOnOutsideClick(event) {
+  if (event.target.closest('#btn-file-menu')) return
+  closeFileMenu()
+}
+
+function runFileMenuAction(action) {
+  closeFileMenu()
+  if (action === 'print' || action === 'pdf') return printDocument(action)
+  const run = { new: newDocument, open: openDocument, save, 'save-as': saveAs }[action]
+  return run?.()
+}
+
 function exportMenuButton(action, glyph, label) {
   return `<button type="button" data-export-action="${action}"><span>${glyph}</span><strong>${label}</strong><kbd></kbd></button>`
 }
@@ -2262,6 +2327,7 @@ function wire() {
   els.splitSource.addEventListener('scroll', syncSplitSourceScroll)
   els.splitPreview.addEventListener('scroll', syncSplitPreviewScroll)
   els.btnInsertMenu.addEventListener('click', toggleInsertPopover)
+  els.btnFileMenu.addEventListener('click', toggleFileMenu)
   els.btnSettings.addEventListener('click', openSettings)
   els.workspace.addEventListener('click', (event) => {
     const button = event.target.closest('[data-panel-toggle]')
