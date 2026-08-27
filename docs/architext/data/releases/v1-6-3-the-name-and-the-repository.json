@@ -74,6 +74,32 @@
           "full-test-suite"
         ],
         "summary": "Found by a magma call-graph sweep and verified by hand. tableSection in e2e/e2e_test.go and disc in tools/genbanner/main.go were each declared once and called nowhere. 31 of the 33 candidates the map produced were REFUTED rather than deleted: every //export function and everything it reaches is called from host_darwin.m, and cgo C-to-Go edges are invisible to a Go call graph. The refutation was checked per symbol, not assumed from the caveat."
+      },
+      {
+        "id": "notarized-builds",
+        "title": "The build can produce a notarized DMG",
+        "kind": "feature",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "distribution",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "DRMD_SIGN_IDENTITY selects Developer ID signing with the hardened runtime and a secure timestamp; DRMD_NOTARY_PROFILE then signs the DMG, submits it, staples the ticket and verifies the result as Gatekeeper sees it. Without either the build is ad-hoc signed exactly as before, which is what CI does and what a contributor with no certificate gets. It never falls back silently: a profile without an identity refuses BEFORE the upload rather than failing on Apple's side minutes later, and a nonexistent identity fails at signing. All three paths tested. No entitlements file, measured rather than assumed: the bundle links only system frameworks, carries one executable with no nested code, and its JavaScript runs in WebKit's own process, so allow-jit, allow-unsigned-executable-memory and a library-validation exception are all unnecessary. --timestamp is recorded as more than a requirement — it proves the signature was made while the certificate was valid, so the application keeps opening after that certificate expires."
+      },
+      {
+        "id": "app-store-deferred",
+        "title": "Mac App Store distribution recorded as a deferred decision",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "distribution",
+        "dependsOn": [],
+        "evidence": [
+          "issue-11"
+        ],
+        "summary": "The $99 membership covers both distribution paths; the application does not. Measured against the source rather than generalised: under the App Sandbox, selecting a file grants access to that file alone, and this application reads images resolved against the document's own directory, writes <document>.assets/ beside it, and reopens recents with no picker. The first would surface through the existing missing-asset state and look like data loss rather than a permission refusal. Deferred rather than rejected, with what would change it recorded, including that it should not precede source-preserving editing."
       }
     ],
     "planned": [],
@@ -107,6 +133,19 @@
       "itemIds": [
         "no-ephemeral-docs",
         "dead-code-removed"
+      ]
+    },
+    {
+      "id": "distribution",
+      "name": "How the application reaches a user",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Signing, notarization, and which distribution path this project takes.",
+      "itemIds": [
+        "notarized-builds",
+        "app-store-deferred"
       ]
     }
   ],
