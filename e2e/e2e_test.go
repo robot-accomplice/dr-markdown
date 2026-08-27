@@ -2458,14 +2458,16 @@ func TestNativeInteractionAndAccessibilityState(t *testing.T) {
 	}
 
 	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
-	var pressed string
+	// aria-CHECKED, not aria-pressed: the three modes became one radiogroup, so a
+	// screen reader announces one choice of three rather than three toggles.
+	var checked string
 	evalJS(t, ctx, `[
-		document.getElementById('btn-mode-formatted').getAttribute('aria-pressed'),
-		document.getElementById('btn-mode-raw').getAttribute('aria-pressed'),
-		document.getElementById('btn-split').getAttribute('aria-pressed')
-	].join(',')`, &pressed)
-	if pressed != "false,false,true" {
-		t.Fatalf("mode controls should expose aria-pressed state, got %q", pressed)
+		document.getElementById('btn-mode-formatted').getAttribute('aria-checked'),
+		document.getElementById('btn-mode-raw').getAttribute('aria-checked'),
+		document.getElementById('btn-split').getAttribute('aria-checked')
+	].join(',')`, &checked)
+	if checked != "false,false,true" {
+		t.Fatalf("mode controls should expose aria-checked state, got %q", checked)
 	}
 }
 

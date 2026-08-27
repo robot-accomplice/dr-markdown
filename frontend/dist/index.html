@@ -48,13 +48,12 @@
           <button type="button" data-ribbon-tab="help">Help</button>
         </nav>
         <button id="btn-settings" class="tab-row-settings" type="button">Settings</button>
-        <div class="mode-controls" aria-label="Editor mode">
+        <div class="mode-controls" role="radiogroup" aria-label="Editor mode">
           <div class="mode-switch">
-            <button id="btn-mode-formatted" class="active" type="button">Formatted</button>
-            <button id="btn-mode-raw" type="button">Raw</button>
+            <button id="btn-mode-formatted" class="active" type="button" role="radio" aria-checked="true">Formatted</button>
+            <button id="btn-mode-raw" type="button" role="radio" aria-checked="false">Raw</button>
+            <button id="btn-split" type="button" role="radio" aria-checked="false">Split</button>
           </div>
-          <div class="mode-divider"></div>
-          <button id="btn-split" class="split-toggle" type="button">Split</button>
         </div>
       </div>
 

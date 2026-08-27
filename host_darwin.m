@@ -299,7 +299,7 @@ static void installMenuBar(NSString *appName) {
   [viewMenu addItem:jsItem(@"Raw", @"2", NSEventModifierFlagCommand,
                            @"globalThis.__app?.setMode('raw')")];
   [viewMenu addItem:jsItem(@"Split", @"3", NSEventModifierFlagCommand,
-                           @"globalThis.__app?.toggleSplit()")];
+                           @"globalThis.__app?.setMode('split')")];
   [viewMenu addItem:[NSMenuItem separatorItem]];
   // No key equivalents: Cmd-B is Bold in the editor, and a menu would take it.
   [viewMenu addItem:jsItem(@"Toggle Files", @"", 0,

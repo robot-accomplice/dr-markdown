@@ -229,17 +229,28 @@ button.primary {
   gap: 10px;
 }
 
+/* One control for one choice.
+
+   Formatted, Raw and Split are three peers — setMode takes one of them and the
+   application holds a single state.mode — but the shell showed two as a
+   segmented pair and the third as a toggle beside a divider. That raised a
+   question the application cannot answer: is Split a mode, or a modifier on the
+   mode you picked? toggleSplit returned to Formatted from Split regardless of
+   whether you had been in Raw, so it behaved as a mode. It is shown as one now.
+
+   The View menu already treated all three as peers on Cmd-1/2/3; the shell
+   agrees with it. */
 .mode-switch {
   display: flex;
   gap: 2px;
   padding: 3px;
-  border-radius: 9px;
-  background: oklch(0.965 0.004 285);
+  border-radius: var(--control-radius);
+  background: var(--hover);
 }
 
 .mode-switch button {
   border: 0;
-  border-radius: 7px;
+  border-radius: calc(var(--control-radius) - 2px);
   background: transparent;
   color: var(--muted);
   padding: 5px 12px;
@@ -247,33 +258,14 @@ button.primary {
   font-weight: 600;
 }
 
+.mode-switch button:hover:not(.active) {
+  color: var(--ink);
+}
+
 .mode-switch button.active {
-  background: #fff;
+  background: var(--panel);
   color: var(--ink);
   box-shadow: 0 1px 2px oklch(0.5 0.02 285 / 0.14);
-}
-
-.mode-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--line);
-}
-
-.split-toggle {
-  min-width: 68px;
-  height: 30px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--ink-2);
-  font-size: 11.5px;
-  font-weight: 650;
-}
-
-.split-toggle.active {
-  border-color: var(--accent-wash-border);
-  background: var(--accent-wash);
-  color: var(--accent);
 }
 
 .ribbon-panels {
@@ -592,9 +584,6 @@ button.primary {
     padding-right: 8px;
   }
 
-  .split-toggle {
-    min-width: 54px;
-  }
 
   .ribbon-group {
     gap: 4px;
