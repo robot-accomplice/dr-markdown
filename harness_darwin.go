@@ -2,7 +2,10 @@
 
 package main
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // newHost returns the macOS host. There is exactly one, and this is the only
 // line the application needs to change to run on a different one.
@@ -46,6 +49,14 @@ func runHarness() bool {
 			docCheckMode = true
 			if i+2 <= len(os.Args)-1 {
 				docFixturePath = os.Args[i+2]
+			}
+			// A missing path used to leave docFixturePath empty, and the failure
+			// then surfaced as one line on stderr followed by a window that hung
+			// forever: the page asked for a fixture the host could not read, and
+			// nothing timed that out. Refuse here, where the mistake was made.
+			if docFixturePath == "" {
+				fmt.Fprintln(os.Stderr, "-doc needs a path: -doc <file.md>")
+				os.Exit(2)
 			}
 		case "-close-dirty":
 			closeCheckMode, closeDirty = true, true

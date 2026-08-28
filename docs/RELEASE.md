@@ -105,6 +105,32 @@ v1.6.3, and `-walk` had been failing since the File menu landed in v1.6.2 —
 it still expected File to be a ribbon tab, and nobody saw it because nobody ran
 it. A gate missing from the ceremony is a gate that does not exist.
 
+### The document round trip — a REPORT, not a pass/fail
+
+```sh
+/tmp/drmd-gate -doc README.md
+```
+
+This runs a real document through the real host and diffs what comes back. It is
+the mechanised half of the README validation below, and it **exits 1 whenever
+anything differs**, which today is always — the WYSIWYG surface re-serializes,
+which is the standing accepted blocker. So read the diff; do not look for PASS.
+
+**Baseline at v1.6.3, against this repository's own README:**
+
+- 244 lines in, 244 lines out — nothing added or lost
+- `stable=true` — the round trip is idempotent
+- 13 differing lines, **every one of them table delimiter or cell padding**
+
+That is the comparison point. A run that shows a different line count, `stable=false`,
+or a difference that is *not* table padding is a new defect, and the baseline is
+recorded here so the next person can tell the difference without re-deriving it.
+
+Two limits worth knowing. `-doc` needs a path and refuses without one — it used to
+hang on a window that could never load. And it opens the fixture with no location
+on disk, so every relative image fails to resolve and image handling is NOT
+exercised by this gate.
+
 `-close-dirty` and `-quit-dirty` exercise the cases that matter, and both raise a
 save dialog on purpose — **they need a human to answer**. Run them, answer, and
 read the verdict. The clean variants above are the halves that can be verified
