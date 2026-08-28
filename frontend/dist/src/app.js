@@ -1799,26 +1799,122 @@ function clearFindHighlight() {
 // command does. Driving it through the editor instead would re-serialize the
 // whole document, which is the standing hazard this project warns about — a
 // replace-all could rewrite lines the user never touched.
+// The document as it was before the last find-driven edit, kept so there is a
+// way back from one.
+//
+// Applying a replace remounts the editor, and the remount destroys ProseMirror's
+// undo history — so Cmd-Z, which the Edit menu advertises and the OS delivers,
+// could not undo the one command in this product capable of rewriting the whole
+// document in a single click. Promising a reversal that cannot fire is worse
+// than offering none.
+//
+// One step deep on purpose. This is a way out of a mistake, not a general undo
+// stack; a stack would have to survive edits made through the editor, which
+// serialize on their own schedule, and pretending otherwise is how a "restore"
+// puts back text the user has since retyped.
+let replaceUndo = null
+
 async function replaceCurrentMatch() {
   const match = find.matches[find.index]
   if (!match) return
-  const next = replaceMatch(getMarkdown(), match, els.replaceInput.value)
+  const before = getMarkdown()
+  const next = replaceMatch(before, match, els.replaceInput.value)
+  rememberReplaceUndo(before, 1)
   await applyFindEdit(next)
   runFind({ keepIndex: true })
 }
 
-async function replaceEveryMatch() {
-  if (!find.query) return
-  const { text, count } = replaceAllMatches(getMarkdown(), find.query, els.replaceInput.value, find.options)
-  if (!count) return
-  await applyFindEdit(text)
-  runFind()
-  flashStatus(`Replaced ${count} ${count === 1 ? 'match' : 'matches'}`)
+function rememberReplaceUndo(text, count) {
+  replaceUndo = { text, count }
 }
 
+// Any edit that is not a replace invalidates the snapshot: restoring it then
+// would discard whatever the user typed since, which is the same data loss
+// wearing the other hat.
+function forgetReplaceUndo() {
+  replaceUndo = null
+}
+
+// undoReplace puts the document back and reports whether it did.
+//
+// Returning a boolean is what lets the key handler decide: it must only consume
+// Cmd-Z when there is genuinely something to restore, or it would swallow the
+// editor's own undo and break the ordinary case to protect the rare one.
+async function undoReplace() {
+  if (!replaceUndo) return false
+  const { text, count } = replaceUndo
+  replaceUndo = null
+  await applyFindEdit(text)
+  runFind({ keepIndex: true })
+  flashStatus(`Reverted ${count} ${count === 1 ? 'replacement' : 'replacements'}`)
+  return true
+}
+
+async function replaceEveryMatch() {
+  if (!find.query) return
+  const before = getMarkdown()
+  const { text, count, capped } = replaceAllMatches(before, find.query, els.replaceInput.value, find.options)
+  if (!count) return
+  rememberReplaceUndo(before, count)
+  await applyFindEdit(text)
+  runFind()
+  // The cap is said out loud. A partial rewrite the user believes is total is
+  // worse than a refused one, and "Replaced 10000 matches" reads as complete.
+  flashStatus(capped
+    ? `Replaced the first ${count} matches — more remain, run it again`
+    : `Replaced ${count} ${count === 1 ? 'match' : 'matches'} · ⌘Z to revert`)
+}
+
+// applyingFindEdit tells markEdited that this particular edit is the one that
+// just set the snapshot, so it must not clear it.
+let applyingFindEdit = false
+
 async function applyFindEdit(text) {
-  await mountMarkdown(text)
-  markEdited(text)
+  applyingFindEdit = true
+  try {
+    await mountMarkdown(text)
+    markEdited(text)
+  } finally {
+    applyingFindEdit = false
+  }
+}
+
+// Uncaught errors and rejections reach the event trail.
+//
+// The host already installs listeners for both, but they push into an array
+// that only the -gates harness ever reads — so in a shipped build every failure
+// nobody anticipated was silently dropped, while the handlers existed and read
+// as coverage. A production build has no devtools, which is the premise
+// internal/eventlog was written on: console.warn reaches nobody.
+//
+// The Go side has a structural guarantee this had no equivalent of —
+// tools/genbound fails the BUILD if a bound method lacks its reportPanic — so
+// this is the frontend's version of the same idea, at the only two places the
+// platform will tell us something went wrong that no `catch` saw.
+//
+// Deduped and capped for the same reason refused links are: an error that
+// repeats every render is attacker-influenced content in the limit, and a trail
+// it can flood is a trail it can erase.
+const ERROR_RECORD_CAP = 32
+const recordedErrors = new Set()
+
+function recordUncaught(kind, message, source) {
+  const key = `${kind}:${message}`
+  if (recordedErrors.has(key) || recordedErrors.size >= ERROR_RECORD_CAP) return
+  recordedErrors.add(key)
+  bridge.recordEvent(kind, { message: String(message ?? ''), source: String(source ?? '') })
+}
+
+function wireErrorTrail() {
+  window.addEventListener('error', (event) => {
+    recordUncaught('error.uncaught', event.message,
+      `${event.filename ?? ''}:${event.lineno ?? ''}`)
+  })
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason
+    recordUncaught('error.unhandled-rejection',
+      reason?.message ?? reason, reason?.stack ? String(reason.stack).split('\n')[1]?.trim() : '')
+  })
 }
 
 function wireFindBar() {
@@ -2014,14 +2110,41 @@ function recordRefusedResource(kind, value) {
   bridge.recordEvent(`${kind}.refused`, { href })
 }
 
+// XLINK is the SVG namespace an <svg:a> carries its destination in. It is read
+// here because a CSS attribute selector without a namespace prefix matches only
+// null-namespace attributes: `a[href]` does not match an anchor whose only
+// destination is `xlink:href`, and getAttribute('href') returns null for one.
+const XLINK_NS = 'http://www.w3.org/1999/xlink'
+
+// linkDestination returns the URL an anchor will actually navigate to, from
+// either spelling.
+//
+// The guard below used to select `a[href]` — the shape markdown-it produces —
+// rather than the sink, which is any anchor in a rendered tree. Mermaid emits
+// diagram links as `<svg:a xlink:href="...">` with NO plain href, set through
+// setAttributeNS, so a diagram in an opened document slipped past the guard
+// entirely and WebKit performed the navigation. The new page then inherited the
+// bridge, which is installed for the main frame with no origin restriction and
+// exposes SaveDocument and OpenRecentDocument.
+function linkDestination(anchor) {
+  return anchor.getAttribute('href') ?? anchor.getAttributeNS(XLINK_NS, 'href')
+}
+
 // The href was already filtered by safeLinkHref when the anchor was built, but
 // it is re-checked here rather than trusted: this handler is bound to the whole
 // document, so it must be safe for any anchor that reaches it, not only the
 // ones this module created.
+//
+// It selects `a` and asks for a destination, rather than selecting anchors that
+// have one in the spelling this module happens to write. Sanitizing at the
+// source and guarding at the sink are different jobs; mermaid's SVG is exempt
+// from the sanitizer by design, so this is the only thing standing between a
+// drawn diagram and a navigation.
 function handleDocumentLinkClick(event) {
-  const anchor = event.target.closest?.('a[href]')
+  const anchor = event.target.closest?.('a')
   if (!anchor) return
-  const raw = anchor.getAttribute('href')
+  const raw = linkDestination(anchor)
+  if (raw === null) return
   const safe = safeLinkHref(raw)
   event.preventDefault()
   if (safe === null) {
@@ -2496,6 +2619,9 @@ function onEdited(md) {
 }
 
 function markEdited(md) {
+  // A find-driven edit sets the snapshot immediately after calling this, so it
+  // survives; anything else invalidates it. See forgetReplaceUndo.
+  if (!applyingFindEdit) forgetReplaceUndo()
   const doc = activeDoc()
   doc.markdown = md
   doc.started = true
@@ -2639,6 +2765,7 @@ function wire() {
     })
   })
   wireFindBar()
+  wireErrorTrail()
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       // The find bar closes before anything else: it is the surface the user
@@ -2656,6 +2783,14 @@ function wire() {
     if (key === 'f') {
       e.preventDefault()
       openFind({ replace: e.altKey })
+      return
+    }
+    if (key === 'z' && !e.shiftKey && replaceUndo) {
+      // Only when there is a replace to revert. Otherwise this falls through to
+      // the editor's own undo, which is the ordinary case and must not be
+      // swallowed to serve the rare one.
+      e.preventDefault()
+      undoReplace()
       return
     }
     if (key === 'r' && e.shiftKey) {

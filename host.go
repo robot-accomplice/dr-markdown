@@ -49,5 +49,10 @@ type hostConfig struct {
 	// before the view exists, which is why App holds the path until the frontend
 	// asks for it rather than being told (#53).
 	OnFileOpen func(path string)
-	Bind       []interface{}
+	// OnNavigationBlocked receives a URL the host refused to let drive the main
+	// frame. It is a refusal made without asking anyone, against untrusted
+	// document content, so it has to leave a trace — the same reason a refused
+	// link scheme is recorded on the frontend side.
+	OnNavigationBlocked func(url string)
+	Bind                []interface{}
 }

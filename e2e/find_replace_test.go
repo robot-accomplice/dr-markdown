@@ -279,3 +279,80 @@ func pressEscape(t *testing.T, ctx context.Context) {
 		cancelable: true
 	})); 'ok'`, &res)
 }
+
+// Replace All is the only single click in this product that rewrites the whole
+// document, and applying it remounts the editor — which discards ProseMirror's
+// undo history. The Edit menu advertises Undo and the OS delivers Cmd-Z, so
+// before this the user pressed the key the system offered and the document did
+// not come back. (#147)
+func TestReplaceAllCanBeReverted(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(findFixture)+").then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.setMode('raw').then(() => 'ok')", &res)
+	openFindReplaceBar(t, ctx)
+	sendKeysTo(t, ctx, "#find-input", "widget")
+	waitForJS(t, ctx, `document.getElementById('find-count').textContent.includes(' of ')`)
+	sendKeysTo(t, ctx, "#replace-input", "component")
+
+	evalJS(t, ctx, `(() => { document.getElementById('replace-all').click(); return 'ok' })()`, &res)
+	if !waitForJS(t, ctx, `!/widget/i.test(window.__app.getMarkdown())`) {
+		t.Fatal("replace all did not run")
+	}
+
+	// Cmd-Z, the key the menu promises.
+	evalJS(t, ctx, `document.dispatchEvent(new KeyboardEvent('keydown', {
+		key: 'z', metaKey: true, bubbles: true, cancelable: true
+	})); 'ok'`, &res)
+
+	if !waitForJS(t, ctx, `window.__app.getMarkdown().includes('widget')`) {
+		var got string
+		evalJS(t, ctx, `window.__app.getMarkdown()`, &got)
+		t.Fatalf("Cmd-Z did not revert Replace All; document = %q", got)
+	}
+	var restored string
+	evalJS(t, ctx, `window.__app.getMarkdown()`, &restored)
+	if restored != findFixture {
+		t.Errorf("revert did not restore the document exactly:\n got  %q\n want %q", restored, findFixture)
+	}
+}
+
+// The snapshot is one step deep and must not outlive an unrelated edit —
+// restoring it then would discard whatever the user typed since, which is the
+// same data loss wearing the other hat.
+func TestRevertIsAbandonedOnceTheUserEditsAgain(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(findFixture)+").then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.setMode('raw').then(() => 'ok')", &res)
+	openFindReplaceBar(t, ctx)
+	sendKeysTo(t, ctx, "#find-input", "widget")
+	waitForJS(t, ctx, `document.getElementById('find-count').textContent.includes(' of ')`)
+	sendKeysTo(t, ctx, "#replace-input", "component")
+	evalJS(t, ctx, `(() => { document.getElementById('replace-all').click(); return 'ok' })()`, &res)
+	waitForJS(t, ctx, `!/widget/i.test(window.__app.getMarkdown())`)
+
+	// An ordinary edit in the document.
+	sendKeysTo(t, ctx, "#raw textarea", " and more")
+	if !waitForJS(t, ctx, `window.__app.getMarkdown().includes('and more')`) {
+		t.Fatal("the follow-up edit never reached the document")
+	}
+
+	evalJS(t, ctx, `document.dispatchEvent(new KeyboardEvent('keydown', {
+		key: 'z', metaKey: true, bubbles: true, cancelable: true
+	})); 'ok'`, &res)
+
+	var after string
+	evalJS(t, ctx, `(async () => { await new Promise((r) => setTimeout(r, 300)); return window.__app.getMarkdown() })()`, &after)
+	if !strings.Contains(after, "and more") {
+		t.Errorf("reverting after an unrelated edit discarded it: %q", after)
+	}
+}

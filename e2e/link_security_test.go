@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -112,5 +113,100 @@ func TestObfuscatedSchemesAreRefusedInRenderedLinks(t *testing.T) {
 				t.Errorf("%q is an ordinary link and must not be refused", tc.href)
 			}
 		})
+	}
+}
+
+// A mermaid diagram link is an SVG anchor carrying its destination in the XLINK
+// namespace and NO plain href. The guard used to select `a[href]`, and an
+// unprefixed CSS attribute selector matches only null-namespace attributes — so
+// a diagram in an opened document slipped past it entirely and WebKit performed
+// the navigation. The new page then inherited the bridge, which is installed for
+// the main frame with no origin restriction and exposes SaveDocument and
+// OpenRecentDocument.
+//
+// The test above could not have caught this: it clicks an HTML anchor, which is
+// the one shape the old selector did match. This one asserts the property that
+// actually matters — the guard reads the destination a click will FOLLOW, not
+// the spelling this application happens to write. (#145)
+//
+// What this CANNOT cover: the second layer. The host now refuses any main-frame
+// navigation off the app's own scheme in its WKNavigationDelegate, which is
+// native and unreachable from chromedp — so `navigated` below stays false here
+// whether or not that delegate exists. The property this test does pin is that
+// the guard SEES the anchor at all, which is exactly what failed: with the old
+// `a[href]` selector the ordinary link is never handed to the browser, because
+// the handler returned before it could be.
+func TestNamespacedSvgLinksAreRefusedLikeAnyOther(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.__opened = null; globalThis.__events = [];
+	globalThis.drmd = { native: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {},
+		RecordClientEvent: (event) => { globalThis.__events.push(event) },
+		OpenExternalURL: async (u) => { globalThis.__opened = u }
+	} } ; 'ok'`, &res)
+
+	for _, tc := range []struct {
+		name    string
+		href    string
+		allowed bool
+	}{
+		{"https diagram link is handed to the browser", "https://example.com/page", true},
+		{"javascript diagram link is refused", "javascript:alert(1)", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var outcome string
+			evalJS(t, ctx, `(async () => {
+				globalThis.__opened = null
+				const NS = 'http://www.w3.org/1999/xlink'
+				const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+				const a = document.createElementNS('http://www.w3.org/2000/svg', 'a')
+				// Exactly what mermaid emits: setAttributeNS, and no plain href.
+				a.setAttributeNS(NS, 'xlink:href', `+strconv.Quote(tc.href)+`)
+				const label = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+				label.textContent = 'node'
+				a.appendChild(label); svg.appendChild(a)
+				// document.body, not the editor: the guard is bound document-wide,
+				// and depending on app DOM would make this test fail for reasons
+				// that have nothing to do with the guard.
+				document.body.appendChild(svg)
+
+				const before = location.href
+				let defaultPrevented = false
+				label.addEventListener('click', (e) => { defaultPrevented = e.defaultPrevented }, { once: true })
+				label.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+				await new Promise((r) => setTimeout(r, 50))
+				svg.remove()
+				return JSON.stringify({
+					opened: globalThis.__opened,
+					navigated: location.href !== before,
+				})
+			})()`, &outcome)
+
+			if strings.Contains(outcome, `"navigated":true`) {
+				t.Fatalf("a namespaced diagram link navigated the app window: %s", outcome)
+			}
+			if tc.allowed {
+				if !strings.Contains(outcome, `"opened":"`+tc.href+`"`) {
+					t.Errorf("an ordinary diagram link should be handed to the browser: %s", outcome)
+				}
+				return
+			}
+			if strings.Contains(outcome, `"opened":"`+tc.href+`"`) {
+				t.Errorf("a refused scheme reached the browser through a diagram link: %s", outcome)
+			}
+		})
+	}
+
+	// The refusal must be recorded, like every other one.
+	var recorded bool
+	evalJS(t, ctx, `(globalThis.__events || []).includes('link.refused')`, &recorded)
+	if !recorded {
+		t.Error("refusing a namespaced diagram link recorded nothing")
 	}
 }

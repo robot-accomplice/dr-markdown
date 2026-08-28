@@ -117,6 +117,47 @@ func TestFailureSurfacesRecordDurableEvents(t *testing.T) {
 		}
 	})
 
+	// An uncaught error and an unhandled rejection reach the trail.
+	//
+	// The host already listened for both, but into an array only the -gates
+	// harness reads — so in a shipped build anything nobody anticipated was
+	// dropped silently while the handlers existed and read as coverage. That
+	// matters most for what is newest: the async paths added for find and
+	// replace await a remount with no catch of their own.
+	t.Run("uncaught errors and rejections are recorded", func(t *testing.T) {
+		ctx, cancel := newTestBrowser(t)
+		defer cancel()
+		url := serveFrontend(t)
+		bootApp(t, ctx, url)
+
+		var events string
+		evalJS(t, ctx, `(async () => {
+			globalThis.__events = []
+			globalThis.drmd = { native: {
+				LoadPreferences: async () => ({settings:{},rawOptions:{},recents:[]}),
+				RecordClientEvent: (event) => { globalThis.__events.push(event) },
+				SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
+			} }
+			// Both platform signals, raised the way the platform raises them.
+			window.dispatchEvent(new ErrorEvent('error', {
+				message: 'boom', filename: 'x.js', lineno: 1
+			}))
+			window.dispatchEvent(new PromiseRejectionEvent('unhandledrejection', {
+				promise: Promise.reject(new Error('nope')).catch(() => {}),
+				reason: new Error('nope')
+			}))
+			await new Promise((r) => setTimeout(r, 100))
+			return (globalThis.__events || []).join(',')
+		})()`, &events)
+
+		if !strings.Contains(events, "error.uncaught") {
+			t.Errorf("an uncaught error recorded nothing; trail = %q", events)
+		}
+		if !strings.Contains(events, "error.unhandled-rejection") {
+			t.Errorf("an unhandled rejection recorded nothing; trail = %q", events)
+		}
+	})
+
 	// A rejected drop abandons the whole import rather than half-importing it.
 	// That is the right behaviour and it is silent, which is the problem.
 	t.Run("dropped image import rejected", func(t *testing.T) {
