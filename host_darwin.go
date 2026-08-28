@@ -972,6 +972,11 @@ func hostReportMenu() {
 		{"Edit", "Copy", "c"},
 		{"Edit", "Paste", "v"},
 		{"Edit", "Select All", "a"},
+		// Find lives on the menu for a reason beyond discoverability: a menu
+		// item's key equivalent is matched before web content sees the event, so
+		// claiming Cmd-F here is what stops it reaching the page unhandled (#132).
+		{"Edit", "Find\u2026", "f"},
+		{"Edit", "Find Next", "g"},
 		{"View", "Formatted", "1"},
 		{"View", "Raw", "2"},
 		// The only route to Reveal in Finder since the contextual bar was

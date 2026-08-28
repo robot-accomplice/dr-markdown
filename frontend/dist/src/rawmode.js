@@ -99,6 +99,24 @@ export class RawEditor {
     return this.#textarea?.value ?? ''
   }
 
+  // selectRange reveals a source offset range. No translation is needed here:
+  // the textarea holds the markdown source itself, so a search match's offsets
+  // are already this surface's coordinates.
+  //
+  // The scroll is computed from the line the match starts on rather than left
+  // to the browser, because setSelectionRange does not scroll a textarea that
+  // is not focused, and focusing to force it would steal the caret from the
+  // find field mid-search.
+  selectRange(start, end) {
+    if (!this.#textarea) return
+    this.#textarea.setSelectionRange(start, end)
+    const lineHeight = parseFloat(getComputedStyle(this.#textarea).lineHeight) || 18
+    const line = this.#textarea.value.slice(0, start).split('\n').length - 1
+    const target = line * lineHeight - this.#textarea.clientHeight / 2
+    this.#textarea.scrollTop = Math.max(0, target)
+    this.#render()
+  }
+
   replaceAll(text) {
     if (!this.#textarea) return
     this.#textarea.value = text

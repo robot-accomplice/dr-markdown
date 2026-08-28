@@ -2569,6 +2569,124 @@ body.dark {
 /* Anchored to the pane, and deliberately OUTSIDE #editor-host: inside it the
    control would zoom itself, shrinking as you zoomed out — smallest exactly
    when it is hardest to hit. */
+/* Find bar.
+   It overlays the top of the document region rather than sitting in the layout:
+   opening a bar that reflows the page scrolls the text you were looking for out
+   from under you at the moment you asked to find it. Same surface treatment as
+   the zoom control at the other corner, so the two read as one family of
+   floating document controls rather than two different ideas. */
+#find-bar {
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px oklch(0.3 0.02 285 / 0.12);
+}
+
+#find-bar[hidden] {
+  display: none;
+}
+
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#find-bar input {
+  width: 200px;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--canvas);
+  color: var(--ink);
+  font: 12px/1 var(--ui-font);
+}
+
+#find-bar input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* An unusable regular expression is reported on the field, not by silently
+   answering "no results" — which is indistinguishable from a document that
+   genuinely does not contain the text. */
+#find-bar input[aria-invalid='true'] {
+  border-color: var(--danger, #b4341f);
+}
+
+.find-count {
+  min-width: 84px;
+  color: var(--muted);
+  font: 11px/1 var(--mono);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.find-toggles {
+  display: flex;
+  gap: 2px;
+}
+
+#find-bar button {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--ink-2);
+  font: 11px/1 var(--mono);
+  cursor: pointer;
+}
+
+#find-bar button:hover {
+  background: var(--hover);
+}
+
+#find-bar button:active {
+  background: var(--pressed);
+}
+
+#find-bar button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+#replace-one,
+#replace-all {
+  font: 11px/1 var(--ui-font);
+}
+
+/* The replace row is hidden for a plain find, so the common case is one row.
+   Both are the same bar, so opening replace does not move the find field. */
+#find-bar:not([data-replace]) [data-find-replace-row] {
+  display: none;
+}
+
+/* The current match, and the others. Marking only the current one loses the
+   sense of how the matches are distributed; marking them all identically loses
+   which one is selected. */
+.find-hit {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 2px;
+}
+
+.find-hit-current {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  outline: 1px solid var(--accent);
+}
+
 .document-zoom {
   position: absolute;
   right: 18px;
