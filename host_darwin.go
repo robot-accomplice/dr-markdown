@@ -102,6 +102,20 @@ func (darwinHost) Run(cfg hostConfig) error {
 	// Held for the C callbacks, which cannot carry a Go receiver.
 	setLifecycle(cfg)
 
+	// The navigation gate must be able to FAIL rather than merely hang. Without
+	// the delegate the page simply leaves and nothing calls back, so a gate that
+	// only reports on refusal would time out — which reads as a broken harness,
+	// not as a verdict, and a verdict is the whole point.
+	if navCheckMode {
+		go func() {
+			time.Sleep(navCheckDeadline)
+			fmt.Println("NAV: no refusal within", navCheckDeadline)
+			fmt.Println("VERDICT: FAIL — the main frame navigated off the app's own scheme, " +
+				"so a document can hand a remote origin the native bindings")
+			os.Exit(1)
+		}()
+	}
+
 	// Lifecycle callbacks the application supplied. OnStartup must run before
 	// the frontend can ask for anything, and it is what subscribes to file
 	// drops — a host that never calls it leaves drag-and-drop silently dead.
@@ -139,6 +153,9 @@ func (darwinHost) Run(cfg hostConfig) error {
 		if quitDirty {
 			mode = 9
 		}
+	}
+	if navCheckMode {
+		mode = 10
 	}
 	if closeCheckMode {
 		mode = 3
@@ -455,6 +472,18 @@ var dropWaitMode bool
 
 // walkMode drives the whole UI surface instead of the gates.
 var walkMode bool
+
+// navCheckMode exercises the navigation delegate.
+//
+// It exists because that delegate is the second layer under #145 and no browser
+// test can reach it: chromedp drives the page, not WKWebView's policy callback.
+// Leaving it "verified by reading" is the shape of defect the review already
+// caught once — a check that could not have found anything, finding nothing.
+var navCheckMode bool
+
+// Long enough for the frontend to boot and drive the navigation, short enough
+// that a failing gate reports rather than looking stuck.
+const navCheckDeadline = 25 * time.Second
 
 // quitCheckMode exercises the close guard on the QUIT path.
 //
@@ -888,6 +917,11 @@ var (
 //
 //export hostReportBlockedNavigation
 func hostReportBlockedNavigation(curl *C.char) {
+	if navCheckMode {
+		fmt.Printf("NAV: refused %s\n", C.GoString(curl))
+		fmt.Println("VERDICT: PASS — the host refused a main-frame navigation off its own scheme")
+		os.Exit(0)
+	}
 	handler := currentNavigationBlockHandler()
 	if handler == nil {
 		// Not an error: the host can refuse a navigation before startup has

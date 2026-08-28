@@ -25,6 +25,10 @@ func runHarness() bool {
 			walkMode = true
 		case "-close":
 			closeCheckMode = true
+		case "-nav":
+			// Drives a real main-frame navigation off the app's scheme and
+			// checks the host refuses it. Headless: no dialog, no human.
+			navCheckMode = true
 		case "-quit":
 			// The CLEAN quit. Verifiable without a human, and it is what proves
 			// the terminate: path reaches the guard and that the reply gets back

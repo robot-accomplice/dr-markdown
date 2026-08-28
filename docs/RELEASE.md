@@ -94,6 +94,7 @@ go build -o /tmp/drmd-gate .
 /tmp/drmd-gate -menu     # the menu bar exists and carries its key equivalents
 /tmp/drmd-gate -close    # the close guard runs on the window path
 /tmp/drmd-gate -quit     # the close guard runs on the terminate: path
+/tmp/drmd-gate -nav      # the host refuses navigation off its own scheme
 rm -f /tmp/drmd-gate
 ```
 
@@ -113,7 +114,15 @@ distortion in #131 was found exactly this way and by nothing else.
 
 ### ABORT
 
-The go/no-go gate. **`/abort`** — not `abort-premortem`, which is scoped to a
+The go/no-go gate. **`/abort`**, typed into the chat input — it is a slash
+command, not a shell command, and putting it in a fenced `bash` block once cost
+a round trip because it rendered with a Run button.
+
+It also needs no pasted charter. The session running it already has the context;
+handing over a wall of prepared text only launders one author's framing through
+someone else's keyboard, which is the opposite of an independent review.
+
+It is — not `abort-premortem`, which is scoped to a
 different project and will describe hazard surfaces this repository does not
 have.
 

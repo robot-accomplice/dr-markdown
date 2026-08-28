@@ -504,7 +504,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     // a host implementing nothing. A proxy would make every method look present
     // and route it to a dispatcher with no answer.
     NSString *js =
-        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@; globalThis.__drmdDocMode = %@; globalThis.__drmdGateMode = %@; globalThis.__drmdQuitMode = %@; globalThis.__drmdQuitDirty = %@;",
+        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@; globalThis.__drmdDocMode = %@; globalThis.__drmdGateMode = %@; globalThis.__drmdQuitMode = %@; globalThis.__drmdQuitDirty = %@; globalThis.__drmdNavMode = %@;",
                                     dropMode == 1 ? @"true" : @"false",
                                     dropMode == 2 ? @"true" : @"false",
                                     (dropMode == 3 || dropMode == 4) ? @"true" : @"false",
@@ -512,7 +512,8 @@ void hostRun(const char *title, int width, int height, int dropMode) {
                                     dropMode == 5 ? @"true" : @"false",
                                     dropMode == 7 ? @"true" : @"false",
                                     (dropMode == 8 || dropMode == 9) ? @"true" : @"false",
-                                    dropMode == 9 ? @"true" : @"false"];
+                                    dropMode == 9 ? @"true" : @"false",
+                                    dropMode == 10 ? @"true" : @"false"];
     js = [js stringByAppendingString:
         @"(() => {"
         @"let nextId = 1; const pending = new Map();"
@@ -703,6 +704,18 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"        await new Promise((r) => setTimeout(r, 250));"
         @"      }"
         @"      window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__quitnow', args: [] });"
+        @"    })();"
+        @"  }"
+        // The NAVIGATION gate. It drives a real main-frame navigation off the
+        // app's own scheme — the thing a mermaid diagram link did — and the host
+        // is expected to refuse it. If the delegate is absent the page simply
+        // leaves, and the gate times out rather than passing, which is the
+        // behaviour that matters: it cannot pass by silence.
+        @"  else if (globalThis.__drmdNavMode) {"
+        @"    (async () => {"
+        @"      for (let i = 0; i < 200 && !globalThis.__app?.ready; i++)"
+        @"        await new Promise((r) => setTimeout(r, 50));"
+        @"      location.href = 'https://attacker.invalid/';"
         @"    })();"
         @"  }"
         @"  else if (globalThis.__drmdDocMode) { import('drmd://app/__doc.js'); }"
