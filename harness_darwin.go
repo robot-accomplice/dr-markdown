@@ -25,6 +25,17 @@ func runHarness() bool {
 			walkMode = true
 		case "-close":
 			closeCheckMode = true
+		case "-quit":
+			// The CLEAN quit. Verifiable without a human, and it is what proves
+			// the terminate: path reaches the guard and that the reply gets back
+			// to AppKit at all — the dirty case below cannot run unattended
+			// because it raises the save dialog on purpose.
+			quitCheckMode = true
+		case "-quit-dirty":
+			// Drives terminate: with a dirty document — the gesture -close-dirty
+			// does NOT cover, because Quit never asks a window whether it should
+			// close.
+			quitCheckMode, quitDirty = true, true
 		case "-menu":
 			menuCheckMode = true
 		case "-doc":

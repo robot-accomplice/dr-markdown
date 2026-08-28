@@ -85,18 +85,47 @@ All of these, on the frozen tree:
 ```sh
 architext validate
 go test ./...
-go build -o /tmp/drmd-menu . && /tmp/drmd-menu -menu && rm -f /tmp/drmd-menu
 ```
 
-Then the ABORT premortem, pinned to the frozen commit:
+The host gates, which no Go test can reach — they need a real AppKit application:
 
 ```sh
-git rev-parse HEAD    # pass this as {sha}
+go build -o /tmp/drmd-gate .
+/tmp/drmd-gate -menu     # the menu bar exists and carries its key equivalents
+/tmp/drmd-gate -close    # the close guard runs on the window path
+/tmp/drmd-gate -quit     # the close guard runs on the terminate: path
+rm -f /tmp/drmd-gate
 ```
 
-`Workflow({ name: "abort-premortem", args: {sha, branch, tag, repo, charter} })`
+`-close-dirty` and `-quit-dirty` exercise the cases that matter, and both raise a
+save dialog on purpose — **they need a human to answer**. Run them, answer, and
+read the verdict. The clean variants above are the halves that can be verified
+unattended.
 
-The premortem is part of the ceremony. It is not authorized per release.
+### Validate against the project's own README
+
+Open `README.md` in the built application and switch through Formatted, Raw and
+Split, at a zoom that is not 100%. Every fixture in the suite is something
+someone thought to write down, so it can only catch what was already imagined;
+the README is a real document that changes as the product does. The image
+distortion in #131 was found exactly this way and by nothing else.
+`e2e/readme_document_test.go` automates part of it, but not the looking.
+
+### ABORT
+
+The go/no-go gate. **`/abort`** — not `abort-premortem`, which is scoped to a
+different project and will describe hazard surfaces this repository does not
+have.
+
+`/abort` is `disable-model-invocation: true` by design, so **a human runs it**.
+That is a handoff in the ceremony, not an authorization to request: the step is
+not optional, only the hand on the keyboard is. Run it on the frozen SHA before
+tagging, and act on the verdict.
+
+Its verdicts are load-bearing. Run against the 1.6.4 tree it returned four NO-GO
+stations and a NO-GO board, including a reproduced path from an opened document
+to the native file bindings — which is why that release was pulled and its
+contents shipped as 1.6.3 instead.
 
 ## 6. Build and notarize
 

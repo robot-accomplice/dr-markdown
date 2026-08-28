@@ -79,6 +79,11 @@ type App struct {
 	// panicDialog fires at most once. Deliberately not guarded by mu: a panic
 	// raised while mu is held would deadlock its own report. See reportPanic.
 	panicDialog sync.Once
+	// blockedNav dedupes the navigation refusals already recorded. It has its
+	// own mutex because it is written from the host's callback, which does not
+	// hold mu and must not wait on it.
+	blockedNavMu sync.Mutex
+	blockedNav   map[string]bool
 }
 
 type appDependencies struct {
@@ -696,3 +701,30 @@ func (a *App) FrontendReady() []string {
 	a.pendingOpen = nil
 	return pending
 }
+
+// recordBlockedNavigation records a main-frame navigation the host refused.
+//
+// The host cancels it in the navigation delegate, where WebKit asks; this is
+// what makes the refusal reviewable afterwards. It is capped and deduped for the
+// same reason a refused link scheme is: the URL is attacker-controlled content,
+// and a refusal recorded on every attempt lets a document the app has ALREADY
+// judged hostile evict the rest of the trail.
+func (a *App) recordBlockedNavigation(url string) {
+	a.blockedNavMu.Lock()
+	if a.blockedNav == nil {
+		a.blockedNav = map[string]bool{}
+	}
+	_, seen := a.blockedNav[url]
+	if !seen && len(a.blockedNav) < blockedNavigationRecordCap {
+		a.blockedNav[url] = true
+	}
+	a.blockedNavMu.Unlock()
+	if seen {
+		return
+	}
+	a.events.Record("navigation.blocked", map[string]string{"url": url})
+}
+
+// The cap bounds the same attack carried out with many distinct URLs rather
+// than one repeated URL.
+const blockedNavigationRecordCap = 32

@@ -223,6 +223,49 @@
         "edit-markdown-document",
         "switch-editor-mode"
       ]
+    },
+    {
+      "id": "document-navigates-the-webview",
+      "title": "A document can navigate the webview to an origin that inherits the bindings",
+      "category": "security",
+      "severity": "critical",
+      "status": "mitigating",
+      "summary": "The bridge is installed as a WKUserScript at document start for the main frame with NO origin restriction, so whatever document occupies the main frame receives SaveDocument and OpenRecentDocument — arbitrary write and arbitrary read. Anything that navigates the main frame away from the app's own scheme therefore hands a remote origin the user's filesystem. Found live at 1.6.4: mermaid emits diagram links as <svg:a xlink:href> through setAttributeNS with no plain href, and the click guard selected `a[href]` — an unprefixed CSS attribute selector matches only null-namespace attributes — so the guard never saw them and WebKit performed the navigation. Reproduced before it was fixed.",
+      "mitigations": [
+        "The click guard selects any anchor and reads both href and xlink:href through the same allowlist, so it is sited on the sink rather than on the shape this application happens to write",
+        "A WKNavigationDelegate refuses any main-frame navigation off the app's own scheme, so the guard is no longer the only thing between a document and the bindings",
+        "Refusals are recorded as navigation.blocked, deduped per distinct URL and capped",
+        "e2e/link_security_test.go drives the namespaced anchor shape, which the existing HTML-anchor test could not reach"
+      ],
+      "relatedNodes": [
+        "desktop-app",
+        "document-html-renderer",
+        "frontend-shell"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
+    },
+    {
+      "id": "quit-discards-unsaved-work",
+      "title": "Quit bypassed the unsaved-changes guard",
+      "category": "technical",
+      "severity": "high",
+      "status": "mitigating",
+      "summary": "The guard was reachable from exactly one entry point, windowShouldClose:, while Quit is wired to AppKit's terminate: — which consults applicationShouldTerminate: and never asks a window whether it should close. That selector was absent, so AppKit defaulted to NSTerminateNow and the primary quit gesture on macOS discarded every dirty tab with no dialog. Invisible to the harness because -close and -close-dirty drive the window path; nothing drove terminate: at all.",
+      "mitigations": [
+        "applicationShouldTerminate: routes through the same guard, two-phase via NSTerminateLater because the guard's dialog needs the main thread the selector runs on",
+        "A shutdown already approved by a window close does not ask again, so closing the last window does not prompt twice",
+        "-quit and -quit-dirty gates drive the real terminate: gesture, and reaching termination without a verdict is itself a FAIL, so the gate cannot pass by silence"
+      ],
+      "relatedNodes": [
+        "desktop-app"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
     }
   ]
 }
