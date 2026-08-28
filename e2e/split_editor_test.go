@@ -141,3 +141,50 @@ func TestTypingInTheSourcePaneIsNotOverwrittenByTheFormattedPane(t *testing.T) {
 		t.Errorf("the formatted pane's rebuild clobbered typing in the source pane; source = %q", source)
 	}
 }
+
+// Which pane the user last touched must not change WHAT THE DOCUMENT IS.
+//
+// getMarkdown() used to return the editor's serialization when the formatted
+// pane held authority, and that is a different string from the source: the
+// frozen fidelity survey pins eleven constructs where they diverge — table
+// delimiter padding, runs of blank lines, trailing whitespace, indented code
+// becoming fenced, HTML entities. So a bare CLICK in the formatted pane, with no
+// edit at all, changed what find searched and what Replace All rewrote, and
+// replace then wrote the normalized text back over the whole file — reflowing
+// tables and collapsing blank lines the user never touched. That is the exact
+// blast radius routing replace through the source was chosen to avoid.
+//
+// Found by the go/no-go review and reproduced before it was fixed.
+func TestClickingAPaneDoesNotChangeTheDocument(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	// Constructs the fidelity survey records as re-serializing differently.
+	fixture := "| a | b |\n| --- | --- |\n| 1 | 2 |\n\n\n\nafter three blanks\n"
+	var res string
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
+
+	var before string
+	evalJS(t, ctx, `window.__app.getMarkdown()`, &before)
+
+	// A pointer press in the formatted pane. No edit.
+	evalJS(t, ctx, `(async () => {
+		document.querySelector('[data-split-pane="formatted"]')
+			.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+		await new Promise((r) => setTimeout(r, 200))
+		return 'ok'
+	})()`, &res)
+
+	var after string
+	evalJS(t, ctx, `window.__app.getMarkdown()`, &after)
+
+	if after != before {
+		t.Errorf("taking authority of a pane changed the document:\n before %q\n after  %q", before, after)
+	}
+	if after != fixture {
+		t.Errorf("the document is no longer what was opened:\n got  %q\n want %q", after, fixture)
+	}
+}

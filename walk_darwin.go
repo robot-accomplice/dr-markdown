@@ -91,7 +91,12 @@ await checkAsync('Split toggles a real second pane', async () => {
 // ---- Ribbon tabs --------------------------------------------------------
 // Panels are toggled with the hidden ATTRIBUTE on [data-ribbon-panel]
 // (app.js:743), not with an is-active class.
-for (const tab of ['file', 'insert', 'format', 'view', 'help']) {
+// 'file' is deliberately absent: File became a MENU rather than a ribbon tab
+// (#130), because opening it used to replace the ribbon's contents and take the
+// formatting controls away. This list was not updated with it, so this gate has
+// been failing since that landed — which nobody saw, because nobody ran it. The
+// File menu is checked on its own terms below.
+for (const tab of ['insert', 'format', 'view', 'help']) {
   await checkAsync('ribbon tab ' + tab + ' activates', async () => {
     app().activateRibbonTab(tab)
     await settle()
@@ -112,9 +117,25 @@ const commands = [
   'bullet-list', 'numbered-list', 'task-list', 'quote',
   'link', 'table', 'code-block', 'mermaid', 'math', 'hr',
 ]
+// File is a menu now, not a ribbon tab. It gets its own check rather than
+// disappearing from the walk entirely: the point of moving it was that opening
+// it must NOT disturb the ribbon, and that is a property worth holding.
+await checkAsync('File menu opens without disturbing the ribbon', async () => {
+  app().activateRibbonTab('format')
+  await settle()
+  const before = document.querySelector('[data-ribbon-panel="format"]')?.hidden
+  $('#btn-file-menu')?.click()
+  await settle()
+  const open = visible($('.native-menu')) || visible($('#file-menu-root > *'))
+  const after = document.querySelector('[data-ribbon-panel="format"]')?.hidden
+  $('#btn-file-menu')?.click()
+  if (!open) return 'the File menu did not open'
+  return before === after || 'opening File changed which ribbon panel is showing'
+})
+
 for (const cmd of commands) {
   await checkAsync('command ' + cmd + ' mutates the buffer', async () => {
-    app().activateRibbonTab('file')
+    app().activateRibbonTab('format')
     await app().setMarkdown('seed text\n')
     await settle()
     const before = app().getMarkdown()

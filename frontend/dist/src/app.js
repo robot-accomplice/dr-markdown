@@ -300,13 +300,32 @@ function activeDoc() {
 // wins, and the other is refreshed from it.
 let splitAuthority = 'source'
 let splitFormattedTimer = null
+// What the pending rebuild would render, so taking the formatted pane can run it
+// rather than drop it.
+let splitPendingRefresh = null
 
 function getMarkdown() {
   // Read the surface the user is editing rather than the cached document, for
   // the same reason the other two modes do: the cache is written by a handler
   // that may not have run yet.
   if (state.mode === 'split') {
-    return splitAuthority === 'formatted' ? wysiwyg.getMarkdown() : els.splitSource.value
+    // ALWAYS the source pane, whichever pane holds authority.
+    //
+    // This used to return the editor's serialization when the formatted pane was
+    // authoritative, and those are not the same string: the frozen fidelity
+    // survey pins eleven constructs where they differ — table delimiter padding,
+    // runs of blank lines, trailing whitespace, indented code becoming fenced,
+    // HTML entities. So a single CLICK in the formatted pane, with no edit at
+    // all, changed what find searched and what Replace All rewrote. Replace then
+    // wrote that normalized text back over the whole file, reflowing tables and
+    // collapsing blank lines the user never touched — the exact blast radius
+    // routing replace through the source was chosen to avoid.
+    //
+    // The source pane is safe to read unconditionally because onEdited keeps it
+    // current: an edit made in the formatted pane is written straight into it.
+    // A click that edits nothing changes nothing, so there is nothing to read
+    // from the editor that the source pane does not already have.
+    return els.splitSource.value
   }
   return state.mode === 'raw' ? raw.getMarkdown() : activeDoc()?.markdown ?? wysiwyg.getMarkdown()
 }
@@ -1599,6 +1618,11 @@ function renderShortcutSettings(content) {
       ${shortcutRow('New document', 'Cmd N')}
       ${shortcutRow('Open file', 'Cmd O')}
       ${shortcutRow('Save', 'Cmd S')}
+      ${shortcutRow('Find', 'Cmd F')}
+      ${shortcutRow('Find and Replace', 'Cmd Opt F')}
+      ${shortcutRow('Find next', 'Cmd G')}
+      ${shortcutRow('Find previous', 'Cmd Shift G')}
+      ${shortcutRow('Undo a Replace All', 'Cmd Z')}
       ${shortcutRow('Bold', 'Cmd B')}
       ${shortcutRow('Link', 'Cmd K')}
     </div>
@@ -1799,26 +1823,161 @@ function clearFindHighlight() {
 // command does. Driving it through the editor instead would re-serialize the
 // whole document, which is the standing hazard this project warns about — a
 // replace-all could rewrite lines the user never touched.
+// The document as it was before the last find-driven edit, kept so there is a
+// way back from one.
+//
+// Applying a replace remounts the editor, and the remount destroys ProseMirror's
+// undo history — so Cmd-Z, which the Edit menu advertises and the OS delivers,
+// could not undo the one command in this product capable of rewriting the whole
+// document in a single click. Promising a reversal that cannot fire is worse
+// than offering none.
+//
+// One step deep on purpose. This is a way out of a mistake, not a general undo
+// stack; a stack would have to survive edits made through the editor, which
+// serialize on their own schedule, and pretending otherwise is how a "restore"
+// puts back text the user has since retyped.
+let replaceUndo = null
+
 async function replaceCurrentMatch() {
   const match = find.matches[find.index]
   if (!match) return
-  const next = replaceMatch(getMarkdown(), match, els.replaceInput.value)
+  const before = getMarkdown()
+  const next = replaceMatch(before, match, els.replaceInput.value)
+  rememberReplaceUndo(before, 1)
   await applyFindEdit(next)
   runFind({ keepIndex: true })
 }
 
-async function replaceEveryMatch() {
-  if (!find.query) return
-  const { text, count } = replaceAllMatches(getMarkdown(), find.query, els.replaceInput.value, find.options)
-  if (!count) return
-  await applyFindEdit(text)
-  runFind()
-  flashStatus(`Replaced ${count} ${count === 1 ? 'match' : 'matches'}`)
+// The snapshot carries the id of the document it was taken FROM.
+//
+// Without it the snapshot is just text, and text has no idea which file it
+// belongs to: replace in one tab, switch to another, press Cmd-Z, and the first
+// document's old content lands in the second tab, marked dirty, ready for the
+// next save to write it over a file the user never touched. That is the exact
+// failure the session package was written to end, reintroduced a layer above
+// where the session layer cannot see it.
+//
+// Checking the id at RESTORE time is the fix rather than clearing the snapshot
+// on every document transition. There are five such transitions today and any
+// new one would silently reopen this; identity is checked where it is used, so
+// a path nobody remembered to update still cannot corrupt anything.
+function rememberReplaceUndo(text, count) {
+  const docId = activeDoc()?.id ?? null
+  // A snapshot that already exists for this document is NOT overwritten.
+  //
+  // Replace All stops at MATCH_LIMIT and tells the user to run it again, and a
+  // second run overwriting the snapshot made the first batch permanently
+  // unrevertable — the way back pointed at the half-rewritten middle rather
+  // than at the document the user started with. Running it twice is one
+  // INTENTION, so it gets one way back.
+  //
+  // Nothing needs to clear this between intentions: any edit that is not a
+  // replace calls forgetReplaceUndo, so a surviving snapshot means the user is
+  // still inside the same sequence.
+  if (replaceUndo && replaceUndo.docId === docId) {
+    replaceUndo = { ...replaceUndo, count: replaceUndo.count + count }
+    return
+  }
+  replaceUndo = { text, count, docId }
 }
 
+// Any edit that is not a replace invalidates the snapshot: restoring it then
+// would discard whatever the user typed since, which is the same data loss
+// wearing the other hat.
+function forgetReplaceUndo() {
+  replaceUndo = null
+}
+
+// undoReplace puts the document back and reports whether it did.
+//
+// Returning a boolean is what lets the key handler decide: it must only consume
+// Cmd-Z when there is genuinely something to restore, or it would swallow the
+// editor's own undo and break the ordinary case to protect the rare one.
+async function undoReplace() {
+  if (!replaceUndo) return false
+  if (replaceUndo.docId !== (activeDoc()?.id ?? null)) {
+    // The snapshot belongs to a different document. Abandon it rather than
+    // applying it here: this is a way out of a mistake in ONE document, and
+    // restoring it into another is a larger mistake than the one it undoes.
+    replaceUndo = null
+    return false
+  }
+  const { text, count } = replaceUndo
+  replaceUndo = null
+  await applyFindEdit(text)
+  runFind({ keepIndex: true })
+  flashStatus(`Reverted ${count} ${count === 1 ? 'replacement' : 'replacements'}`)
+  return true
+}
+
+async function replaceEveryMatch() {
+  if (!find.query) return
+  const before = getMarkdown()
+  const { text, count, capped } = replaceAllMatches(before, find.query, els.replaceInput.value, find.options)
+  if (!count) return
+  rememberReplaceUndo(before, count)
+  await applyFindEdit(text)
+  runFind()
+  // The cap is said out loud. A partial rewrite the user believes is total is
+  // worse than a refused one, and "Replaced 10000 matches" reads as complete.
+  // The revert hint appears on BOTH branches. It was omitted from the capped
+  // one, which is the case where the user is most likely to want it: they have
+  // just been told to run a destructive command repeatedly.
+  flashStatus(capped
+    ? `Replaced the first ${count} matches — more remain, run it again · ⌘Z reverts all of it`
+    : `Replaced ${count} ${count === 1 ? 'match' : 'matches'} · ⌘Z to revert`)
+}
+
+// applyingFindEdit tells markEdited that this particular edit is the one that
+// just set the snapshot, so it must not clear it.
+let applyingFindEdit = false
+
 async function applyFindEdit(text) {
-  await mountMarkdown(text)
-  markEdited(text)
+  applyingFindEdit = true
+  try {
+    await mountMarkdown(text)
+    markEdited(text)
+  } finally {
+    applyingFindEdit = false
+  }
+}
+
+// Uncaught errors and rejections reach the event trail.
+//
+// The host already installs listeners for both, but they push into an array
+// that only the -gates harness ever reads — so in a shipped build every failure
+// nobody anticipated was silently dropped, while the handlers existed and read
+// as coverage. A production build has no devtools, which is the premise
+// internal/eventlog was written on: console.warn reaches nobody.
+//
+// The Go side has a structural guarantee this had no equivalent of —
+// tools/genbound fails the BUILD if a bound method lacks its reportPanic — so
+// this is the frontend's version of the same idea, at the only two places the
+// platform will tell us something went wrong that no `catch` saw.
+//
+// Deduped and capped for the same reason refused links are: an error that
+// repeats every render is attacker-influenced content in the limit, and a trail
+// it can flood is a trail it can erase.
+const ERROR_RECORD_CAP = 32
+const recordedErrors = new Set()
+
+function recordUncaught(kind, message, source) {
+  const key = `${kind}:${message}`
+  if (recordedErrors.has(key) || recordedErrors.size >= ERROR_RECORD_CAP) return
+  recordedErrors.add(key)
+  bridge.recordEvent(kind, { message: String(message ?? ''), source: String(source ?? '') })
+}
+
+function wireErrorTrail() {
+  window.addEventListener('error', (event) => {
+    recordUncaught('error.uncaught', event.message,
+      `${event.filename ?? ''}:${event.lineno ?? ''}`)
+  })
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason
+    recordUncaught('error.unhandled-rejection',
+      reason?.message ?? reason, reason?.stack ? String(reason.stack).split('\n')[1]?.trim() : '')
+  })
 }
 
 function wireFindBar() {
@@ -1863,10 +2022,29 @@ function onSplitEdited() {
 // The authority is re-checked when the timer fires, not only when it is set: by
 // then the user may have clicked into the formatted pane, and rebuilding it
 // underneath them would discard what they had started typing there.
+// flushSplitFormattedRefresh runs a pending rebuild immediately instead of
+// letting it be abandoned.
+function flushSplitFormattedRefresh() {
+  if (!splitPendingRefresh) return
+  const { md, docId } = splitPendingRefresh
+  clearTimeout(splitFormattedTimer)
+  splitPendingRefresh = null
+  if (state.mode !== 'split' || (activeDoc()?.id ?? null) !== docId) return
+  renderWysiwyg(md)
+}
+
 function scheduleSplitFormattedRefresh(md) {
   clearTimeout(splitFormattedTimer)
+  // The document is captured with the text for the same reason the undo
+  // snapshot carries an id: 250ms is long enough to switch tabs, and rendering
+  // one document's markdown into the pane while the source pane shows another
+  // leaves the two halves of Split describing different files.
+  const docId = activeDoc()?.id ?? null
+  splitPendingRefresh = { md, docId }
   splitFormattedTimer = setTimeout(() => {
+    splitPendingRefresh = null
     if (state.mode !== 'split' || splitAuthority !== 'source') return
+    if ((activeDoc()?.id ?? null) !== docId) return
     renderWysiwyg(md)
   }, 250)
 }
@@ -1898,7 +2076,9 @@ function syncSplitScroll(source, target) {
   })
 }
 
-// Both surfaces that are not the editor render through one function now. See
+// The print surface renders through this. It is the ONLY surface that is not
+// the editor: Split's formatted pane became the real editor, so the preview this
+// used to also feed no longer exists. See
 // markdown/render.js for what the renderer this replaced got wrong, and why it
 // mattered most for print.
 async function renderMarkdownPreview(md) {
@@ -2014,14 +2194,41 @@ function recordRefusedResource(kind, value) {
   bridge.recordEvent(`${kind}.refused`, { href })
 }
 
+// XLINK is the SVG namespace an <svg:a> carries its destination in. It is read
+// here because a CSS attribute selector without a namespace prefix matches only
+// null-namespace attributes: `a[href]` does not match an anchor whose only
+// destination is `xlink:href`, and getAttribute('href') returns null for one.
+const XLINK_NS = 'http://www.w3.org/1999/xlink'
+
+// linkDestination returns the URL an anchor will actually navigate to, from
+// either spelling.
+//
+// The guard below used to select `a[href]` — the shape markdown-it produces —
+// rather than the sink, which is any anchor in a rendered tree. Mermaid emits
+// diagram links as `<svg:a xlink:href="...">` with NO plain href, set through
+// setAttributeNS, so a diagram in an opened document slipped past the guard
+// entirely and WebKit performed the navigation. The new page then inherited the
+// bridge, which is installed for the main frame with no origin restriction and
+// exposes SaveDocument and OpenRecentDocument.
+function linkDestination(anchor) {
+  return anchor.getAttribute('href') ?? anchor.getAttributeNS(XLINK_NS, 'href')
+}
+
 // The href was already filtered by safeLinkHref when the anchor was built, but
 // it is re-checked here rather than trusted: this handler is bound to the whole
 // document, so it must be safe for any anchor that reaches it, not only the
 // ones this module created.
+//
+// It selects `a` and asks for a destination, rather than selecting anchors that
+// have one in the spelling this module happens to write. Sanitizing at the
+// source and guarding at the sink are different jobs; mermaid's SVG is exempt
+// from the sanitizer by design, so this is the only thing standing between a
+// drawn diagram and a navigation.
 function handleDocumentLinkClick(event) {
-  const anchor = event.target.closest?.('a[href]')
+  const anchor = event.target.closest?.('a')
   if (!anchor) return
-  const raw = anchor.getAttribute('href')
+  const raw = linkDestination(anchor)
+  if (raw === null) return
   const safe = safeLinkHref(raw)
   event.preventDefault()
   if (safe === null) {
@@ -2261,7 +2468,13 @@ function closeTransientSurfaces() {
 
 function helpRows(section) {
   if (section === 'shortcuts') {
-    return [['⌘⇧R', 'Toggle Raw mode'], ['⌘⇧S', 'Toggle Split mode'], ['⌘B', 'Bold'], ['⌘I', 'Italic']]
+    return [
+      ['⌘⇧R', 'Toggle Raw mode'], ['⌘⇧S', 'Toggle Split mode'],
+      ['⌘F', 'Find'], ['⌥⌘F', 'Find and Replace'],
+      ['⌘G', 'Find next'], ['⇧⌘G', 'Find previous'],
+      ['⌘Z', 'Undo a Replace All'],
+      ['⌘B', 'Bold'], ['⌘I', 'Italic'],
+    ]
   }
   return [['#', 'Heading'], ['**text**', 'Bold'], ['[text](url)', 'Link'], ['```lang', 'Code block'], ['```mermaid', 'Mermaid Diagram']]
 }
@@ -2496,6 +2709,9 @@ function onEdited(md) {
 }
 
 function markEdited(md) {
+  // A find-driven edit sets the snapshot immediately after calling this, so it
+  // survives; anything else invalidates it. See forgetReplaceUndo.
+  if (!applyingFindEdit) forgetReplaceUndo()
   const doc = activeDoc()
   doc.markdown = md
   doc.started = true
@@ -2570,7 +2786,16 @@ function wire() {
   // have let an echo pass for an edit.
   for (const [pane, owner] of [[els.splitSource, 'source'], [els.splitFormatted, 'formatted']]) {
     for (const event of ['keydown', 'pointerdown']) {
-      pane.addEventListener(event, () => { splitAuthority = owner })
+      pane.addEventListener(event, () => {
+        // Taking authority of the formatted pane FLUSHES any rebuild still
+        // waiting on the debounce. Without this the pending rebuild is dropped
+        // — its callback re-checks the authority and returns — leaving the
+        // editor holding text from before the user's last keystrokes while the
+        // source pane visibly shows them. The user is then editing a stale
+        // document in the pane they just clicked into.
+        if (owner === 'formatted') flushSplitFormattedRefresh()
+        splitAuthority = owner
+      })
     }
   }
   els.btnInsertMenu.addEventListener('click', toggleInsertPopover)
@@ -2639,6 +2864,7 @@ function wire() {
     })
   })
   wireFindBar()
+  wireErrorTrail()
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       // The find bar closes before anything else: it is the surface the user
@@ -2656,6 +2882,14 @@ function wire() {
     if (key === 'f') {
       e.preventDefault()
       openFind({ replace: e.altKey })
+      return
+    }
+    if (key === 'z' && !e.shiftKey && replaceUndo?.docId === (activeDoc()?.id ?? null)) {
+      // Only when there is a replace to revert IN THIS DOCUMENT. Otherwise this
+      // falls through to the editor's own undo, which is the ordinary case and
+      // must not be swallowed to serve the rare one.
+      e.preventDefault()
+      undoReplace()
       return
     }
     if (key === 'r' && e.shiftKey) {

@@ -2,7 +2,10 @@
 
 package main
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // newHost returns the macOS host. There is exactly one, and this is the only
 // line the application needs to change to run on a different one.
@@ -25,12 +28,35 @@ func runHarness() bool {
 			walkMode = true
 		case "-close":
 			closeCheckMode = true
+		case "-nav":
+			// Drives a real main-frame navigation off the app's scheme and
+			// checks the host refuses it. Headless: no dialog, no human.
+			navCheckMode = true
+		case "-quit":
+			// The CLEAN quit. Verifiable without a human, and it is what proves
+			// the terminate: path reaches the guard and that the reply gets back
+			// to AppKit at all — the dirty case below cannot run unattended
+			// because it raises the save dialog on purpose.
+			quitCheckMode = true
+		case "-quit-dirty":
+			// Drives terminate: with a dirty document — the gesture -close-dirty
+			// does NOT cover, because Quit never asks a window whether it should
+			// close.
+			quitCheckMode, quitDirty = true, true
 		case "-menu":
 			menuCheckMode = true
 		case "-doc":
 			docCheckMode = true
 			if i+2 <= len(os.Args)-1 {
 				docFixturePath = os.Args[i+2]
+			}
+			// A missing path used to leave docFixturePath empty, and the failure
+			// then surfaced as one line on stderr followed by a window that hung
+			// forever: the page asked for a fixture the host could not read, and
+			// nothing timed that out. Refuse here, where the mistake was made.
+			if docFixturePath == "" {
+				fmt.Fprintln(os.Stderr, "-doc needs a path: -doc <file.md>")
+				os.Exit(2)
 			}
 		case "-close-dirty":
 			closeCheckMode, closeDirty = true, true

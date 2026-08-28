@@ -45,7 +45,11 @@ func main() {
 		OnStartup:     app.startup,
 		OnBeforeClose: app.beforeClose,
 		OnFileOpen:    app.openFileFromOS,
-		Bind:          []any{app},
+		// A navigation the host refuses is a security decision taken against
+		// untrusted document content without asking anyone, so it is recorded
+		// rather than only prevented.
+		OnNavigationBlocked: app.recordBlockedNavigation,
+		Bind:                []any{app},
 	})
 	if err != nil {
 		println("Error:", err.Error())

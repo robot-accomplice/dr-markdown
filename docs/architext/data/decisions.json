@@ -366,6 +366,28 @@
         "edit-markdown-document",
         "switch-editor-mode"
       ]
+    },
+    {
+      "id": "guard-at-the-sink",
+      "status": "accepted",
+      "title": "Security guards are sited at the sink, not at the shape of the thing being guarded",
+      "context": "The click guard refused unsafe link destinations by selecting `a[href]` — the anchor shape markdown-it produces. Mermaid emits diagram links as SVG anchors carrying only `xlink:href`, set through setAttributeNS, and an unprefixed CSS attribute selector matches only null-namespace attributes. So the guard did not see them at all, and a diagram in an opened document could navigate the webview to an attacker origin that inherits SaveDocument and OpenRecentDocument. The sanitizer could not have caught it either: mermaid's SVG is injected after that pass, by design.",
+      "decision": "Guard where the action happens rather than where the markup came from. The click handler selects any anchor and asks what destination a click would FOLLOW, in either spelling. A WKNavigationDelegate refuses any main-frame navigation off the app's own scheme, so a guard is no longer the only thing standing between a document and the bindings.",
+      "consequences": [
+        "A guard that has to enumerate every way a thing can be spelled will eventually miss one. The navigation delegate cannot, because it sits where WebKit asks rather than where the markup is written.",
+        "The two layers do different jobs and both are needed: the frontend guard is where a refusal can be EXPLAINED to the user and recorded, and the delegate is what makes the guarantee unconditional.",
+        "The same reasoning applies to the sanitizer, which exempts mermaid deliberately. Exempting a producer from sanitizing is defensible only when something downstream still holds the line.",
+        "It cost a third protocol conformance in the host, which the file's own comment used to say it did not need."
+      ],
+      "relatedNodes": [
+        "desktop-app",
+        "frontend-shell",
+        "document-html-renderer"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
     }
   ]
 }

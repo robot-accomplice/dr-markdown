@@ -15,8 +15,17 @@
 // shape as tables.js, fences.js and commands.js. That matters for more than
 // consistency: an edit made through the editor re-serializes the whole
 // document, so a replace-all driven through the editor could rewrite lines the
-// user never touched. Going through the source means replace carries exactly
-// the risk every other document command already carries, and no more.
+// user never touched.
+//
+// This used to claim that replace therefore "carries exactly the risk every
+// other document command already carries, and no more". That was true about
+// RE-SERIALIZATION and false about BLAST RADIUS, and the difference is the whole
+// hazard. Every other remounting command edits one construct under the cursor;
+// Replace All is the only single click in this product that rewrites the entire
+// document. Applying it also remounts the editor, which discards ProseMirror's
+// undo history — so the reversal the Edit menu promises could not fire exactly
+// where the damage was largest. The caller is responsible for keeping a way
+// back; see the replace snapshot in app.js.
 
 // escapeForRegExp quotes every character RegExp gives meaning to, so a literal
 // search for `a.b` does not match `axb` and a search for `(` is not a syntax
@@ -105,6 +114,11 @@ export function replaceMatch(text, match, replacement) {
 // are still valid when it is applied: replacing left to right shifts every
 // later match by the difference in length, and a naive forward loop corrupts
 // the document whenever the replacement is not the same length as the match.
+// `capped` reports that the scan stopped at MATCH_LIMIT, so occurrences beyond
+// it were NOT replaced. Returning the count alone made that indistinguishable
+// from a complete pass: "Replaced 10000 matches" on a document with more, with
+// the rest silently left behind. A partial rewrite the user believes is total is
+// worse than a refused one.
 export function replaceAllMatches(text, query, replacement, options = {}) {
   const source = String(text ?? '')
   const matches = findMatches(source, query, options)
@@ -112,7 +126,7 @@ export function replaceAllMatches(text, query, replacement, options = {}) {
   for (let i = matches.length - 1; i >= 0; i--) {
     out = replaceMatch(out, matches[i], replacement)
   }
-  return { text: out, count: matches.length }
+  return { text: out, count: matches.length, capped: matches.length >= MATCH_LIMIT }
 }
 
 // sourceBlockIndex returns which top-level block an offset falls in, counting

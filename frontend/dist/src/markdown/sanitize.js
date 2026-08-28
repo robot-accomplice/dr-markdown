@@ -1,8 +1,13 @@
 // Sanitizer for rendered document HTML.
 //
-// The split preview and the print surface render markdown with `html: true`,
-// because this dialect preserves inline HTML and the fidelity survey records it
-// round-tripping byte-identically. That switch hands every byte of an untrusted
+// The print surface renders markdown with `html: true`, because this dialect
+// preserves inline HTML and the fidelity survey records it round-tripping
+// byte-identically.
+//
+// Print is the only surface this guards. It once guarded the split preview too,
+// and that preview is gone — Split hosts the real editor now, which has its own
+// rendering path and does NOT pass through here. Saying otherwise would let a
+// maintainer believe an allowlist runs where it does not. That switch hands every byte of an untrusted
 // document straight into the DOM of the webview that holds the native bindings
 // — SaveDocument and OpenRecentDocument, with no path restriction. The renderer
 // that came before did no such thing only because it could not: it matched

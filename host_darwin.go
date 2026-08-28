@@ -16,7 +16,9 @@ package main
 // host_darwin.m contains. The framework this replaced used one context object
 // conforming to four protocols
 // (WKURLSchemeHandler, WKScriptMessageHandler, WKNavigationDelegate,
-// WKUIDelegate); this needs two.
+// WKUIDelegate); this needs three. WKNavigationDelegate joined them when a
+// mermaid diagram link was found to navigate the main frame away from the app,
+// handing the bridge to a remote origin (#145).
 
 /*
 #cgo CFLAGS: -x objective-c -fmodules -Wno-deprecated-declarations
@@ -29,6 +31,8 @@ package main
 // generated C file and _cgo_export.c, so a definition here is compiled twice
 // and the link fails on duplicate symbols.
 void hostRun(const char *title, int width, int height, int dropMode);
+void hostTerminateApproved(void);
+void hostTerminateNow(void);
 void hostEvalJS(const char *js);
 void hostOpenFile(int callID, const char *title, const char *extensionsCSV);
 void hostSaveFile(int callID, const char *title, const char *defaultName, const char *extensionsCSV);
@@ -53,6 +57,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -97,6 +102,49 @@ func (darwinHost) Run(cfg hostConfig) error {
 	// Held for the C callbacks, which cannot carry a Go receiver.
 	setLifecycle(cfg)
 
+	// The navigation gate must be able to FAIL rather than merely hang. Without
+	// the delegate the page simply leaves and nothing calls back, so a gate that
+	// only reports on refusal would time out — which reads as a broken harness,
+	// not as a verdict, and a verdict is the whole point.
+	// The quit gate needs a deadline for the same reason, learned the hard way:
+	// when the guard's dialog could not be delivered, the gate did not fail — it
+	// simply sat there, and the application could be neither quit nor closed. A
+	// harness that hangs reads as a broken harness rather than as a verdict, and
+	// the defect hid behind that.
+	// The close gate gets the same deadline as the quit gate, for the same reason
+	// and by the same lesson: a guard whose dialog cannot be delivered leaves the
+	// harness sitting there, and a harness that sits there reads as broken rather
+	// than as a verdict. This one has never hung — it is here so it cannot start.
+	if closeCheckMode {
+		go func() {
+			time.Sleep(quitCheckDeadline)
+			fmt.Println("CLOSE: no verdict within", quitCheckDeadline)
+			fmt.Println("VERDICT: FAIL — the guard never answered. Either it was never " +
+				"reached, or its dialog could not be delivered")
+			os.Exit(1)
+		}()
+	}
+
+	if quitCheckMode {
+		go func() {
+			time.Sleep(quitCheckDeadline)
+			fmt.Println("QUIT: no verdict within", quitCheckDeadline)
+			fmt.Println("VERDICT: FAIL — the guard never answered. Either it was never " +
+				"reached, or its dialog could not be delivered and the application is wedged")
+			os.Exit(1)
+		}()
+	}
+
+	if navCheckMode {
+		go func() {
+			time.Sleep(navCheckDeadline)
+			fmt.Println("NAV: no refusal within", navCheckDeadline)
+			fmt.Println("VERDICT: FAIL — the main frame navigated off the app's own scheme, " +
+				"so a document can hand a remote origin the native bindings")
+			os.Exit(1)
+		}()
+	}
+
 	// Lifecycle callbacks the application supplied. OnStartup must run before
 	// the frontend can ask for anything, and it is what subscribes to file
 	// drops — a host that never calls it leaves drag-and-drop silently dead.
@@ -128,6 +176,15 @@ func (darwinHost) Run(cfg hostConfig) error {
 	}
 	if gateMode {
 		mode = 7
+	}
+	if quitCheckMode {
+		mode = 8
+		if quitDirty {
+			mode = 9
+		}
+	}
+	if navCheckMode {
+		mode = 10
 	}
 	if closeCheckMode {
 		mode = 3
@@ -170,6 +227,30 @@ func hostServeAsset(cpath *C.char, outLen *C.int, outMime **C.char) unsafe.Point
 	// literal. Escaping a script this size through ObjC has already cost a round:
 	// \n in a literal becomes a real newline, which is a SyntaxError that
 	// silently kills the entire injected script.
+	//
+	// It is served ONLY during a harness run. These three paths were reachable on
+	// the app's own scheme in every shipped build — including __docfixture.md,
+	// which is a bare os.ReadFile of a path taken from the command line. Nothing
+	// document-reachable was found that could ask for them, but a released
+	// artifact should not carry a file-read endpoint at all, and gating it costs
+	// one condition.
+	if harnessRun() {
+		if body := serveHarnessAsset(requested, outLen, outMime); body != nil {
+			return body
+		}
+	}
+
+	return serveEmbeddedAsset(requested, outLen, outMime)
+}
+
+// harnessRun reports whether any verification mode was asked for on the command
+// line. Every one of them is set from argv, so this is false for a user launch.
+func harnessRun() bool {
+	return dropWaitMode || walkMode || docCheckMode || menuCheckMode ||
+		closeCheckMode || gateMode || quitCheckMode || navCheckMode
+}
+
+func serveHarnessAsset(requested string, outLen *C.int, outMime **C.char) unsafe.Pointer {
 	if requested == "/__docfixture.md" {
 		body, err := os.ReadFile(docFixturePath)
 		if err != nil {
@@ -194,6 +275,10 @@ func hostServeAsset(cpath *C.char, outLen *C.int, outMime **C.char) unsafe.Point
 		*outMime = C.CString("text/javascript")
 		return C.CBytes(body)
 	}
+	return nil
+}
+
+func serveEmbeddedAsset(requested string, outLen *C.int, outMime **C.char) unsafe.Pointer {
 
 	name := path.Join("frontend/dist", strings.TrimPrefix(requested, "/"))
 
@@ -339,6 +424,11 @@ func dispatchCall(app *App, method, argsJSON string) (ok bool, payload string) {
 	case "__closenow":
 		hostRequestClose()
 		return true, mustJSON("reported")
+	case "__quitnow":
+		// The REAL gesture, not a stand-in: this asks AppKit to terminate, so
+		// the guard is reached the way Cmd-Q reaches it or not at all.
+		C.hostTerminateNow()
+		return true, mustJSON("reported")
 	}
 
 	var args []json.RawMessage
@@ -440,6 +530,34 @@ var dropWaitMode bool
 // walkMode drives the whole UI surface instead of the gates.
 var walkMode bool
 
+// navCheckMode exercises the navigation delegate.
+//
+// It exists because that delegate is the second layer under #145 and no browser
+// test can reach it: chromedp drives the page, not WKWebView's policy callback.
+// Leaving it "verified by reading" is the shape of defect the review already
+// caught once — a check that could not have found anything, finding nothing.
+var navCheckMode bool
+
+// Long enough for the frontend to boot and drive the navigation, short enough
+// that a failing gate reports rather than looking stuck.
+const navCheckDeadline = 25 * time.Second
+
+// Long enough for a person to read a dialog and answer it, short enough that a
+// wedged application reports rather than sitting there.
+const quitCheckDeadline = 90 * time.Second
+
+// quitCheckMode exercises the close guard on the QUIT path.
+//
+// It is a separate mode from closeCheckMode because it is a separate entry
+// point, and conflating them is how the defect it exists to catch survived:
+// -close/-close-dirty drive windowShouldClose:, and nothing drove terminate:.
+var quitCheckMode bool
+
+// quitDirty makes the quit gate exercise the case that matters. It is separate
+// from the mode because the CLEAN quit is the half that can be verified without
+// a human answering a dialog.
+var quitDirty bool
+
 // closeCheckMode exercises the close guard.
 //
 // It is its own mode because the guard cannot be checked from inside the walk:
@@ -472,6 +590,38 @@ func setLifecycle(cfg hostConfig) {
 	defer lifecycleMu.Unlock()
 	onBeforeClose = cfg.OnBeforeClose
 	onFileOpen = cfg.OnFileOpen
+	setNavigationBlockHandler(cfg.OnNavigationBlocked)
+}
+
+// hostRequestTerminate runs the close guard for a QUIT rather than a window
+// close, and answers AppKit once it knows.
+//
+// Same two-phase shape as hostRequestClose and for the same reason: the guard
+// prompts, and that dialog needs the main thread applicationShouldTerminate: is
+// running on. The difference is only in how the answer is delivered —
+// replyToApplicationShouldTerminate: rather than closing the window.
+//
+//export hostRequestTerminate
+func hostRequestTerminate() {
+	if quitCheckMode {
+		// Reports and exits, like the close check. Falling through would ask the
+		// guard twice for one quit.
+		reportQuitDecision()
+		return
+	}
+	lifecycleMu.Lock()
+	guard := onBeforeClose
+	lifecycleMu.Unlock()
+
+	go func() {
+		if guard != nil && guard(context.Background()) {
+			// The user cancelled. Nothing to tell AppKit: the terminate was
+			// already refused, so the application simply carries on with its
+			// documents intact.
+			return
+		}
+		C.hostTerminateApproved()
+	}()
 }
 
 //export hostRequestClose
@@ -511,6 +661,45 @@ var (
 // failing — including in the case it exists to catch (GitHub #100). The
 // judgement is judgeClose in closecheck.go, unit-tested there; this function
 // only gathers the observation and reports it.
+// reportQuitDecision runs the close guard on the QUIT path and judges what it
+// did, reusing judgeClose so the two entry points are held to one standard.
+//
+// It is a separate gate from reportCloseDecision because it is a separate entry
+// point into the same guard, and the whole defect was that only one of them was
+// wired up. A gate that cannot distinguish them cannot have caught it.
+func reportQuitDecision() {
+	quitReported.Store(true)
+	lifecycleMu.Lock()
+	guard := onBeforeClose
+	lifecycleMu.Unlock()
+
+	if guard == nil {
+		fmt.Println("QUIT: no guard registered — Cmd-Q would discard unsaved work silently")
+		fmt.Println("VERDICT: FAIL")
+		os.Exit(1)
+	}
+	go func() {
+		prevented := guard(context.Background())
+
+		closeObsMu.Lock()
+		obs := closeObs
+		closeObsMu.Unlock()
+		obs.dirty = quitDirty
+		obs.prevented = prevented
+
+		fmt.Printf("QUIT: gesture=terminate: mode=%s guard=%s prompts=%d answer=%q\n",
+			modeName(quitDirty), verb(prevented), obs.prompts, obs.answer)
+
+		ok, why := judgeClose(obs)
+		if !ok {
+			fmt.Println("VERDICT: FAIL —", why)
+			os.Exit(1)
+		}
+		fmt.Println("VERDICT: PASS —", why)
+		os.Exit(0)
+	}()
+}
+
 func reportCloseDecision() {
 	lifecycleMu.Lock()
 	guard := onBeforeClose
@@ -566,7 +755,22 @@ func hostFileOpened(cpath *C.char) {
 }
 
 //export hostShuttingDown
-func hostShuttingDown() { beginShutdown() }
+func hostShuttingDown() {
+	// A gate that cannot fail is decoration. Without applicationShouldTerminate:
+	// the app terminates without ever consulting the guard, which is the DEFECT
+	// this mode exists to catch — and it would look like a pass, because the
+	// process simply exits 0 and prints no verdict at all. Reaching termination
+	// with nothing reported is therefore the failure.
+	if quitCheckMode && !quitReported.Load() {
+		fmt.Println("QUIT: terminated without consulting the close guard")
+		fmt.Println("VERDICT: FAIL — applicationShouldTerminate: never ran, so Cmd-Q discards unsaved work")
+		os.Exit(1)
+	}
+	beginShutdown()
+}
+
+// quitReported records that the quit gate got as far as judging something.
+var quitReported atomic.Bool
 
 //export hostModalResult
 func hostModalResult(id C.int, cresult *C.char) {
@@ -762,6 +966,48 @@ func currentDropHandler() func(paths []string) {
 var (
 	dropMu      sync.Mutex
 	dropHandler func(paths []string)
+)
+
+// hostReportBlockedNavigation records a main-frame navigation the host refused.
+//
+// The refusal itself happens in Objective-C, at the navigation delegate, because
+// that is where WebKit asks. It is reported back across the boundary rather than
+// logged there so it lands in the same event trail as every other refusal, and
+// so a build with no console attached still has the record — which is the whole
+// premise of internal/eventlog.
+//
+//export hostReportBlockedNavigation
+func hostReportBlockedNavigation(curl *C.char) {
+	if navCheckMode {
+		fmt.Printf("NAV: refused %s\n", C.GoString(curl))
+		fmt.Println("VERDICT: PASS — the host refused a main-frame navigation off its own scheme")
+		os.Exit(0)
+	}
+	handler := currentNavigationBlockHandler()
+	if handler == nil {
+		// Not an error: the host can refuse a navigation before startup has
+		// subscribed. Say it out loud anyway rather than dropping it silently.
+		fmt.Fprintf(os.Stderr, "blocked navigation with no subscriber, discarded: %s\n", C.GoString(curl))
+		return
+	}
+	handler(C.GoString(curl))
+}
+
+func setNavigationBlockHandler(onBlocked func(url string)) {
+	navigationMu.Lock()
+	defer navigationMu.Unlock()
+	navigationBlockHandler = onBlocked
+}
+
+func currentNavigationBlockHandler() func(url string) {
+	navigationMu.Lock()
+	defer navigationMu.Unlock()
+	return navigationBlockHandler
+}
+
+var (
+	navigationMu           sync.Mutex
+	navigationBlockHandler func(url string)
 )
 
 func (darwinNative) EmitFilesDropped(_ context.Context, paths []string) {

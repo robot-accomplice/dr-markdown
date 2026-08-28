@@ -13,7 +13,9 @@
 // class conforming to a protocol. The framework this replaced used one context
 // object conforming to four
 // (WKURLSchemeHandler, WKScriptMessageHandler, WKNavigationDelegate,
-// WKUIDelegate); this needs two.
+// WKUIDelegate); this needs three. WKNavigationDelegate joined them when a
+// mermaid diagram link was found to navigate the main frame away from the app,
+// handing the bridge to a remote origin (#145).
 
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
@@ -24,6 +26,8 @@
 #include "_cgo_export.h"
 
 static WKWebView *gWebView = nil;
+// Retained: WKWebView holds its navigation delegate weakly.
+static id gNavigationDelegate = nil;
 
 // The scheme assets are served over. It must not be http or https: WebKit
 // reserves those and registering a handler for one throws. The framework this
@@ -83,6 +87,49 @@ static NSString *const kScheme = @"drmd";
 
   hostHandleCall([body[@"id"] intValue], (char *)[body[@"method"] UTF8String],
                  (char *)args.UTF8String);
+}
+
+@end
+
+// Main-frame navigation is refused unless it stays on the app's own scheme.
+//
+// The webview holds the bridge, and the bridge is installed as a WKUserScript at
+// document start for the main frame with NO origin restriction — so whatever
+// document ends up in the main frame gets SaveDocument and OpenRecentDocument,
+// which are arbitrary write and arbitrary read. Anything that navigates the main
+// frame away from `drmd://` therefore hands a remote origin the user's
+// filesystem.
+//
+// The frontend already refuses unsafe link destinations before they navigate,
+// and that check is where a REFUSAL gets explained to the user. This is the
+// second layer, and it exists because the first one was sited on the shape of
+// the anchor rather than on the sink: a mermaid diagram emits `<svg:a
+// xlink:href>` with no plain href, which the guard's `a[href]` selector did not
+// match, and the navigation went through. A guard that has to enumerate every
+// way a link can be spelled will eventually miss one; this cannot, because it
+// sits where the navigation actually happens.
+//
+// Ordinary outbound links are unaffected. They never reach here — the frontend
+// hands them to the host, which opens them in the user's browser.
+@interface DrmdNavigationDelegate : NSObject <WKNavigationDelegate>
+@end
+
+@implementation DrmdNavigationDelegate
+
+- (void)webView:(WKWebView *)webView
+    decidePolicyForNavigationAction:(WKNavigationAction *)action
+                    decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+  // targetFrame is nil for a navigation that would open a new frame, and
+  // isMainFrame distinguishes the document that holds the bridge from any
+  // subframe. Only the app's own scheme may drive the main frame.
+  BOOL mainFrame = action.targetFrame == nil || action.targetFrame.isMainFrame;
+  NSString *scheme = action.request.URL.scheme.lowercaseString;
+  if (mainFrame && ![scheme isEqualToString:kScheme]) {
+    hostReportBlockedNavigation((char *)(action.request.URL.absoluteString.UTF8String ?: ""));
+    decisionHandler(WKNavigationActionPolicyCancel);
+    return;
+  }
+  decisionHandler(WKNavigationActionPolicyAllow);
 }
 
 @end
@@ -148,6 +195,12 @@ static NSString *const kScheme = @"drmd";
 
 static DrmdWindowDelegate *gWindowDelegate = nil;
 static NSWindow *gWindow = nil;
+// Set once the guard has already answered for this shutdown, so the second
+// question is not asked. Closing the last window TERMINATES the app
+// (applicationShouldTerminateAfterLastWindowClosed: returns YES), so without
+// this a window close would run the guard, close, and then be asked to save all
+// over again on the way out.
+static BOOL gShutdownApproved = NO;
 
 @implementation DrmdWindowDelegate
 
@@ -162,13 +215,59 @@ static NSWindow *gWindow = nil;
 void hostCloseNow(void) {
   dispatch_async(dispatch_get_main_queue(), ^{
     gWindowDelegate.closeApproved = YES;
+    gShutdownApproved = YES;
     [gWindow close];
+  });
+}
+
+// The guard allowed the shutdown, so ask for it again — this time it is let
+// through. Mirrors hostCloseNow, which closes the window a second time once the
+// same guard has answered.
+//
+// A refused shutdown needs no counterpart: applicationShouldTerminate: already
+// returned NSTerminateCancel, so the application simply carries on.
+void hostTerminateApproved(void) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    gShutdownApproved = YES;
+    [NSApp terminate:nil];
   });
 }
 
 @implementation DrmdDelegate
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)app {
   return YES;
+}
+
+// Cmd-Q, Quit from the menu, and every other route to terminate:.
+//
+// This existed nowhere until #145's premortem, and its absence silently
+// discarded unsaved work. The unsaved-changes guard was reachable from exactly
+// one entry point — windowShouldClose: — but Quit is wired to AppKit's
+// terminate:, which consults THIS selector and never asks a window whether it
+// should close. With the selector absent AppKit defaults to NSTerminateNow, so
+// the primary quit gesture on macOS went straight past the guard: no dialog, and
+// every dirty tab gone.
+//
+// Two-phase, and CANCEL rather than LATER — the same shape windowShouldClose:
+// uses, for a reason that cost a hang to learn.
+//
+// NSTerminateLater looks like the right answer and is a trap here. It parks
+// AppKit in a restricted run-loop mode until replyToApplicationShouldTerminate:
+// arrives, and every dialog in this file is delivered by dispatch_async to the
+// main queue — which is serviced only in the DEFAULT run-loop mode. So the block
+// carrying the save prompt never ran: no dialog appeared, the guard blocked
+// forever waiting for an answer nobody could give, and the application could
+// then be neither quit nor closed. That is worse than the defect this method was
+// added to fix, which at least let you quit.
+//
+// NSTerminateCancel refuses this terminate outright and hands the run loop back,
+// so the prompt behaves exactly as it does on the window path. When the guard
+// allows the shutdown, hostTerminateApproved asks AppKit to terminate a second
+// time and gShutdownApproved lets it through — the mirror of closeApproved.
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)app {
+  if (gShutdownApproved) return NSTerminateNow;
+  hostRequestTerminate();
+  return NSTerminateCancel;
 }
 
 // Files the OS routes to the application: a double-click in Finder, or `open`
@@ -392,6 +491,15 @@ char *hostMenuJSON(void) {
   return strdup(s.UTF8String);
 }
 
+// Asks AppKit to terminate, which is what the Quit menu item and Cmd-Q do. The
+// harness uses this so the quit gate drives the REAL gesture rather than a
+// stand-in for it.
+void hostTerminateNow(void) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [NSApp terminate:nil];
+  });
+}
+
 void hostRun(const char *title, int width, int height, int dropMode) {
   @autoreleasepool {
     NSApplication *app = [NSApplication sharedApplication];
@@ -403,8 +511,15 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     [config setURLSchemeHandler:bridgeObj forURLScheme:kScheme];
     [config.userContentController addScriptMessageHandler:bridgeObj name:@"drmd"];
-    // Web Inspector. The gate verdicts are read from its console.
-    [config.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+    // Web Inspector, for HARNESS RUNS ONLY. The gate verdicts are read from its
+    // console, which is why it exists — but it was enabled unconditionally, so
+    // every shipped, notarized copy carried a live inspector on the one webview
+    // whose bridge this project's own comments describe as arbitrary read and
+    // arbitrary write. dropMode is 0 on an ordinary launch and non-zero only
+    // when a harness flag was passed on the command line.
+    if (dropMode != 0) {
+      [config.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+    }
 
     // The bound surface is an explicit two-method object, NOT a proxy over every
     // name. bridge.js degrades when a binding is absent — `native()?.X() ?? missing(X)`
@@ -412,13 +527,16 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     // a host implementing nothing. A proxy would make every method look present
     // and route it to a dispatcher with no answer.
     NSString *js =
-        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@; globalThis.__drmdDocMode = %@; globalThis.__drmdGateMode = %@;",
+        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@; globalThis.__drmdDocMode = %@; globalThis.__drmdGateMode = %@; globalThis.__drmdQuitMode = %@; globalThis.__drmdQuitDirty = %@; globalThis.__drmdNavMode = %@;",
                                     dropMode == 1 ? @"true" : @"false",
                                     dropMode == 2 ? @"true" : @"false",
                                     (dropMode == 3 || dropMode == 4) ? @"true" : @"false",
                                     dropMode == 4 ? @"true" : @"false",
                                     dropMode == 5 ? @"true" : @"false",
-                                    dropMode == 7 ? @"true" : @"false"];
+                                    dropMode == 7 ? @"true" : @"false",
+                                    (dropMode == 8 || dropMode == 9) ? @"true" : @"false",
+                                    dropMode == 9 ? @"true" : @"false",
+                                    dropMode == 10 ? @"true" : @"false"];
     js = [js stringByAppendingString:
         @"(() => {"
         @"let nextId = 1; const pending = new Map();"
@@ -459,6 +577,27 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"globalThis.__drmdEmit = (name, payload) => {"
         @"  for (const h of listeners.get(name) ?? []) h(payload);"
         @"};"
+        @"})();"];
+
+    // EVERYTHING BELOW IS THE HARNESS, and it is injected only for a harness
+    // run. Above this line is the bridge, which every launch needs.
+    //
+    // The flags-not-a-separate-binary decision is deliberate and recorded in
+    // harness_darwin.go: what the gates drive must be the SAME build a user
+    // gets, because a harness that tests a different binary tests a different
+    // program. That decision is kept. What changes is only that the DRIVER is
+    // not handed to a document that never asked for it — a released artifact was
+    // injecting a couple of hundred lines of test scaffolding into every page it
+    // opened, including a console.error patch that swallows the app's own
+    // reporting, and serving its fixtures over the app's own scheme.
+    //
+    // dropMode is 0 for a user launch and non-zero only when a verification flag
+    // was passed on the command line, so the gates still exercise the shipped
+    // program: same binary, same bridge, same window. Only the scaffolding is
+    // conditional.
+    if (dropMode != 0) {
+      js = [js stringByAppendingString:
+        @"(() => {"
         // The gates run themselves and report through the same channel. A hang
         // is the failure mode gate 3 exists to detect, so every gate is raced
         // against a timeout — without that, the failure we are testing for
@@ -594,6 +733,35 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"      window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__closenow', args: [] });"
         @"    })();"
         @"  }"
+        // The QUIT harness. It exists because nothing exercised terminate: at
+        // all — -close/-close-dirty drive windowShouldClose:, a different entry
+        // point, which is exactly why Cmd-Q discarding unsaved work went
+        // unnoticed. It dirties the document and then asks AppKit to terminate,
+        // which is the gesture under test.
+        @"  else if (globalThis.__drmdQuitMode) {"
+        @"    (async () => {"
+        @"      for (let i = 0; i < 200 && !globalThis.__app?.ready; i++)"
+        @"        await new Promise((r) => setTimeout(r, 50));"
+        @"      if (globalThis.__drmdQuitDirty) {"
+        @"        await globalThis.__app.setMarkdown('# unsaved work\\n');"
+        @"        globalThis.__app.debugSimulateEdit('# unsaved work\\n');"
+        @"        await new Promise((r) => setTimeout(r, 250));"
+        @"      }"
+        @"      window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__quitnow', args: [] });"
+        @"    })();"
+        @"  }"
+        // The NAVIGATION gate. It drives a real main-frame navigation off the
+        // app's own scheme — the thing a mermaid diagram link did — and the host
+        // is expected to refuse it. If the delegate is absent the page simply
+        // leaves, and the gate times out rather than passing, which is the
+        // behaviour that matters: it cannot pass by silence.
+        @"  else if (globalThis.__drmdNavMode) {"
+        @"    (async () => {"
+        @"      for (let i = 0; i < 200 && !globalThis.__app?.ready; i++)"
+        @"        await new Promise((r) => setTimeout(r, 50));"
+        @"      location.href = 'https://attacker.invalid/';"
+        @"    })();"
+        @"  }"
         @"  else if (globalThis.__drmdDocMode) { import('drmd://app/__doc.js'); }"
         // Gates run ONLY when asked for. They were the default, which meant the
         // shipped application started a test harness and exited -- every
@@ -602,6 +770,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"  else if (globalThis.__drmdGateMode) { runGates(); }"
         @"});"
         @"})()"];
+    }
     // The content world is load-bearing, and getting it wrong fails silently.
     // The three-argument initialiser does NOT reliably place the script in the
     // page's world, and a script in a separate world has its own globalThis: the
@@ -623,6 +792,8 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     window.title = [NSString stringWithUTF8String:title];
 
     gWebView = [[DrmdWebView alloc] initWithFrame:frame configuration:config];
+    gNavigationDelegate = [[DrmdNavigationDelegate alloc] init];
+    gWebView.navigationDelegate = gNavigationDelegate;
     [gWebView registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
     gWebView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     window.contentView = gWebView;
