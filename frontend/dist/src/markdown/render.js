@@ -1,5 +1,5 @@
-// markdown -> nodes for the surfaces that are not the editor: the split preview
-// and the print/PDF surface.
+// markdown -> nodes for the print/PDF surface, which since Split became the
+// real editor is the only surface in this application that is not the editor.
 //
 // These used to share a 43-line hand-written renderer that matched headings and
 // fences with regular expressions. Measured across sixteen ordinary constructs,

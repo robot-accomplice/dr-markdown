@@ -577,6 +577,27 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"globalThis.__drmdEmit = (name, payload) => {"
         @"  for (const h of listeners.get(name) ?? []) h(payload);"
         @"};"
+        @"})();"];
+
+    // EVERYTHING BELOW IS THE HARNESS, and it is injected only for a harness
+    // run. Above this line is the bridge, which every launch needs.
+    //
+    // The flags-not-a-separate-binary decision is deliberate and recorded in
+    // harness_darwin.go: what the gates drive must be the SAME build a user
+    // gets, because a harness that tests a different binary tests a different
+    // program. That decision is kept. What changes is only that the DRIVER is
+    // not handed to a document that never asked for it — a released artifact was
+    // injecting a couple of hundred lines of test scaffolding into every page it
+    // opened, including a console.error patch that swallows the app's own
+    // reporting, and serving its fixtures over the app's own scheme.
+    //
+    // dropMode is 0 for a user launch and non-zero only when a verification flag
+    // was passed on the command line, so the gates still exercise the shipped
+    // program: same binary, same bridge, same window. Only the scaffolding is
+    // conditional.
+    if (dropMode != 0) {
+      js = [js stringByAppendingString:
+        @"(() => {"
         // The gates run themselves and report through the same channel. A hang
         // is the failure mode gate 3 exists to detect, so every gate is raced
         // against a timeout — without that, the failure we are testing for
@@ -749,6 +770,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"  else if (globalThis.__drmdGateMode) { runGates(); }"
         @"});"
         @"})()"];
+    }
     // The content world is load-bearing, and getting it wrong fails silently.
     // The three-argument initialiser does NOT reliably place the script in the
     // page's world, and a script in a separate world has its own globalThis: the

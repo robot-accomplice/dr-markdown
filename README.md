@@ -48,7 +48,8 @@ Recorded as a project rule in `docs/architext/data/rules.json`.
 ### Available today
 
 - WYSIWYG editing of GitHub-flavored markdown: tables, task lists, strikethrough, and syntax-highlighted code blocks (via Milkdown Crepe's built-ins)
-- Raw and split markdown modes with formatted preview/source switching
+- Formatted, Raw and Split modes. Split shows the **real editor** beside the source, not a preview of it: both halves are live and editable, and an edit in either reaches the other
+- Find and replace across the whole document (⌘F, ⌥⌘F, ⌘G, ⇧⌘G). Matches are counted in the markdown source, so all three modes agree; Replace All rewrites the source and one ⌘Z takes it all back
 - Native syntax highlighting for raw markdown and language-tagged fenced code blocks
 - Mermaid Diagram rendering plus a guided Mermaid starter assistant
 - Contextual table, code-block language, diagram, and image controls on the document surface
@@ -61,14 +62,14 @@ Recorded as a project rule in `docs/architext/data/rules.json`.
 - Atomic saves for documents *and* preferences. A crashed write never leaves a truncated file, and an unreadable preference store is quarantined and replaced with defaults rather than stopping the app from starting
 - Dirty tracking with an unsaved-changes close guard and an open-over-dirty guard
 - A round-trip corpus (markdown → WYSIWYG → markdown) driven by chromedp, comparing the editor's own serialized output against the fixture, verified to fail when the serializer is broken
-- macOS packaging: `tools/build-macos.sh` produces a `.app` and a distributable `.dmg` with a custom icon. The script performs **no code signing at all**. The ad-hoc signature on the binary is a linker artifact rather than a build step, so the app is neither Developer ID signed nor notarized, and Gatekeeper will flag it on any machine but the build host (see [Known limitations](#known-limitations))
+- macOS packaging: `tools/build-macos.sh` produces a `.app` and a distributable `.dmg` with a custom icon. With `DRMD_SIGN_IDENTITY` and `DRMD_NOTARY_PROFILE` set it signs with a Developer ID, hardened runtime and secure timestamp, submits for notarization and staples the ticket — which is how the published releases are built. Without them it falls back to an ad-hoc signature, which Gatekeeper will flag on any machine but the build host
 
 ### On the roadmap
 
 - Comments and review workflow
 - Direct PDF/HTML export artifacts beyond the OS print dialog path
 - Sharing, sync/Git, and extensions surfaces
-- Developer ID signing, notarization, and Windows/Linux packaging
+- Windows/Linux packaging
 
 ## Screenshots
 
@@ -119,10 +120,15 @@ Prebuilt macOS builds are on the [releases page](https://github.com/robot-accomp
 | `dr-markdown-<version>-macos-universal.dmg` | any Mac, Apple Silicon and Intel |
 | `dr-markdown-<version>-macos-arm64.dmg` | Apple Silicon only, roughly half the size |
 
-**Builds are unsigned and un-notarized**, so Gatekeeper will refuse to open the app on any machine but
-the one that built it. Open it once, dismiss the warning, then go to **System Settings → Privacy &
-Security** and choose **Open Anyway**. The older right-click → Open shortcut no longer works for
-blocked apps on macOS 15 (Sequoia) and later.
+**Published releases are signed with a Developer ID and notarized by Apple**, so they open normally —
+no Gatekeeper warning and no Privacy & Security detour. Builds you make yourself are ad-hoc signed
+and will be refused on any machine but the one that built them; see
+[Building](#building--installing-macos) for that case.
+
+**Upgrading from v1.6.2 or earlier:** the bundle was renamed from `Dr. Markdown.app` to
+`Dr Markdown.app` in v1.6.2, so dragging the new one into Applications leaves the old one beside it
+rather than replacing it. Both carry the same bundle identifier, so a double-clicked `.md` may open
+either. **Delete the old `Dr. Markdown.app` first.**
 
 **Windows and Linux are not built.** The code is platform-aware and CI runs the full suite on Linux,
 but no artifact is produced for either. See [Known limitations](#known-limitations).
@@ -161,9 +167,14 @@ Outputs:
 - `build/bin/Dr Markdown.app`, the app bundle
 - `build/dr-markdown.dmg`, which you drag to Applications
 
-Builds carry only the linker's ad-hoc signature. They are neither Developer ID signed nor notarized, so on any machine but the build host Gatekeeper will refuse to open the app.
+A build made this way carries only the linker's ad-hoc signature, so on any machine but the build
+host Gatekeeper will refuse to open it. To run it anyway: open it once, dismiss the warning, then go
+to **System Settings → Privacy & Security** and choose **Open Anyway**. The older right-click → Open
+shortcut no longer works for blocked apps on macOS 15 (Sequoia) and later.
 
-To run it anyway: open it once, dismiss the warning, then go to **System Settings → Privacy & Security** and choose **Open Anyway**. The older right-click → Open shortcut no longer works for blocked apps on macOS 15 (Sequoia) and later. Developer ID signing and notarization are future work.
+Published releases are not built this way — they are signed and notarized. To reproduce that, set
+`DRMD_SIGN_IDENTITY` to a Developer ID Application identity and `DRMD_NOTARY_PROFILE` to a stored
+`notarytool` profile before running the script.
 
 ## Architecture
 
@@ -196,7 +207,10 @@ Markdown on disk is the source of truth, and the chromedp round-trip corpus in `
 - Saving refuses to overwrite a file that changed on disk since the app last read or wrote it, and asks before replacing it. The check re-reads the file on every save, which is part of why large documents are slow.
 - Saving replaces the file via an atomic rename, which breaks hard links to it. Extended attributes such as Finder tags are preserved, and a read-only file is refused rather than replaced.
 - Large documents are slow: roughly 4 s to open a 140 KB file and 10 s for 280 KB, with no progress indicator and no way to cancel. There is no size limit.
-- Builds are unsigned and un-notarized, so macOS Gatekeeper and Windows SmartScreen will both warn. On macOS 15 and later, approve it under System Settings → Privacy & Security → Open Anyway.
+- Builds you make yourself are ad-hoc signed, so macOS Gatekeeper will warn; approve it under System Settings → Privacy & Security → Open Anyway. Published releases are Developer ID signed and notarized and do not warn.
+- **Replace All can be taken back once, and only once.** ⌘Z immediately after a Replace All restores the document as it was before it. Any other edit abandons that, and so does switching document — the snapshot belongs to the document it was taken from and will not be applied to another. There is no general undo history across a replace, because applying one remounts the editor.
+- **Find stops counting at 10,000 matches.** Replace All then rewrites the first 10,000 and says so; run it again for the rest. One ⌘Z still takes back the whole sequence.
+- **The bundle was renamed in v1.6.2**, so a new `.dmg` does not replace an install of v1.6.1 or earlier. Delete the old `Dr. Markdown.app` by hand.
 - **Windows and Linux have no host.** The package compiles everywhere and CI runs the full suite on
   Linux, but `host_unsupported.go` refuses at startup off macOS. Neither platform was ever built
   before either. A Linux host is the cheaper of the two, since WebKitGTK is a C API that maps closely

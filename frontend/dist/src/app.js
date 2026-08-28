@@ -1618,6 +1618,11 @@ function renderShortcutSettings(content) {
       ${shortcutRow('New document', 'Cmd N')}
       ${shortcutRow('Open file', 'Cmd O')}
       ${shortcutRow('Save', 'Cmd S')}
+      ${shortcutRow('Find', 'Cmd F')}
+      ${shortcutRow('Find and Replace', 'Cmd Opt F')}
+      ${shortcutRow('Find next', 'Cmd G')}
+      ${shortcutRow('Find previous', 'Cmd Shift G')}
+      ${shortcutRow('Undo a Replace All', 'Cmd Z')}
       ${shortcutRow('Bold', 'Cmd B')}
       ${shortcutRow('Link', 'Cmd K')}
     </div>
@@ -1857,7 +1862,23 @@ async function replaceCurrentMatch() {
 // new one would silently reopen this; identity is checked where it is used, so
 // a path nobody remembered to update still cannot corrupt anything.
 function rememberReplaceUndo(text, count) {
-  replaceUndo = { text, count, docId: activeDoc()?.id ?? null }
+  const docId = activeDoc()?.id ?? null
+  // A snapshot that already exists for this document is NOT overwritten.
+  //
+  // Replace All stops at MATCH_LIMIT and tells the user to run it again, and a
+  // second run overwriting the snapshot made the first batch permanently
+  // unrevertable — the way back pointed at the half-rewritten middle rather
+  // than at the document the user started with. Running it twice is one
+  // INTENTION, so it gets one way back.
+  //
+  // Nothing needs to clear this between intentions: any edit that is not a
+  // replace calls forgetReplaceUndo, so a surviving snapshot means the user is
+  // still inside the same sequence.
+  if (replaceUndo && replaceUndo.docId === docId) {
+    replaceUndo = { ...replaceUndo, count: replaceUndo.count + count }
+    return
+  }
+  replaceUndo = { text, count, docId }
 }
 
 // Any edit that is not a replace invalidates the snapshot: restoring it then
@@ -1899,8 +1920,11 @@ async function replaceEveryMatch() {
   runFind()
   // The cap is said out loud. A partial rewrite the user believes is total is
   // worse than a refused one, and "Replaced 10000 matches" reads as complete.
+  // The revert hint appears on BOTH branches. It was omitted from the capped
+  // one, which is the case where the user is most likely to want it: they have
+  // just been told to run a destructive command repeatedly.
   flashStatus(capped
-    ? `Replaced the first ${count} matches — more remain, run it again`
+    ? `Replaced the first ${count} matches — more remain, run it again · ⌘Z reverts all of it`
     : `Replaced ${count} ${count === 1 ? 'match' : 'matches'} · ⌘Z to revert`)
 }
 
@@ -2052,7 +2076,9 @@ function syncSplitScroll(source, target) {
   })
 }
 
-// Both surfaces that are not the editor render through one function now. See
+// The print surface renders through this. It is the ONLY surface that is not
+// the editor: Split's formatted pane became the real editor, so the preview this
+// used to also feed no longer exists. See
 // markdown/render.js for what the renderer this replaced got wrong, and why it
 // mattered most for print.
 async function renderMarkdownPreview(md) {
@@ -2442,7 +2468,13 @@ function closeTransientSurfaces() {
 
 function helpRows(section) {
   if (section === 'shortcuts') {
-    return [['⌘⇧R', 'Toggle Raw mode'], ['⌘⇧S', 'Toggle Split mode'], ['⌘B', 'Bold'], ['⌘I', 'Italic']]
+    return [
+      ['⌘⇧R', 'Toggle Raw mode'], ['⌘⇧S', 'Toggle Split mode'],
+      ['⌘F', 'Find'], ['⌥⌘F', 'Find and Replace'],
+      ['⌘G', 'Find next'], ['⇧⌘G', 'Find previous'],
+      ['⌘Z', 'Undo a Replace All'],
+      ['⌘B', 'Bold'], ['⌘I', 'Italic'],
+    ]
   }
   return [['#', 'Heading'], ['**text**', 'Bold'], ['[text](url)', 'Link'], ['```lang', 'Code block'], ['```mermaid', 'Mermaid Diagram']]
 }

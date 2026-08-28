@@ -95,13 +95,27 @@ go build -o /tmp/drmd-gate .
 /tmp/drmd-gate -close    # the close guard runs on the window path
 /tmp/drmd-gate -quit     # the close guard runs on the terminate: path
 /tmp/drmd-gate -nav      # the host refuses navigation off its own scheme
+/tmp/drmd-gate -walk     # 40 UI checks against a real window
+/tmp/drmd-gate -gates    # the boot gates
 rm -f /tmp/drmd-gate
 ```
+
+**Run every one of them.** `-walk` and `-gates` were absent from this list until
+v1.6.3, and `-walk` had been failing since the File menu landed in v1.6.2 —
+it still expected File to be a ribbon tab, and nobody saw it because nobody ran
+it. A gate missing from the ceremony is a gate that does not exist.
 
 `-close-dirty` and `-quit-dirty` exercise the cases that matter, and both raise a
 save dialog on purpose — **they need a human to answer**. Run them, answer, and
 read the verdict. The clean variants above are the halves that can be verified
 unattended.
+
+**Run the dirty ones.** In 1.6.3 the quit fix was verified only on its clean
+half, and its dirty half — run for the first time during the go/no-go review —
+wedged the application: no dialog, and afterwards neither ⌘Q nor the close button
+worked. A fix verified only on the path that cannot fail is not verified. Both
+dirty gates now self-report `FAIL` on a deadline rather than hanging, so a repeat
+of that produces a verdict instead of a trapped maintainer.
 
 ### Validate against the project's own README
 
@@ -122,7 +136,7 @@ It also needs no pasted charter. The session running it already has the context;
 handing over a wall of prepared text only launders one author's framing through
 someone else's keyboard, which is the opposite of an independent review.
 
-It is — not `abort-premortem`, which is scoped to a
+It is `/abort` specifically — not `abort-premortem`, which is scoped to a
 different project and will describe hazard surfaces this repository does not
 have.
 
