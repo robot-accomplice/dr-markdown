@@ -1,5 +1,5 @@
 {
-  "currentReleaseId": "v1-6-3-the-name-and-the-repository",
+  "currentReleaseId": "v1-6-4-one-surface-and-a-way-to-search-it",
   "releases": [
     {
       "id": "initial-architext-buildout",
@@ -134,8 +134,8 @@
       "status": "complete",
       "posture": "on-track",
       "targetWindow": "Current milestone",
-      "lastUpdated": "2026-08-27T00:00:00.000Z",
-      "summary": "A patch cut from installing 1.6.2 and looking at it. The launcher showed the application as 'Dr. Markdown.app' — with the extension — and showed it more than once. Both had causes worth recording rather than working around. macOS strips a .app suffix for display only when the basename has no other dot in it, so the period in 'Dr.' was the whole reason the extension appeared; the name is now Dr Markdown everywhere, one name right in every place it shows. The duplicates were build artifacts: the clean step removed only the current bundle so a previously named one survived beside it, and the DMG staging copy was registered by macOS and its registration outlived the directory being deleted. Separately, and larger: docs/superpowers was tracked and shipping — 38 files, 384K — because .gitignore covered .superpowers/ and not this. It had become load-bearing, cited 33 times including three comments in shipping code, so every live citation was repointed at a durable record before the files were untracked.",
+      "lastUpdated": "2026-08-28T00:00:00.000Z",
+      "summary": "SUPERSEDED BY 1.6.4, AND NEVER RELEASED. This record was marked complete on the strength of the work landing on develop, but no v1.6.3 tag was ever created and no release was ever published: the last release users could install remained 1.6.2. The work described below is real and shipped — it reaches users in 1.6.4, recorded there under 'The naming and repository work prepared for 1.6.3'. The lesson is the record's own: 'complete' has to mean reached a user, not merged to a branch, or Release Truth describes the repository rather than the product.\n\nA patch cut from installing 1.6.2 and looking at it. The launcher showed the application as 'Dr. Markdown.app' — with the extension — and showed it more than once. Both had causes worth recording rather than working around. macOS strips a .app suffix for display only when the basename has no other dot in it, so the period in 'Dr.' was the whole reason the extension appeared; the name is now Dr Markdown everywhere, one name right in every place it shows. The duplicates were build artifacts: the clean step removed only the current bundle so a previously named one survived beside it, and the DMG staging copy was registered by macOS and its registration outlived the directory being deleted. Separately, and larger: docs/superpowers was tracked and shipping — 38 files, 384K — because .gitignore covered .superpowers/ and not this. It had become load-bearing, cited 33 times including three comments in shipping code, so every live citation was repointed at a durable record before the files were untracked.",
       "counts": {
         "features": 1,
         "bugFixes": 2,
@@ -147,6 +147,27 @@
         "stretch": 0
       },
       "file": "v1-6-3-the-name-and-the-repository.json"
+    },
+    {
+      "id": "v1-6-4-one-surface-and-a-way-to-search-it",
+      "version": "1.6.4",
+      "name": "One surface, and a way to search it",
+      "status": "complete",
+      "posture": "on-track",
+      "targetWindow": "Current milestone",
+      "lastUpdated": "2026-08-28T00:00:00.000Z",
+      "summary": "The release cut from living with 1.6.2 for a while. Everything in it came from using the application rather than from a plan, and the two largest items turned out to be the same defect seen from different sides: the product had more than one renderer, and they disagreed. Split's formatted pane and the print/PDF surface shared a 43-line renderer built from regular expressions over lines; enumerated against sixteen ordinary markdown constructs, sixteen were wrong. Print is the half that mattered most, because a PDF leaves the application and cannot be corrected once sent. Print now goes through a real parser, and Split simply shows the editor itself, so the two surfaces cannot drift apart again because there is only one of them. Adopting a real parser removed an accident that had been doing security work: the old renderer emitted text nodes, so hostile markup in an opened document never became an element. That guarantee is now stated deliberately by a sanitizer rather than inherited from an implementation detail. The release also carries the first document search this product has had, the ribbon and mode controls the feedback asked for, and the naming and repository work prepared for 1.6.3, which was recorded complete but never tagged or published.",
+      "counts": {
+        "features": 2,
+        "bugFixes": 6,
+        "workstreams": 4,
+        "blockers": 1,
+        "complete": 9,
+        "inProgress": 0,
+        "planned": 0,
+        "stretch": 0
+      },
+      "file": "v1-6-4-one-surface-and-a-way-to-search-it.json"
     }
   ]
 }
