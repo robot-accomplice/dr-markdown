@@ -31,7 +31,7 @@ package main
 // generated C file and _cgo_export.c, so a definition here is compiled twice
 // and the link fails on duplicate symbols.
 void hostRun(const char *title, int width, int height, int dropMode);
-void hostReplyToTerminate(int allow);
+void hostTerminateApproved(void);
 void hostTerminateNow(void);
 void hostEvalJS(const char *js);
 void hostOpenFile(int callID, const char *title, const char *extensionsCSV);
@@ -106,6 +106,21 @@ func (darwinHost) Run(cfg hostConfig) error {
 	// the delegate the page simply leaves and nothing calls back, so a gate that
 	// only reports on refusal would time out — which reads as a broken harness,
 	// not as a verdict, and a verdict is the whole point.
+	// The quit gate needs a deadline for the same reason, learned the hard way:
+	// when the guard's dialog could not be delivered, the gate did not fail — it
+	// simply sat there, and the application could be neither quit nor closed. A
+	// harness that hangs reads as a broken harness rather than as a verdict, and
+	// the defect hid behind that.
+	if quitCheckMode {
+		go func() {
+			time.Sleep(quitCheckDeadline)
+			fmt.Println("QUIT: no verdict within", quitCheckDeadline)
+			fmt.Println("VERDICT: FAIL — the guard never answered. Either it was never " +
+				"reached, or its dialog could not be delivered and the application is wedged")
+			os.Exit(1)
+		}()
+	}
+
 	if navCheckMode {
 		go func() {
 			time.Sleep(navCheckDeadline)
@@ -198,6 +213,30 @@ func hostServeAsset(cpath *C.char, outLen *C.int, outMime **C.char) unsafe.Point
 	// literal. Escaping a script this size through ObjC has already cost a round:
 	// \n in a literal becomes a real newline, which is a SyntaxError that
 	// silently kills the entire injected script.
+	//
+	// It is served ONLY during a harness run. These three paths were reachable on
+	// the app's own scheme in every shipped build — including __docfixture.md,
+	// which is a bare os.ReadFile of a path taken from the command line. Nothing
+	// document-reachable was found that could ask for them, but a released
+	// artifact should not carry a file-read endpoint at all, and gating it costs
+	// one condition.
+	if harnessRun() {
+		if body := serveHarnessAsset(requested, outLen, outMime); body != nil {
+			return body
+		}
+	}
+
+	return serveEmbeddedAsset(requested, outLen, outMime)
+}
+
+// harnessRun reports whether any verification mode was asked for on the command
+// line. Every one of them is set from argv, so this is false for a user launch.
+func harnessRun() bool {
+	return dropWaitMode || walkMode || docCheckMode || menuCheckMode ||
+		closeCheckMode || gateMode || quitCheckMode || navCheckMode
+}
+
+func serveHarnessAsset(requested string, outLen *C.int, outMime **C.char) unsafe.Pointer {
 	if requested == "/__docfixture.md" {
 		body, err := os.ReadFile(docFixturePath)
 		if err != nil {
@@ -222,6 +261,10 @@ func hostServeAsset(cpath *C.char, outLen *C.int, outMime **C.char) unsafe.Point
 		*outMime = C.CString("text/javascript")
 		return C.CBytes(body)
 	}
+	return nil
+}
+
+func serveEmbeddedAsset(requested string, outLen *C.int, outMime **C.char) unsafe.Pointer {
 
 	name := path.Join("frontend/dist", strings.TrimPrefix(requested, "/"))
 
@@ -485,6 +528,10 @@ var navCheckMode bool
 // that a failing gate reports rather than looking stuck.
 const navCheckDeadline = 25 * time.Second
 
+// Long enough for a person to read a dialog and answer it, short enough that a
+// wedged application reports rather than sitting there.
+const quitCheckDeadline = 90 * time.Second
+
 // quitCheckMode exercises the close guard on the QUIT path.
 //
 // It is a separate mode from closeCheckMode because it is a separate entry
@@ -554,12 +601,12 @@ func hostRequestTerminate() {
 
 	go func() {
 		if guard != nil && guard(context.Background()) {
-			// The user cancelled. AppKit is told to abandon the shutdown, and
-			// the app carries on with its documents intact.
-			C.hostReplyToTerminate(0)
+			// The user cancelled. Nothing to tell AppKit: the terminate was
+			// already refused, so the application simply carries on with its
+			// documents intact.
 			return
 		}
-		C.hostReplyToTerminate(1)
+		C.hostTerminateApproved()
 	}()
 }
 

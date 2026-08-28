@@ -356,3 +356,70 @@ func TestRevertIsAbandonedOnceTheUserEditsAgain(t *testing.T) {
 		t.Errorf("reverting after an unrelated edit discarded it: %q", after)
 	}
 }
+
+// The revert snapshot belongs to ONE document, and pressing Cmd-Z in another
+// must not apply it there.
+//
+// Found by the go/no-go review and reproduced before it was fixed: replace in
+// document A, switch to document B, press Cmd-Z, and B's tab held A's
+// pre-replace text, marked dirty — so the next save wrote A's content over B's
+// file. That is the exact failure internal/session/session.go was written to
+// end ("wrote one tab's text over another tab's file"), reintroduced a layer
+// above where the session layer cannot see it: by the time Go receives the
+// content it is simply what the frontend says the active tab contains, and
+// confirmNoExternalChange cannot help because the file on disk still matches
+// its baseline. The corruption came from inside the application.
+//
+// The existing tests could not catch it. They run in raw mode with a single
+// document, and the invalidation case only covers a follow-up EDIT — never a
+// document switch.
+func TestRevertBelongsToTheDocumentItWasTakenFrom(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.drmd = { native: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		SyncDocuments: async () => {}, SetDirty: async () => {}, UpdateContent: async () => {}
+	} } ; 'ok'`, &res)
+
+	// Split deliberately: entering split sets the pane authority to 'source',
+	// which suppresses the editor's echo through onEdited — and that echo was
+	// the only thing incidentally clearing the snapshot on a document change.
+	// The mode that made the defect reachable is the mode this test uses.
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote("AAA widget AAA\n")+").then(() => 'ok')", &res)
+	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
+
+	openFindReplaceBar(t, ctx)
+	sendKeysTo(t, ctx, "#find-input", "widget")
+	waitForJS(t, ctx, `document.getElementById('find-count').textContent.includes(' of ')`)
+	sendKeysTo(t, ctx, "#replace-input", "COMPONENT")
+	evalJS(t, ctx, `(() => { document.getElementById('replace-all').click(); return 'ok' })()`, &res)
+	if !waitForJS(t, ctx, `window.__app.getMarkdown().includes('COMPONENT')`) {
+		t.Fatal("replace all did not run in the first document")
+	}
+
+	const second = "BBB untouched BBB\n"
+	evalJS(t, ctx, `(async () => { await window.__app.newDocument(); return 'ok' })()`, &res)
+	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(second)+").then(() => 'ok')", &res)
+
+	evalJS(t, ctx, `document.dispatchEvent(new KeyboardEvent('keydown', {
+		key: 'z', metaKey: true, bubbles: true, cancelable: true
+	})); 'ok'`, &res)
+
+	var after string
+	evalJS(t, ctx, `(async () => { await new Promise((r) => setTimeout(r, 500)); return window.__app.getMarkdown() })()`, &after)
+	if after != second {
+		t.Errorf("Cmd-Z in a second document applied the first document's snapshot:\n got  %q\n want %q", after, second)
+	}
+
+	// And the first document keeps its replacement — abandoning the snapshot
+	// must not quietly roll anything back either.
+	var docs string
+	evalJS(t, ctx, `JSON.stringify(window.__app.state.docs.map((d) => d.markdown))`, &docs)
+	if !strings.Contains(docs, "AAA COMPONENT AAA") {
+		t.Errorf("the first document lost its replacement: %s", docs)
+	}
+}

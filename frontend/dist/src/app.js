@@ -300,13 +300,32 @@ function activeDoc() {
 // wins, and the other is refreshed from it.
 let splitAuthority = 'source'
 let splitFormattedTimer = null
+// What the pending rebuild would render, so taking the formatted pane can run it
+// rather than drop it.
+let splitPendingRefresh = null
 
 function getMarkdown() {
   // Read the surface the user is editing rather than the cached document, for
   // the same reason the other two modes do: the cache is written by a handler
   // that may not have run yet.
   if (state.mode === 'split') {
-    return splitAuthority === 'formatted' ? wysiwyg.getMarkdown() : els.splitSource.value
+    // ALWAYS the source pane, whichever pane holds authority.
+    //
+    // This used to return the editor's serialization when the formatted pane was
+    // authoritative, and those are not the same string: the frozen fidelity
+    // survey pins eleven constructs where they differ — table delimiter padding,
+    // runs of blank lines, trailing whitespace, indented code becoming fenced,
+    // HTML entities. So a single CLICK in the formatted pane, with no edit at
+    // all, changed what find searched and what Replace All rewrote. Replace then
+    // wrote that normalized text back over the whole file, reflowing tables and
+    // collapsing blank lines the user never touched — the exact blast radius
+    // routing replace through the source was chosen to avoid.
+    //
+    // The source pane is safe to read unconditionally because onEdited keeps it
+    // current: an edit made in the formatted pane is written straight into it.
+    // A click that edits nothing changes nothing, so there is nothing to read
+    // from the editor that the source pane does not already have.
+    return els.splitSource.value
   }
   return state.mode === 'raw' ? raw.getMarkdown() : activeDoc()?.markdown ?? wysiwyg.getMarkdown()
 }
@@ -1824,8 +1843,21 @@ async function replaceCurrentMatch() {
   runFind({ keepIndex: true })
 }
 
+// The snapshot carries the id of the document it was taken FROM.
+//
+// Without it the snapshot is just text, and text has no idea which file it
+// belongs to: replace in one tab, switch to another, press Cmd-Z, and the first
+// document's old content lands in the second tab, marked dirty, ready for the
+// next save to write it over a file the user never touched. That is the exact
+// failure the session package was written to end, reintroduced a layer above
+// where the session layer cannot see it.
+//
+// Checking the id at RESTORE time is the fix rather than clearing the snapshot
+// on every document transition. There are five such transitions today and any
+// new one would silently reopen this; identity is checked where it is used, so
+// a path nobody remembered to update still cannot corrupt anything.
 function rememberReplaceUndo(text, count) {
-  replaceUndo = { text, count }
+  replaceUndo = { text, count, docId: activeDoc()?.id ?? null }
 }
 
 // Any edit that is not a replace invalidates the snapshot: restoring it then
@@ -1842,6 +1874,13 @@ function forgetReplaceUndo() {
 // editor's own undo and break the ordinary case to protect the rare one.
 async function undoReplace() {
   if (!replaceUndo) return false
+  if (replaceUndo.docId !== (activeDoc()?.id ?? null)) {
+    // The snapshot belongs to a different document. Abandon it rather than
+    // applying it here: this is a way out of a mistake in ONE document, and
+    // restoring it into another is a larger mistake than the one it undoes.
+    replaceUndo = null
+    return false
+  }
   const { text, count } = replaceUndo
   replaceUndo = null
   await applyFindEdit(text)
@@ -1959,10 +1998,29 @@ function onSplitEdited() {
 // The authority is re-checked when the timer fires, not only when it is set: by
 // then the user may have clicked into the formatted pane, and rebuilding it
 // underneath them would discard what they had started typing there.
+// flushSplitFormattedRefresh runs a pending rebuild immediately instead of
+// letting it be abandoned.
+function flushSplitFormattedRefresh() {
+  if (!splitPendingRefresh) return
+  const { md, docId } = splitPendingRefresh
+  clearTimeout(splitFormattedTimer)
+  splitPendingRefresh = null
+  if (state.mode !== 'split' || (activeDoc()?.id ?? null) !== docId) return
+  renderWysiwyg(md)
+}
+
 function scheduleSplitFormattedRefresh(md) {
   clearTimeout(splitFormattedTimer)
+  // The document is captured with the text for the same reason the undo
+  // snapshot carries an id: 250ms is long enough to switch tabs, and rendering
+  // one document's markdown into the pane while the source pane shows another
+  // leaves the two halves of Split describing different files.
+  const docId = activeDoc()?.id ?? null
+  splitPendingRefresh = { md, docId }
   splitFormattedTimer = setTimeout(() => {
+    splitPendingRefresh = null
     if (state.mode !== 'split' || splitAuthority !== 'source') return
+    if ((activeDoc()?.id ?? null) !== docId) return
     renderWysiwyg(md)
   }, 250)
 }
@@ -2696,7 +2754,16 @@ function wire() {
   // have let an echo pass for an edit.
   for (const [pane, owner] of [[els.splitSource, 'source'], [els.splitFormatted, 'formatted']]) {
     for (const event of ['keydown', 'pointerdown']) {
-      pane.addEventListener(event, () => { splitAuthority = owner })
+      pane.addEventListener(event, () => {
+        // Taking authority of the formatted pane FLUSHES any rebuild still
+        // waiting on the debounce. Without this the pending rebuild is dropped
+        // — its callback re-checks the authority and returns — leaving the
+        // editor holding text from before the user's last keystrokes while the
+        // source pane visibly shows them. The user is then editing a stale
+        // document in the pane they just clicked into.
+        if (owner === 'formatted') flushSplitFormattedRefresh()
+        splitAuthority = owner
+      })
     }
   }
   els.btnInsertMenu.addEventListener('click', toggleInsertPopover)
@@ -2785,10 +2852,10 @@ function wire() {
       openFind({ replace: e.altKey })
       return
     }
-    if (key === 'z' && !e.shiftKey && replaceUndo) {
-      // Only when there is a replace to revert. Otherwise this falls through to
-      // the editor's own undo, which is the ordinary case and must not be
-      // swallowed to serve the rare one.
+    if (key === 'z' && !e.shiftKey && replaceUndo?.docId === (activeDoc()?.id ?? null)) {
+      // Only when there is a replace to revert IN THIS DOCUMENT. Otherwise this
+      // falls through to the editor's own undo, which is the ordinary case and
+      // must not be swallowed to serve the rare one.
       e.preventDefault()
       undoReplace()
       return

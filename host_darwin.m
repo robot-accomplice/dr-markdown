@@ -220,12 +220,16 @@ void hostCloseNow(void) {
   });
 }
 
-// Answers the terminate the guard was asked about. Main thread, because
-// replyToApplicationShouldTerminate: requires it.
-void hostReplyToTerminate(int allow) {
+// The guard allowed the shutdown, so ask for it again — this time it is let
+// through. Mirrors hostCloseNow, which closes the window a second time once the
+// same guard has answered.
+//
+// A refused shutdown needs no counterpart: applicationShouldTerminate: already
+// returned NSTerminateCancel, so the application simply carries on.
+void hostTerminateApproved(void) {
   dispatch_async(dispatch_get_main_queue(), ^{
-    if (allow) gShutdownApproved = YES;
-    [NSApp replyToApplicationShouldTerminate:allow ? YES : NO];
+    gShutdownApproved = YES;
+    [NSApp terminate:nil];
   });
 }
 
@@ -244,14 +248,26 @@ void hostReplyToTerminate(int allow) {
 // the primary quit gesture on macOS went straight past the guard: no dialog, and
 // every dirty tab gone.
 //
-// Two-phase for the same reason windowShouldClose: is. The guard prompts, and
-// that dialog needs the main thread this method is running on, so the answer
-// cannot be given synchronously. NSTerminateLater parks the shutdown until
-// replyToApplicationShouldTerminate: is called from hostReplyToTerminate.
+// Two-phase, and CANCEL rather than LATER — the same shape windowShouldClose:
+// uses, for a reason that cost a hang to learn.
+//
+// NSTerminateLater looks like the right answer and is a trap here. It parks
+// AppKit in a restricted run-loop mode until replyToApplicationShouldTerminate:
+// arrives, and every dialog in this file is delivered by dispatch_async to the
+// main queue — which is serviced only in the DEFAULT run-loop mode. So the block
+// carrying the save prompt never ran: no dialog appeared, the guard blocked
+// forever waiting for an answer nobody could give, and the application could
+// then be neither quit nor closed. That is worse than the defect this method was
+// added to fix, which at least let you quit.
+//
+// NSTerminateCancel refuses this terminate outright and hands the run loop back,
+// so the prompt behaves exactly as it does on the window path. When the guard
+// allows the shutdown, hostTerminateApproved asks AppKit to terminate a second
+// time and gShutdownApproved lets it through — the mirror of closeApproved.
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)app {
   if (gShutdownApproved) return NSTerminateNow;
   hostRequestTerminate();
-  return NSTerminateLater;
+  return NSTerminateCancel;
 }
 
 // Files the OS routes to the application: a double-click in Finder, or `open`
@@ -495,8 +511,15 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     [config setURLSchemeHandler:bridgeObj forURLScheme:kScheme];
     [config.userContentController addScriptMessageHandler:bridgeObj name:@"drmd"];
-    // Web Inspector. The gate verdicts are read from its console.
-    [config.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+    // Web Inspector, for HARNESS RUNS ONLY. The gate verdicts are read from its
+    // console, which is why it exists — but it was enabled unconditionally, so
+    // every shipped, notarized copy carried a live inspector on the one webview
+    // whose bridge this project's own comments describe as arbitrary read and
+    // arbitrary write. dropMode is 0 on an ordinary launch and non-zero only
+    // when a harness flag was passed on the command line.
+    if (dropMode != 0) {
+      [config.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+    }
 
     // The bound surface is an explicit two-method object, NOT a proxy over every
     // name. bridge.js degrades when a binding is absent — `native()?.X() ?? missing(X)`
