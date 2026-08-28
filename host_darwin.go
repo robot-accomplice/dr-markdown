@@ -111,6 +111,20 @@ func (darwinHost) Run(cfg hostConfig) error {
 	// simply sat there, and the application could be neither quit nor closed. A
 	// harness that hangs reads as a broken harness rather than as a verdict, and
 	// the defect hid behind that.
+	// The close gate gets the same deadline as the quit gate, for the same reason
+	// and by the same lesson: a guard whose dialog cannot be delivered leaves the
+	// harness sitting there, and a harness that sits there reads as broken rather
+	// than as a verdict. This one has never hung — it is here so it cannot start.
+	if closeCheckMode {
+		go func() {
+			time.Sleep(quitCheckDeadline)
+			fmt.Println("CLOSE: no verdict within", quitCheckDeadline)
+			fmt.Println("VERDICT: FAIL — the guard never answered. Either it was never " +
+				"reached, or its dialog could not be delivered")
+			os.Exit(1)
+		}()
+	}
+
 	if quitCheckMode {
 		go func() {
 			time.Sleep(quitCheckDeadline)
