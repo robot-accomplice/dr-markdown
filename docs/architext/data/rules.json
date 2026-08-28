@@ -1,12 +1,32 @@
 {
   "rules": [
     {
+      "id": "release-ceremony-runs-in-full",
+      "title": "The release ceremony runs in full, every release",
+      "summary": "docs/RELEASE.md is the ceremony. Every step runs, every release, in order, without being authorized step by step at release time. If a step should not run, that is an argued change to the document, not a decision retaken while a release is half cut.",
+      "category": "Release",
+      "criticality": "critical",
+      "order": 1,
+      "source": "maintainer",
+      "rationale": "The ceremony used to live in whoever was cutting the release, so pieces of it were rediscovered, negotiated or skipped per release. Two failures of the same kind, one release apart: v1.6.3 was recorded complete and never tagged or published, so the last installable release stayed v1.6.2 while the record said otherwise; and v1.6.4 shipped without the README screenshot refresh that this same rules file had required since v1.6.1. Neither was a judgement call anyone made — both were steps nobody was holding. A ceremony that is remembered rather than written down is a ceremony with holes in it, and the holes move.",
+      "appliesTo": [
+        "docs/RELEASE.md",
+        "docs/architext/data/releases",
+        "VERSION",
+        "tools/build-macos.sh"
+      ],
+      "protection": {
+        "edit": true,
+        "delete": true
+      }
+    },
+    {
       "id": "wysiwyg-is-the-purpose",
       "title": "WYSIWYG is the defining purpose of this editor",
       "summary": "Everything in Formatted mode must be editable in place. If a construct renders but cannot be edited there, that is a defect, not a design choice — regardless of what any inventory, spec or prior note says about that construct.",
       "category": "Design",
       "criticality": "critical",
-      "order": 1,
+      "order": 2,
       "source": "maintainer",
       "rationale": "Stated by the maintainer on 2026-08-10: \"EVERYTHING should be editable in formatted mode, it's a WYSIWYG markdown editor\", and \"WYSIWYG ... is the whole reason this app exists\". It was recorded as a rule because the opposite had already been inferred twice from documentation: the 2026-08-06 screen inventory promises block-local LANGUAGE editing for rendered code blocks, and that was read as licence for the body to be read-only. It is not. The consequence is concrete — code blocks have been uneditable since syntax highlighting was added (#77), because the app replaces the editor's own node with static chrome, and that shipped in v0.5.1. A release is blocked on it: \"we cannot ship another broken release on basic editing functionality\".",
       "appliesTo": [
@@ -25,7 +45,7 @@
       "summary": "Replace neutral starter data with source-backed architecture, release, and project rules before treating Architext as current.",
       "category": "project",
       "criticality": "critical",
-      "order": 10,
+      "order": 3,
       "source": "maintainer",
       "rationale": "Fresh installs validate immediately, but starter data is not project-specific documentation.",
       "appliesTo": [
@@ -44,7 +64,7 @@
       "summary": "Run go run ./tools/screenshots and refresh the checked-in README screenshots as part of preparing a release, not on every UI-facing change. The screenshots document the released product; between releases they may lag the branch.",
       "category": "Design",
       "criticality": "high",
-      "order": 20,
+      "order": 4,
       "source": "maintainer",
       "rationale": "The README is the public visual contract for the RELEASED macOS app, so the screenshots must be current at the moment of release. Requiring them on every UI change instead made five binary PNGs a shared, multi-writer artifact: git cannot merge a PNG, so any two concurrent UI branches conflicted on all five by construction. That happened on three separate pull requests in one day, and the only correct resolution each time was to discard both sides and regenerate — which is the definition of a derived artifact that should have one writer. Release preparation is that writer. Regenerating is deterministic on a given machine, so drift is detectable; a CI equality check would compare macOS-rendered output against a Linux runner's and would need verifying before it could be trusted.",
       "appliesTo": [
@@ -62,7 +82,7 @@
       "summary": "The application's icon and its in-app accent are allowed to diverge. They are seen in different places and by different means, and holding them to one hue is a constraint nobody asked for. A review that notices the divergence should not record it as a defect or a residual.",
       "category": "Design",
       "criticality": "medium",
-      "order": 30,
+      "order": 5,
       "source": "maintainer",
       "rationale": "Ruled by the maintainer on 2026-08-26. Raised twice as a residual — in the v1.6.1 ABORT and carried into v1.6.2 — after the icon was replaced with more saturated artwork while --accent stayed tuned to the previous icon's hue. Both were withdrawn. Recorded as a rule rather than only as a correction in those records, because the observation is easy to re-derive: the next reviewer to compare the Dock icon against the accent will see the same thing and, without this, reach the same wrong conclusion.",
       "appliesTo": [
@@ -80,7 +100,7 @@
       "summary": "Plans, specs, scratch analysis, session notes and skill scaffolding are by-products of how work was done, not artefacts the project needs. They are never committed. Durable reasoning belongs in a normal location — docs/decisions, docs/releases, the README — and a durable record must never cite an ephemeral file.",
       "category": "Development",
       "criticality": "high",
-      "order": 15,
+      "order": 6,
       "source": "maintainer",
       "rationale": "Violated silently and at scale. .gitignore covered .superpowers/ but not docs/superpowers/, so 38 plan and spec files (384K) were tracked on main and shipped in every release for weeks. They then became load-bearing: 33 citations from decision records, release records, roadmap data and three Go source comments pointed at them, so scaffolding that should never have been in the repository had been woven into the durable record. Removing it required repointing every live citation first.",
       "appliesTo": [
