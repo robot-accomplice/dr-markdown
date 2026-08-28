@@ -145,6 +145,9 @@ func NewEventLog() *eventlog.Log {
 	if err != nil {
 		logDir = os.TempDir()
 	}
+	// The directory keeps the ORIGINAL name. Renaming it to match the
+	// application would abandon every existing trail on an upgrade, and this
+	// exists to make a past failure investigable. The user never sees it.
 	return eventlog.New(filepath.Join(logDir, "Dr. Markdown"), appVersion, time.Now)
 }
 
@@ -620,7 +623,7 @@ func (a *App) updateTitle() {
 	if path != "" {
 		name = path
 	}
-	title := "Dr. Markdown — " + name
+	title := "Dr Markdown — " + name
 	if dirty {
 		title += " •"
 	}

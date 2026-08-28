@@ -4,11 +4,11 @@
         <key>CFBundlePackageType</key>
         <string>APPL</string>
         <key>CFBundleName</key>
-        <string>Dr. Markdown</string>
+        <string>Dr Markdown</string>
         <key>CFBundleDisplayName</key>
-        <string>Dr. Markdown</string>
+        <string>Dr Markdown</string>
         <key>CFBundleExecutable</key>
-        <string>Dr. Markdown</string>
+        <string>Dr Markdown</string>
         <key>CFBundleIdentifier</key>
         <string>com.drmarkdown.app</string>
         <key>CFBundleVersion</key>

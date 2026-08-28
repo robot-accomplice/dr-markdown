@@ -26,6 +26,38 @@ fetch() {
   curl -fsSL "$1" -o "$2"
 }
 
+# markdown-it: markdown -> HTML for the print surface and the split preview.
+#
+# Those two surfaces used to share a 43-line hand-written renderer that matched
+# headings and fences with regular expressions and handled almost nothing else.
+# Measured across sixteen ordinary constructs, SIXTEEN were wrong: a GFM table
+# came out as three paragraphs of pipe characters, an ordered list lost its
+# numbers and became bullets, nested lists flattened, task lists showed literal
+# brackets, inline emphasis inside a heading or a quote stayed as asterisks, a
+# wrapped paragraph split into two, and footnotes, reference links, setext
+# headings, indented code and two of the three thematic-break spellings were
+# emitted verbatim.
+#
+# That renderer also fed PRINT and PDF EXPORT, which is the artifact that leaves
+# the application and cannot be corrected afterwards.
+MARKDOWN_IT_VERSION="14.1.0"
+fetch "https://esm.sh/markdown-it@${MARKDOWN_IT_VERSION}/es2022/markdown-it.bundle.mjs" \
+  "$VENDOR/markdown-it.bundle.mjs"
+
+# Two plugins, because this application's dialect is CommonMark PLUS GFM and
+# markdown-it's core is CommonMark alone. Without them the renderer disagrees
+# with the editor on exactly two constructs, and both are in the dialect:
+#
+#   task list   core emits <li>[ ] todo</li>; the editor draws a checkbox
+#   footnote    core reads [^1] as a shortcut reference LINK, which is correct
+#               CommonMark and wrong here — the editor renders a footnote, and
+#               the fidelity work already treats footnote definitions as a
+#               construct this app preserves
+fetch "https://esm.sh/markdown-it-footnote@4.0.0/es2022/markdown-it-footnote.bundle.mjs" \
+  "$VENDOR/markdown-it-footnote.bundle.mjs"
+fetch "https://esm.sh/markdown-it-task-lists@2.1.1/es2022/markdown-it-task-lists.bundle.mjs" \
+  "$VENDOR/markdown-it-task-lists.bundle.mjs"
+
 # Milkdown Crepe editor: one self-contained ESM bundle (~2.8 MB).
 fetch "https://esm.sh/@milkdown/crepe@${CREPE_VERSION}/es2022/crepe.bundle.mjs" \
   "$VENDOR/crepe.bundle.mjs"
@@ -221,6 +253,44 @@ s = io.open(path, encoding='utf-8').read()
 io.open(path, 'w', encoding='utf-8').write(s.replace(old, new, 1))
 PYEOF
 echo "routed the block language picker through the app's normalizer"
+
+# Measure the image block in LAYOUT pixels, not in zoomed ones.
+#
+# The image node view sizes an image on load by measuring its block with
+# getBoundingClientRect().width and writing an explicit pixel height back onto
+# the <img>. Under the document zoom this application applies — CSS `zoom` on
+# #editor-host, chosen because it participates in layout and so stays crisp —
+# getBoundingClientRect returns the ZOOMED width while the style it computes is
+# applied inside that same zoomed context. The zoom is therefore counted twice.
+#
+# Measured at 90% on a 1600x420 image, after a mode round trip rebuilt the
+# editor:
+#
+#   correct    container 598 -> height 157 -> width 597.78 -> renders 538
+#   observed   container 538 -> height 141 -> width 537.95 -> renders 484
+#
+# 538 = 598 x 0.9, and 484 = 538 x 0.9. The image came back 54px short of the
+# pane it should fill and stayed short (GitHub #131).
+#
+# clientWidth is the layout width and is unaffected by zoom, which is the
+# coordinate space the computed style is applied in. It is also an integer,
+# where the rect is fractional; that costs sub-pixel precision on a value that
+# is immediately rounded to two decimals anyway.
+zoom_anchor='let E=R.getBoundingClientRect().width;if(!E)return;'
+if ! grep -qF "$zoom_anchor" "$VENDOR/crepe.bundle.mjs"; then
+    echo "error: the image block no longer measures its container the same way." >&2
+    echo "       Without this patch an image is sized from a zoomed measurement" >&2
+    echo "       and the document zoom is applied twice, so an image comes back" >&2
+    echo "       short of its pane after a mode change (#131)." >&2
+    exit 1
+fi
+python3 - "$VENDOR/crepe.bundle.mjs" "$zoom_anchor" 'let E=R.clientWidth;if(!E)return;' <<'PYEOF'
+import sys, io
+path, old, new = sys.argv[1], sys.argv[2], sys.argv[3]
+s = io.open(path, encoding='utf-8').read()
+io.open(path, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYEOF
+echo "sized the image block from layout pixels, so document zoom is not counted twice"
 
 # Highlight.js common browser build: syntax highlighting for markdown source
 # overlays and language-tagged fenced code blocks.

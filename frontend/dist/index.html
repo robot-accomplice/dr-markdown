@@ -40,43 +40,25 @@
   <div id="app-shell">
     <section id="ribbon" aria-label="Editor ribbon">
       <div class="ribbon-tabs-row">
+        <button id="btn-file-menu" class="file-menu-button" type="button"
+                aria-haspopup="menu" aria-expanded="false">File</button>
         <nav class="ribbon-tabs" aria-label="Ribbon tabs">
-          <button class="active" type="button" data-ribbon-tab="file">File</button>
+          <button class="active" type="button" data-ribbon-tab="format">Format</button>
           <button type="button" data-ribbon-tab="insert">Insert</button>
-          <button type="button" data-ribbon-tab="format">Format</button>
           <button type="button" data-ribbon-tab="view">View</button>
           <button type="button" data-ribbon-tab="help">Help</button>
         </nav>
         <button id="btn-settings" class="tab-row-settings" type="button">Settings</button>
-        <div class="mode-controls" aria-label="Editor mode">
+        <div class="mode-controls" role="radiogroup" aria-label="Editor mode">
           <div class="mode-switch">
-            <button id="btn-mode-formatted" class="active" type="button">Formatted</button>
-            <button id="btn-mode-raw" type="button">Raw</button>
+            <button id="btn-mode-formatted" class="active" type="button" role="radio" aria-checked="true">Formatted</button>
+            <button id="btn-mode-raw" type="button" role="radio" aria-checked="false">Raw</button>
+            <button id="btn-split" type="button" role="radio" aria-checked="false">Split</button>
           </div>
-          <div class="mode-divider"></div>
-          <button id="btn-split" class="split-toggle" type="button">Split</button>
         </div>
       </div>
 
       <div class="ribbon-panels">
-        <section class="ribbon-panel" data-ribbon-panel="file" aria-label="File">
-          <div class="ribbon-group">
-            <div class="ribbon-controls labelled">
-              <button data-file-action="new" aria-label="New document" title="New document" data-collapse-glyph="+" type="button"><span class="button-label">New</span></button>
-              <button data-file-action="open" aria-label="Open a file" title="Open a file" data-collapse-glyph="⌥" type="button"><span class="button-label">Open</span></button>
-              <button data-file-action="save" aria-label="Save" title="Save" data-collapse-glyph="↓" type="button"><span class="button-label">Save</span></button>
-              <button data-file-action="save-as" aria-label="Save As" title="Save As" data-collapse-glyph="⇪" type="button"><span class="button-label">Save As</span></button>
-            </div>
-            <h2>Document</h2>
-          </div>
-          <div class="ribbon-separator"></div>
-          <div class="ribbon-group">
-            <div class="ribbon-controls labelled">
-              <button data-export-toggle="true" aria-label="Export" title="Export" data-collapse-glyph="↗" type="button"><span class="button-label">Export ▾</span></button>
-            </div>
-            <h2>Share</h2>
-          </div>
-        </section>
 
         <section class="ribbon-panel" data-ribbon-panel="insert" aria-label="Insert" hidden>
           <div class="ribbon-group">
@@ -94,7 +76,7 @@
           </div>
         </section>
 
-        <section class="ribbon-panel" data-ribbon-panel="format" aria-label="Format" hidden>
+        <section class="ribbon-panel" data-ribbon-panel="format" aria-label="Format">
           <div class="ribbon-group">
             <div class="ribbon-controls">
               <select id="block-style" title="Paragraph style">
@@ -194,6 +176,33 @@
           </div>
           <p class="empty-shortcuts">&#8984;&#8679;R toggles raw &middot; &#8984;&#8679;S opens split</p>
         </div>
+        <!-- Find bar. Hidden until the shortcut, and it OVERLAYS the document
+             rather than displacing it: a bar that reflows the page moves the
+             text you were looking for out from under your eyes as it opens. -->
+        <div id="find-bar" role="search" aria-label="Find in document" hidden>
+          <div class="find-row">
+            <input id="find-input" type="text" placeholder="Find" spellcheck="false"
+                   aria-label="Find in document" autocomplete="off">
+            <span id="find-count" class="find-count" role="status" aria-live="polite">No results</span>
+            <div class="find-toggles">
+              <button id="find-case" type="button" aria-pressed="false"
+                      title="Match case" aria-label="Match case">Aa</button>
+              <button id="find-word" type="button" aria-pressed="false"
+                      title="Whole word" aria-label="Whole word">Ab</button>
+              <button id="find-regex" type="button" aria-pressed="false"
+                      title="Regular expression" aria-label="Regular expression">.*</button>
+            </div>
+            <button id="find-prev" type="button" title="Previous match" aria-label="Previous match">&#8249;</button>
+            <button id="find-next" type="button" title="Next match" aria-label="Next match">&#8250;</button>
+            <button id="find-close" type="button" title="Close find bar" aria-label="Close find bar">&#215;</button>
+          </div>
+          <div class="find-row" data-find-replace-row>
+            <input id="replace-input" type="text" placeholder="Replace" spellcheck="false"
+                   aria-label="Replace with" autocomplete="off">
+            <button id="replace-one" type="button">Replace</button>
+            <button id="replace-all" type="button">All</button>
+          </div>
+        </div>
         <div id="document-zoom" class="document-zoom" aria-label="Document zoom">
           <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out">&#8722;</button>
           <button type="button" data-zoom="reset" data-zoom-level aria-label="Reset zoom to 100%" title="Reset zoom">100%</button>
@@ -210,9 +219,11 @@
                 <textarea id="split-source" class="source-input" spellcheck="false"></textarea>
               </div>
             </section>
+            <!-- The formatted pane hosts the real editor: #wysiwyg is moved in
+                 here on entering split mode and back to #editor-host on leaving,
+                 so both panes are live editors on one document. -->
             <section class="split-pane" data-split-pane="formatted">
               <div class="split-header">Formatted · scroll locked</div>
-              <div id="split-preview"></div>
             </section>
           </div>
         </div>
@@ -253,6 +264,7 @@
 
     <button id="btn-close-tab" hidden type="button">Close</button>
   <div id="insert-popover-root"></div>
+  <div id="file-menu-root"></div>
   <div id="code-assistant-root"></div>
   <div id="diagram-assistant-root"></div>
   <div id="settings-root"></div>

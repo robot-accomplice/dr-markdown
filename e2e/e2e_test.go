@@ -432,11 +432,18 @@ func TestSplitScreenEditsAndInsertPopoverAreBacked(t *testing.T) {
 		return 'ok'
 	})()`, &res)
 
+	// The formatted pane is the real editor, and rebuilding an editor is far
+	// more expensive than replacing a preview's children — so it settles after a
+	// pause in typing rather than on the keystroke. Wait for it instead of
+	// reading immediately, or this test measures the debounce, not the sync.
+	if !waitForJS(t, ctx, `document.getElementById('wysiwyg').textContent.includes('Changed Split')`) {
+		t.Fatal("formatted pane did not refresh from a source edit")
+	}
 	var previewText, md string
-	evalJS(t, ctx, "document.getElementById('split-preview').textContent", &previewText)
+	evalJS(t, ctx, "document.getElementById('wysiwyg').textContent", &previewText)
 	evalJS(t, ctx, "window.__app.getMarkdown()", &md)
 	if !strings.Contains(previewText, "Changed Split") || !strings.Contains(previewText, "Updated paragraph") {
-		t.Fatalf("split preview did not refresh from source edit: %q", previewText)
+		t.Fatalf("formatted pane did not refresh from source edit: %q", previewText)
 	}
 	if !strings.Contains(md, "# Changed Split") {
 		t.Fatalf("split source edit did not update markdown: %q", md)
@@ -490,7 +497,7 @@ func TestSplitModeShowsScrollLockedHeaderAndSyncsScroll(t *testing.T) {
 	var sourceMovesPreview bool
 	evalJS(t, ctx, `new Promise((resolve) => {
 		const source = document.getElementById('split-source')
-		const preview = document.getElementById('split-preview')
+		const preview = document.getElementById('wysiwyg')
 		source.scrollTop = source.scrollHeight / 2
 		source.dispatchEvent(new Event('scroll', { bubbles: true }))
 		setTimeout(() => resolve(preview.scrollTop > 0), 80)
@@ -502,7 +509,7 @@ func TestSplitModeShowsScrollLockedHeaderAndSyncsScroll(t *testing.T) {
 	var previewMovesSource bool
 	evalJS(t, ctx, `new Promise((resolve) => {
 		const source = document.getElementById('split-source')
-		const preview = document.getElementById('split-preview')
+		const preview = document.getElementById('wysiwyg')
 		source.scrollTop = 0
 		preview.scrollTop = preview.scrollHeight / 2
 		preview.dispatchEvent(new Event('scroll', { bubbles: true }))
@@ -557,13 +564,17 @@ func TestFencedCodeBlocksUseDeclaredLanguageHighlighting(t *testing.T) {
 	fixture := "```js\nconst answer = \"yes\"\n```\n"
 	var res string
 	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
-	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
+	// Print is the only surface left that is not the editor: split shows the
+	// real editor now, so a static highlighted <pre> exists nowhere else. This
+	// is the arm that matters most anyway — a PDF cannot be corrected after it
+	// is sent.
+	renderToPrintRoot(t, ctx, fixture)
 
-	var splitCodeHighlighted bool
-	evalJS(t, ctx, `document.querySelector('#split-preview pre code[data-language="js"] .hljs-keyword') !== null &&
-		document.querySelector('#split-preview pre code[data-language="js"] .hljs-string') !== null`, &splitCodeHighlighted)
-	if !splitCodeHighlighted {
-		t.Fatal("split preview fenced code block should highlight using its declared language")
+	var printCodeHighlighted bool
+	evalJS(t, ctx, `document.querySelector('#print-root pre code[data-language="js"] .hljs-keyword') !== null &&
+		document.querySelector('#print-root pre code[data-language="js"] .hljs-string') !== null`, &printCodeHighlighted)
+	if !printCodeHighlighted {
+		t.Fatal("print fenced code block should highlight using its declared language")
 	}
 
 	// The formatted surface highlights through the editor's own code-mirror node
@@ -600,7 +611,7 @@ func TestSplitPreviewRendersInlineMarkdownSemantics(t *testing.T) {
 
 	var rendered bool
 	evalJS(t, ctx, `(() => {
-		const preview = document.getElementById('split-preview')
+		const preview = document.getElementById('wysiwyg')
 		return preview.querySelector('strong')?.textContent === 'strong' &&
 			preview.querySelector('em')?.textContent === 'emphasized' &&
 			preview.querySelector('code:not(pre code)')?.textContent === 'inline code' &&
@@ -608,7 +619,7 @@ func TestSplitPreviewRendersInlineMarkdownSemantics(t *testing.T) {
 			!preview.textContent.includes('[link](https://example.com)')
 	})()`, &rendered)
 	if !rendered {
-		t.Fatal("split preview should render common inline markdown semantics instead of literal markdown")
+		t.Fatal("the split formatted pane should render common inline markdown semantics instead of literal markdown")
 	}
 }
 
@@ -646,18 +657,20 @@ func TestFencedCodeBlocksRenderDesignChrome(t *testing.T) {
 	fixture := "```javascript\nconst answer = 42\n```\n"
 	var res string
 	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
-	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
+	// The injected shell survives only on print now; split shows the editor and
+	// therefore the editor's own chrome, asserted below.
+	renderToPrintRoot(t, ctx, fixture)
 
-	var splitChrome bool
+	var printChrome bool
 	evalJS(t, ctx, `(() => {
-		const block = document.querySelector('#split-preview .code-block-shell[data-language="javascript"]')
+		const block = document.querySelector('#print-root .code-block-shell[data-language="javascript"]')
 		return block &&
 			block.querySelector('.code-block-language')?.textContent === 'javascript' &&
 			block.querySelector('.code-block-copy')?.textContent === 'Copy' &&
 			block.querySelector('pre code .hljs-keyword') !== null
-	})()`, &splitChrome)
-	if !splitChrome {
-		t.Fatal("split preview code blocks should render language/copy chrome around highlighted code")
+	})()`, &printChrome)
+	if !printChrome {
+		t.Fatal("print code blocks should render language/copy chrome around highlighted code")
 	}
 
 	// In the formatted surface the chrome is the editor's own, not a shell the
@@ -818,11 +831,10 @@ func TestMermaidBlocksRenderAsDiagrams(t *testing.T) {
 	evalJS(t, ctx, "window.__app.setMarkdown("+strconv.Quote(fixture)+").then(() => 'ok')", &res)
 	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
 
-	var splitRendered bool
-	evalJS(t, ctx, `document.querySelector('#split-preview .mermaid-render svg') !== null &&
-		document.querySelector('#split-preview pre code[data-language="mermaid"]') === null`, &splitRendered)
-	if !splitRendered {
-		t.Fatal("split preview should render Mermaid diagrams instead of showing a mermaid code block")
+	// Split shows the editor, so the diagram here is the editor's own drawn
+	// preview. It settles asynchronously for the reason recorded below.
+	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .mermaid-render svg') !== null`) {
+		t.Fatal("the split formatted pane should render Mermaid diagrams instead of a mermaid code block")
 	}
 
 	// The diagram is drawn by the editor's code-block preview hook, which runs
@@ -1319,14 +1331,19 @@ func TestRibbonCompletionCommandsAreBacked(t *testing.T) {
 		t.Fatal("Share should remain hidden until collaboration behavior is backed")
 	}
 
-	evalJS(t, ctx, "window.__app.activateRibbonTab('home'); 'ok'", &res)
-	evalJS(t, ctx, `document.querySelector('[data-export-toggle]').click(); 'ok'`, &res)
+	// Print and PDF moved out of a ribbon dropdown and into the File menu when
+	// File stopped being a tab. The guarantee is unchanged: both must be present
+	// and backed, not merely drawn.
 	var exportOpen bool
-	evalJS(t, ctx, `document.querySelector('[data-export-menu]') !== null &&
-		document.querySelector('[data-export-action="print"]') !== null &&
-		document.querySelector('[data-export-action="pdf"]') !== null`, &exportOpen)
+	evalJS(t, ctx, `(async () => {
+		document.getElementById('btn-file-menu').click()
+		await new Promise((r) => setTimeout(r, 250))
+		return document.querySelector('[data-file-menu]') !== null &&
+			document.querySelector('[data-file-menu-action="print"]') !== null &&
+			document.querySelector('[data-file-menu-action="pdf"]') !== null
+	})()`, &exportOpen)
 	if !exportOpen {
-		t.Fatal("Export should open a backed menu with Print and PDF actions")
+		t.Fatal("the File menu should offer backed Print and PDF actions")
 	}
 }
 
@@ -1845,18 +1862,20 @@ func TestImageAssetsResolveOnEveryRenderSurface(t *testing.T) {
 		t.Error("formatted editor did not resolve the image asset")
 	}
 
-	// 2. split preview
+	// 2. the same editor, moved into the split formatted pane. Not redundant
+	// with the arm above: entering split rebuilds the editor in a new parent,
+	// and image resolution is a separate pass that runs after that rebuild.
 	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
 	var split bool
 	evalJS(t, ctx, `(async () => {
 		for (let i = 0; i < 100; i++) {
-			if (document.querySelector('#split-preview img[src^="data:image/png;base64,SURFACE"]')) return true
+			if (document.querySelector('[data-split-pane="formatted"] #wysiwyg img[src^="data:image/png;base64,SURFACE"]')) return true
 			await new Promise((r) => setTimeout(r, 20))
 		}
 		return false
 	})()`, &split)
 	if !split {
-		t.Error("split preview did not resolve the image asset")
+		t.Error("the split formatted pane did not resolve the image asset")
 	}
 
 	// 3. print / export
@@ -2405,20 +2424,6 @@ func TestSidePanelsCanBeHiddenIndependently(t *testing.T) {
 	}
 }
 
-func tableSection(md string, header string) string {
-	lines := strings.Split(md, "\n")
-	for i, line := range lines {
-		if strings.Contains(line, header) {
-			end := i
-			for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
-				end++
-			}
-			return strings.Join(lines[i:end], "\n")
-		}
-	}
-	return ""
-}
-
 func TestNativeInteractionAndAccessibilityState(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()
@@ -2437,7 +2442,7 @@ func TestNativeInteractionAndAccessibilityState(t *testing.T) {
 		t.Fatal("Escape should close settings")
 	}
 
-	evalJS(t, ctx, `document.querySelector('[data-export-toggle]').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.getElementById('btn-file-menu').click(); 'ok'`, &res)
 	chromedp.Run(ctx, chromedp.KeyEvent("\u001b"))
 	evalJS(t, ctx, `document.querySelector('[data-export-menu]') === null`, &closed)
 	if !closed {
@@ -2472,14 +2477,16 @@ func TestNativeInteractionAndAccessibilityState(t *testing.T) {
 	}
 
 	evalJS(t, ctx, "window.__app.setMode('split').then(() => 'ok')", &res)
-	var pressed string
+	// aria-CHECKED, not aria-pressed: the three modes became one radiogroup, so a
+	// screen reader announces one choice of three rather than three toggles.
+	var checked string
 	evalJS(t, ctx, `[
-		document.getElementById('btn-mode-formatted').getAttribute('aria-pressed'),
-		document.getElementById('btn-mode-raw').getAttribute('aria-pressed'),
-		document.getElementById('btn-split').getAttribute('aria-pressed')
-	].join(',')`, &pressed)
-	if pressed != "false,false,true" {
-		t.Fatalf("mode controls should expose aria-pressed state, got %q", pressed)
+		document.getElementById('btn-mode-formatted').getAttribute('aria-checked'),
+		document.getElementById('btn-mode-raw').getAttribute('aria-checked'),
+		document.getElementById('btn-split').getAttribute('aria-checked')
+	].join(',')`, &checked)
+	if checked != "false,false,true" {
+		t.Fatalf("mode controls should expose aria-checked state, got %q", checked)
 	}
 }
 
@@ -2497,8 +2504,8 @@ func TestPrintAndPDFExportUseFormattedPrintPipeline(t *testing.T) {
 	var beforePrint string
 	evalJS(t, ctx, "window.__app.getMarkdown()", &beforePrint)
 
-	evalJS(t, ctx, `document.querySelector('[data-export-toggle]').click(); 'ok'`, &res)
-	evalJS(t, ctx, `document.querySelector('[data-export-action="print"]').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.getElementById('btn-file-menu').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.querySelector('[data-file-menu-action="print"]').click(); 'ok'`, &res)
 	var printState string
 	evalJS(t, ctx, `[
 		window.__printCalls,
@@ -2518,8 +2525,8 @@ func TestPrintAndPDFExportUseFormattedPrintPipeline(t *testing.T) {
 		t.Fatalf("print should not mutate markdown:\n%q", md)
 	}
 
-	evalJS(t, ctx, `document.querySelector('[data-export-toggle]').click(); 'ok'`, &res)
-	evalJS(t, ctx, `document.querySelector('[data-export-action="pdf"]').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.getElementById('btn-file-menu').click(); 'ok'`, &res)
+	evalJS(t, ctx, `document.querySelector('[data-file-menu-action="pdf"]').click(); 'ok'`, &res)
 	var pdfState string
 	evalJS(t, ctx, `[window.__printCalls, document.body.dataset.lastExportAction, document.body.dataset.pdfExportVia].join('|')`, &pdfState)
 	if pdfState != "2|pdf|print-dialog" {
@@ -2559,7 +2566,7 @@ func TestVisualBaselineScreensRenderWithoutOverflow(t *testing.T) {
 				scrollWidth: document.documentElement.scrollWidth,
 				appWidth: document.getElementById('app-shell').getBoundingClientRect().width,
 				ribbonWidth: document.getElementById('ribbon').getBoundingClientRect().width,
-				exportRight: document.querySelector('[data-export-toggle]').getBoundingClientRect().right
+				exportRight: document.getElementById('btn-file-menu').getBoundingClientRect().right
 			})`, &overflowReport)
 			t.Fatalf("%s baseline overflows the viewport: %s", state.name, overflowReport)
 		}
@@ -2574,7 +2581,7 @@ func TestVisualBaselineScreensRenderWithoutOverflow(t *testing.T) {
 
 	var exportVisible bool
 	evalJS(t, ctx, `(() => {
-		const button = document.querySelector('[data-export-toggle]')
+		const button = document.getElementById('btn-file-menu')
 		const rect = button.getBoundingClientRect()
 		return rect.left >= 0 && rect.right <= window.innerWidth && rect.width > 0
 	})()`, &exportVisible)
@@ -2605,13 +2612,13 @@ func TestResponsiveShellAdaptsToReducedWindowWidths(t *testing.T) {
 				width: window.innerWidth,
 				scrollWidth: document.documentElement.scrollWidth,
 				ribbonWidth: document.getElementById('ribbon').getBoundingClientRect().width,
-				export: document.querySelector('[data-export-toggle]').getBoundingClientRect().toJSON?.() || {}
+				export: document.getElementById('btn-file-menu').getBoundingClientRect().toJSON?.() || {}
 			})`, &report)
 			t.Fatalf("responsive shell should not overflow at %dpx: %s", width, report)
 		}
 		var exportVisible bool
 		evalJS(t, ctx, `(() => {
-			const rect = document.querySelector('[data-export-toggle]').getBoundingClientRect()
+			const rect = document.getElementById('btn-file-menu').getBoundingClientRect()
 			return rect.left >= 0 && rect.right <= window.innerWidth && rect.width > 0
 		})()`, &exportVisible)
 		if !exportVisible {

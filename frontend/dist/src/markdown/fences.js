@@ -113,3 +113,35 @@ export function fencedLanguages(md) {
     .map((line) => line.match(/^```\s*([A-Za-z0-9_+#.-]+)/)?.[1] || '')
     .filter(Boolean)
 }
+
+// codeFenceIndexByLine maps the 0-based source line of each OPENING fence to
+// its fence index.
+//
+// The index is only meaningful because rewriteCodeFenceLanguage and
+// rewriteMermaidFenceSource count fences the same way, and they are what
+// actually edits the document. A renderer that numbered fences by its own
+// parse order — counting fences indented inside a list, which `^```` does not
+// match — would hand the assistant an index that names a different block than
+// the one the user right-clicked, and the rewrite would land on the wrong code.
+// So the numbering lives here, next to the rewriters, and has exactly one
+// implementation.
+//
+// A fence this scan cannot see has no entry, and callers pass null rather than
+// a guess: no language picker and no assistant on that block is correct, since
+// the rewriters could not have found it either.
+export function codeFenceIndexByLine(md) {
+  const byLine = new Map()
+  let index = -1
+  let inFence = false
+  md.split('\n').forEach((line, lineNumber) => {
+    if (!/^```/.test(line)) return
+    if (inFence) {
+      inFence = false
+      return
+    }
+    inFence = true
+    index++
+    byLine.set(lineNumber, index)
+  })
+  return byLine
+}

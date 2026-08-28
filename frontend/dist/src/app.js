@@ -8,6 +8,8 @@ import {
   firstCodeFenceDescriptor, rewriteCodeFenceLanguage, rewriteMermaidFenceSource,
 } from './markdown/fences.js'
 import { parseImageToken, selectedImageToken, rewriteImage, htmlImageAttribute } from './markdown/images.js'
+import { renderMarkdown } from './markdown/render.js'
+import { findMatches, replaceMatch, replaceAllMatches, nextMatchIndex, sourceBlockIndex } from './markdown/search.js'
 import { safeLinkHref } from './markdown/links.js'
 import { detectLineEnding, toEditorText, toFileText, titleForPath } from './markdown/text.js'
 import { applyCommand, appendBlock } from './markdown/commands.js'
@@ -122,8 +124,15 @@ const els = {
   split: document.getElementById('split'),
   splitSource: document.getElementById('split-source'),
   splitSourceHighlight: document.getElementById('split-source-highlight'),
-  splitPreview: document.getElementById('split-preview'),
+  splitFormatted: document.querySelector('[data-split-pane="formatted"]'),
+  findBar: document.getElementById('find-bar'),
+  findInput: document.getElementById('find-input'),
+  findCount: document.getElementById('find-count'),
+  replaceInput: document.getElementById('replace-input'),
+  editorHost: document.getElementById('editor-host'),
   insertPopoverRoot: document.getElementById('insert-popover-root'),
+  fileMenuRoot: document.getElementById('file-menu-root'),
+  btnFileMenu: document.getElementById('btn-file-menu'),
   codeAssistantRoot: document.getElementById('code-assistant-root'),
   diagramAssistantRoot: document.getElementById('diagram-assistant-root'),
   settingsRoot: document.getElementById('settings-root'),
@@ -281,8 +290,24 @@ function activeDoc() {
 }
 
 
+// Which split pane the user is editing.
+//
+// Split shows the REAL editor in its formatted pane, not a rendering of the
+// document, so both panes are live editors over one document and each one's
+// refresh fires the other's change handler. Without an authority the two fight:
+// the pane being typed into gets rebuilt from the pane that is merely echoing
+// it, and the caret jumps on every keystroke. The pane the user last touched
+// wins, and the other is refreshed from it.
+let splitAuthority = 'source'
+let splitFormattedTimer = null
+
 function getMarkdown() {
-  if (state.mode === 'split') return els.splitSource.value
+  // Read the surface the user is editing rather than the cached document, for
+  // the same reason the other two modes do: the cache is written by a handler
+  // that may not have run yet.
+  if (state.mode === 'split') {
+    return splitAuthority === 'formatted' ? wysiwyg.getMarkdown() : els.splitSource.value
+  }
   return state.mode === 'raw' ? raw.getMarkdown() : activeDoc()?.markdown ?? wysiwyg.getMarkdown()
 }
 
@@ -292,7 +317,7 @@ async function setMarkdown(md, { markSaved = false } = {}) {
   if (state.mode === 'split') {
     els.splitSource.value = md
     refreshSplitSourceHighlight()
-    await refreshSplitPreview(md)
+    await renderWysiwyg(md)
   } else if (state.mode === 'raw') {
     raw.replaceAll(md)
   } else {
@@ -331,9 +356,12 @@ function refreshRibbonState() {
   els.btnModeFormatted.classList.toggle('active', state.mode === 'wysiwyg')
   els.btnModeRaw.classList.toggle('active', state.mode === 'raw')
   els.btnSplit.classList.toggle('active', state.mode === 'split')
-  els.btnModeFormatted.setAttribute('aria-pressed', state.mode === 'wysiwyg' ? 'true' : 'false')
-  els.btnModeRaw.setAttribute('aria-pressed', state.mode === 'raw' ? 'true' : 'false')
-  els.btnSplit.setAttribute('aria-pressed', state.mode === 'split' ? 'true' : 'false')
+  // aria-checked, not aria-pressed: three exclusive choices are radios. A screen
+  // reader should say "2 of 3", not announce three separate toggles that happen
+  // to sit next to each other.
+  els.btnModeFormatted.setAttribute('aria-checked', state.mode === 'wysiwyg' ? 'true' : 'false')
+  els.btnModeRaw.setAttribute('aria-checked', state.mode === 'raw' ? 'true' : 'false')
+  els.btnSplit.setAttribute('aria-checked', state.mode === 'split' ? 'true' : 'false')
   els.statusMode.textContent = state.mode === 'raw' ? 'RAW' : state.mode === 'split' ? 'SPLIT' : 'FORMATTED'
   document.body.classList.toggle('raw-mode', state.mode === 'raw')
   document.body.classList.toggle('split-mode', state.mode === 'split')
@@ -760,7 +788,7 @@ async function mountMarkdown(md) {
   if (state.mode === 'split') {
     els.splitSource.value = md
     refreshSplitSourceHighlight()
-    await refreshSplitPreview(md)
+    await renderWysiwyg(md)
   } else if (state.mode === 'raw') {
     raw.replaceAll(md)
   } else {
@@ -872,10 +900,19 @@ async function setMode(mode) {
     raw.open(els.raw, md, onEdited, state.rawOptions)
   } else if (mode === 'split') {
     els.split.hidden = false
+    // The editor ELEMENT moves; the editor instance is not rebuilt to move it.
+    // Reparenting a live ProseMirror tree preserves its content, its
+    // editability and its serialization — measured before this was built on.
+    els.splitFormatted.append(els.wysiwyg)
+    els.wysiwyg.hidden = false
+    splitAuthority = 'source'
     els.splitSource.value = md
     refreshSplitSourceHighlight()
-    await refreshSplitPreview(md)
+    await renderWysiwyg(md)
   } else {
+    // Back to the document card. insertBefore rather than append, so the host's
+    // children keep the order the stylesheet is written against.
+    els.editorHost.insertBefore(els.wysiwyg, els.raw)
     els.wysiwyg.hidden = false
     await renderWysiwyg(md)
   }
@@ -1591,11 +1628,247 @@ function refreshThemeDraftButtons(content) {
   })
 }
 
+// --- find and replace ---
+//
+// Every match is an offset range into the MARKDOWN SOURCE. See
+// markdown/search.js for why that is the only coordinate this can use: the
+// document is shown in three substrates, and a search over whichever one is
+// visible would answer differently in each — and in Split, differently from
+// itself. What varies per mode is only how a source range is REVEALED.
+const find = {
+  open: false,
+  query: '',
+  matches: [],
+  index: -1,
+  options: { caseSensitive: false, wholeWord: false, regex: false },
+}
+
+function openFind({ replace = false } = {}) {
+  find.open = true
+  els.findBar.hidden = false
+  if (replace) els.findBar.dataset.replace = 'true'
+  // Opening plain find over an open replace does not take replace away: the
+  // user asked to find, not to lose the replacement they had typed.
+
+  // Seed from the selection, the way a find bar is expected to. Only within one
+  // line — a multi-line selection is a range the user chose, not a term.
+  const selected = selectedSourceText()
+  if (selected && !selected.includes('\n')) {
+    els.findInput.value = selected
+  }
+  els.findInput.focus()
+  els.findInput.select()
+  runFind()
+}
+
+function closeFind() {
+  find.open = false
+  els.findBar.hidden = true
+  delete els.findBar.dataset.replace
+  find.matches = []
+  find.index = -1
+  clearFindHighlight()
+  focusEditorSurface()
+}
+
+// Closing the find bar hands focus back to what the user was editing, rather
+// than leaving it on a hidden input where the next keystroke goes nowhere.
+function focusEditorSurface() {
+  if (state.mode === 'raw') els.raw.querySelector('textarea')?.focus()
+  else if (state.mode === 'split') els.splitSource.focus()
+  else els.wysiwyg.querySelector('[contenteditable="true"]')?.focus()
+}
+
+function selectedSourceText() {
+  if (state.mode === 'split') {
+    const el = els.splitSource
+    return el.value.slice(el.selectionStart, el.selectionEnd)
+  }
+  if (state.mode === 'raw') return String(window.getSelection?.() ?? '')
+  return String(window.getSelection?.() ?? '')
+}
+
+// runFind recomputes from the document, which is the only thing that can have
+// changed. `keepIndex` holds the caret still across a replace, so replacing the
+// third of seven leaves you at the third and not back at the top.
+function runFind({ keepIndex = false } = {}) {
+  const query = els.findInput.value
+  find.query = query
+  const source = getMarkdown()
+  try {
+    find.matches = findMatches(source, query, find.options)
+    els.findInput.removeAttribute('aria-invalid')
+    els.findInput.removeAttribute('title')
+  } catch (error) {
+    // A bad regular expression is reported on the field. Answering "no results"
+    // instead is indistinguishable from a document that does not contain the
+    // text, which is how a typo reads as an answer.
+    find.matches = []
+    find.index = -1
+    els.findInput.setAttribute('aria-invalid', 'true')
+    els.findInput.title = error.message
+    els.findCount.textContent = 'Invalid pattern'
+    clearFindHighlight()
+    return
+  }
+  if (!find.matches.length) {
+    find.index = -1
+    els.findCount.textContent = query ? 'No results' : ''
+    clearFindHighlight()
+    return
+  }
+  if (!keepIndex || find.index < 0) {
+    find.index = nextMatchIndex(find.matches, caretOffset(), true)
+  }
+  find.index = Math.min(find.index, find.matches.length - 1)
+  showFindPosition()
+  revealMatch(find.matches[find.index])
+}
+
+function showFindPosition() {
+  els.findCount.textContent = `${find.index + 1} of ${find.matches.length}`
+}
+
+function stepFind(delta) {
+  if (!find.matches.length) return
+  find.index = (find.index + delta + find.matches.length) % find.matches.length
+  showFindPosition()
+  revealMatch(find.matches[find.index])
+}
+
+// caretOffset is where "next match" counts from. Only the source substrates can
+// answer it; from the formatted editor the caret is a model position, not a
+// source offset, so searching starts at the top rather than reporting a
+// position in the wrong coordinate system.
+function caretOffset() {
+  if (state.mode === 'raw') return rawCaretOffset()
+  if (state.mode === 'split') return els.splitSource.selectionStart ?? 0
+  return 0
+}
+
+function rawCaretOffset() {
+  const textarea = els.raw.querySelector('textarea')
+  return textarea?.selectionStart ?? 0
+}
+
+// revealMatch shows one source range on whichever surfaces are visible.
+//
+// In Split BOTH are, so both are told: the source pane selects the exact
+// characters and the formatted pane marks the block. Showing it in only one
+// half of a split view is the thing that made the old two-renderer split
+// confusing in the first place.
+function revealMatch(match) {
+  if (!match) return
+  clearFindHighlight()
+  if (state.mode === 'raw') {
+    raw.selectRange(match.start, match.end)
+    return
+  }
+  if (state.mode === 'split') {
+    selectSourceRange(els.splitSource, match.start, match.end)
+  }
+  markMatchBlock(sourceBlockIndex(getMarkdown(), match.start))
+}
+
+function selectSourceRange(textarea, start, end) {
+  textarea.setSelectionRange(start, end)
+  const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 18
+  const line = textarea.value.slice(0, start).split('\n').length - 1
+  textarea.scrollTop = Math.max(0, line * lineHeight - textarea.clientHeight / 2)
+  refreshSplitSourceHighlight()
+}
+
+// The formatted surface has no source offsets, so a match is shown by marking
+// the BLOCK it falls in. Block granularity is what can be derived from the
+// source without a full source-to-model mapping, and — the part that matters —
+// it cannot disagree with the match count, which a second search over the
+// rendered DOM would have done.
+function markMatchBlock(index) {
+  const root = els.wysiwyg.querySelector('.ProseMirror')
+  const block = root?.children?.[index]
+  if (!block) return
+  block.classList.add('find-hit-current')
+  block.scrollIntoView({ block: 'center' })
+}
+
+function clearFindHighlight() {
+  els.wysiwyg.querySelectorAll('.find-hit-current').forEach((el) => el.classList.remove('find-hit-current'))
+}
+
+// Replace rewrites the SOURCE and remounts, exactly as every other document
+// command does. Driving it through the editor instead would re-serialize the
+// whole document, which is the standing hazard this project warns about — a
+// replace-all could rewrite lines the user never touched.
+async function replaceCurrentMatch() {
+  const match = find.matches[find.index]
+  if (!match) return
+  const next = replaceMatch(getMarkdown(), match, els.replaceInput.value)
+  await applyFindEdit(next)
+  runFind({ keepIndex: true })
+}
+
+async function replaceEveryMatch() {
+  if (!find.query) return
+  const { text, count } = replaceAllMatches(getMarkdown(), find.query, els.replaceInput.value, find.options)
+  if (!count) return
+  await applyFindEdit(text)
+  runFind()
+  flashStatus(`Replaced ${count} ${count === 1 ? 'match' : 'matches'}`)
+}
+
+async function applyFindEdit(text) {
+  await mountMarkdown(text)
+  markEdited(text)
+}
+
+function wireFindBar() {
+  els.findInput.addEventListener('input', () => runFind())
+  els.findInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    stepFind(e.shiftKey ? -1 : 1)
+  })
+  els.replaceInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    replaceCurrentMatch()
+  })
+  document.getElementById('find-next').addEventListener('click', () => stepFind(1))
+  document.getElementById('find-prev').addEventListener('click', () => stepFind(-1))
+  document.getElementById('find-close').addEventListener('click', closeFind)
+  document.getElementById('replace-one').addEventListener('click', replaceCurrentMatch)
+  document.getElementById('replace-all').addEventListener('click', replaceEveryMatch)
+  for (const [id, option] of [['find-case', 'caseSensitive'], ['find-word', 'wholeWord'], ['find-regex', 'regex']]) {
+    const button = document.getElementById(id)
+    button.addEventListener('click', () => {
+      find.options[option] = !find.options[option]
+      button.setAttribute('aria-pressed', String(find.options[option]))
+      runFind()
+    })
+  }
+}
+
 function onSplitEdited() {
+  splitAuthority = 'source'
   const md = els.splitSource.value
   refreshSplitSourceHighlight()
-  refreshSplitPreview(md)
   markEdited(md)
+  scheduleSplitFormattedRefresh(md)
+}
+
+// Rebuilding the formatted pane is rebuilding a real editor, which is far more
+// expensive than replacing a preview's children — so it waits for a pause in
+// typing rather than running on every keystroke.
+//
+// The authority is re-checked when the timer fires, not only when it is set: by
+// then the user may have clicked into the formatted pane, and rebuilding it
+// underneath them would discard what they had started typing there.
+function scheduleSplitFormattedRefresh(md) {
+  clearTimeout(splitFormattedTimer)
+  splitFormattedTimer = setTimeout(() => {
+    if (state.mode !== 'split' || splitAuthority !== 'source') return
+    renderWysiwyg(md)
+  }, 250)
 }
 
 function refreshSplitSourceHighlight() {
@@ -1605,11 +1878,11 @@ function refreshSplitSourceHighlight() {
 function syncSplitSourceScroll() {
   els.splitSourceHighlight.scrollTop = els.splitSource.scrollTop
   els.splitSourceHighlight.scrollLeft = els.splitSource.scrollLeft
-  syncSplitScroll(els.splitSource, els.splitPreview)
+  syncSplitScroll(els.splitSource, els.wysiwyg)
 }
 
-function syncSplitPreviewScroll() {
-  syncSplitScroll(els.splitPreview, els.splitSource)
+function syncSplitFormattedScroll() {
+  syncSplitScroll(els.wysiwyg, els.splitSource)
   els.splitSourceHighlight.scrollTop = els.splitSource.scrollTop
 }
 
@@ -1625,57 +1898,22 @@ function syncSplitScroll(source, target) {
   })
 }
 
-async function refreshSplitPreview(md) {
-  els.splitPreview.replaceChildren(...await renderMarkdownPreview(md))
-  await resolveImageAssets(els.splitPreview)
-}
-
+// Both surfaces that are not the editor render through one function now. See
+// markdown/render.js for what the renderer this replaced got wrong, and why it
+// mattered most for print.
 async function renderMarkdownPreview(md) {
-  const nodes = []
-  const lines = md.split('\n')
-  let codeFenceIndex = -1
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const heading = line.match(/^(#{1,6})\s+(.+)$/)
-    if (heading) {
-      const h = document.createElement(`h${heading[1].length}`)
-      h.textContent = heading[2]
-      nodes.push(h)
-    } else if (/^```/.test(line)) {
-      codeFenceIndex++
-      const language = line.replace(/^```\s*/, '').trim().split(/\s+/)[0] || ''
-      const body = []
-      i++
-      while (i < lines.length && !/^```/.test(lines[i])) body.push(lines[i++])
-      if (normalizeLanguage(language) === 'mermaid') {
-        const diagram = document.createElement('div')
-        diagram.className = 'mermaid-render'
-        diagram.dataset.language = 'mermaid'
-        diagram.innerHTML = await renderMermaidDiagram(body.join('\n'))
-        nodes.push(diagram)
-        continue
-      }
-      nodes.push(codeBlockElement(body.join('\n'), language, codeFenceIndex))
-    } else if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) {
-      const p = document.createElement('p')
-      p.textContent = line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '• ')
-      nodes.push(p)
-    } else if (/^>\s?/.test(line)) {
-      const q = document.createElement('blockquote')
-      q.textContent = line.replace(/^>\s?/, '')
-      nodes.push(q)
-    } else if (/^---+$/.test(line.trim())) {
-      nodes.push(document.createElement('hr'))
-    } else if (line.trim()) {
-      const p = document.createElement('p')
-      p.append(...inlineMarkdownNodes(line))
-      nodes.push(p)
-    }
-  }
-  return nodes.length ? nodes : [document.createElement('p')]
+  return renderMarkdown(md, {
+    codeBlock: codeBlockElement,
+    onRefused: ({ kind, value }) => recordRefusedResource(kind, value),
+  })
 }
 
-function codeBlockElement(source, language = '', fenceIndex = null) {
+// The shell around a fenced code block on the preview and print surfaces:
+// language label, copy button, language picker, and the assistant on
+// right-click. It is passed INTO the renderer rather than imported by it,
+// because all four of those are application behaviour and the renderer is not
+// allowed to depend on this module.
+function codeBlockElement({ source, language = '', fenceIndex = null }) {
   const normalized = normalizeLanguage(language)
   const figure = document.createElement('figure')
   figure.className = 'code-block-shell'
@@ -1723,23 +1961,6 @@ function codeLanguageTool(fenceIndex, language) {
   return button
 }
 
-function inlineMarkdownNodes(text) {
-  const nodes = []
-  // Images must precede the link alternative: `![alt](src)` otherwise matches
-  // as a link and renders the leading `!` as stray text.
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|!\[[^\]]*\]\([^)]+\)|<img\b[^>]*>|\[[^\]]+\]\([^)]+\))/g
-  let cursor = 0
-  let match = pattern.exec(text)
-  while (match) {
-    if (match.index > cursor) nodes.push(document.createTextNode(text.slice(cursor, match.index)))
-    nodes.push(inlineMarkdownNode(match[0]))
-    cursor = match.index + match[0].length
-    match = pattern.exec(text)
-  }
-  if (cursor < text.length) nodes.push(document.createTextNode(text.slice(cursor)))
-  return nodes
-}
-
 // --- image block model ---
 //
 // Images exist in two on-disk forms. `![alt](path)` is the portable default;
@@ -1777,10 +1998,20 @@ const REFUSED_LINK_RECORD_CAP = 32
 const refusedLinks = new Set()
 
 function recordRefusedLink(href) {
-  const key = String(href ?? '')
+  recordRefusedResource('link', href)
+}
+
+// Images are refused on their own scheme rule (safeImageSrc), and a refused
+// image is the same kind of silent autonomous decision as a refused link — an
+// embedded image that simply does not appear looks like a broken document
+// rather than a judgement the app made. Kind is part of the dedupe key so the
+// two cannot mask each other.
+function recordRefusedResource(kind, value) {
+  const href = String(value ?? '')
+  const key = `${kind}:${href}`
   if (refusedLinks.has(key) || refusedLinks.size >= REFUSED_LINK_RECORD_CAP) return
   refusedLinks.add(key)
-  bridge.recordEvent('link.refused', { href: key })
+  bridge.recordEvent(`${kind}.refused`, { href })
 }
 
 // The href was already filtered by safeLinkHref when the anchor was built, but
@@ -1926,6 +2157,69 @@ async function printDocument(action = 'print') {
   else delete document.body.dataset.pdfExportVia
   closeExportMenu()
   window.print()
+}
+
+// The File menu.
+//
+// File left the ribbon because it did not belong there: every other tab changes
+// what the ribbon offers for the document you are editing, and File acts on the
+// document as a whole. The consequence was that the application opened showing
+// commands you use once a session while the formatting controls you use
+// constantly sat behind another tab.
+//
+// It is a menu rather than a tab so that reaching it costs you nothing: the
+// ribbon stays on whatever you were doing. Every command here is also in the
+// native menu bar, which is where a Mac user looks first; this is the affordance
+// for someone who does not.
+function fileMenuItem(action, label, shortcut) {
+  return `<button type="button" role="menuitem" data-file-menu-action="${action}">` +
+    `<span>${label}</span><kbd>${shortcut}</kbd></button>`
+}
+
+function toggleFileMenu() {
+  if (els.fileMenuRoot.firstChild) return closeFileMenu()
+  const menu = document.createElement('div')
+  menu.className = 'native-menu'
+  menu.setAttribute('role', 'menu')
+  menu.dataset.fileMenu = 'true'
+  menu.innerHTML = [
+    fileMenuItem('new', 'New', '\u2318N'),
+    fileMenuItem('open', 'Open…', '\u2318O'),
+    '<div class="native-menu-separator"></div>',
+    fileMenuItem('save', 'Save', '\u2318S'),
+    fileMenuItem('save-as', 'Save As…', '\u21e7\u2318S'),
+    '<div class="native-menu-separator"></div>',
+    fileMenuItem('print', 'Print…', '\u2318P'),
+    fileMenuItem('pdf', 'Export as PDF…', ''),
+  ].join('')
+  menu.querySelectorAll('[data-file-menu-action]').forEach((button) => {
+    button.addEventListener('click', () => runFileMenuAction(button.dataset.fileMenuAction))
+  })
+  els.fileMenuRoot.replaceChildren(menu)
+  els.btnFileMenu.setAttribute('aria-expanded', 'true')
+  // A menu closes on the next click anywhere, and on Escape, because that is
+  // what a menu does. Registered once the menu exists so the opening click does
+  // not immediately close it.
+  setTimeout(() => {
+    document.addEventListener('click', closeFileMenuOnOutsideClick, { once: true })
+  }, 0)
+}
+
+function closeFileMenu() {
+  els.fileMenuRoot.replaceChildren()
+  els.btnFileMenu.setAttribute('aria-expanded', 'false')
+}
+
+function closeFileMenuOnOutsideClick(event) {
+  if (event.target.closest('#btn-file-menu')) return
+  closeFileMenu()
+}
+
+function runFileMenuAction(action) {
+  closeFileMenu()
+  if (action === 'print' || action === 'pdf') return printDocument(action)
+  const run = { new: newDocument, open: openDocument, save, 'save-as': saveAs }[action]
+  return run?.()
 }
 
 function exportMenuButton(action, glyph, label) {
@@ -2190,6 +2484,14 @@ async function applyTemplate(name) {
 function onEdited(md) {
   const doc = activeDoc()
   if (!doc) return
+  if (state.mode === 'split') {
+    // Every rebuild of the formatted pane serializes and reports its content.
+    // Only an edit the user made THERE should reach the source pane; letting
+    // the echo through would overwrite whatever they are typing here.
+    if (splitAuthority !== 'formatted') return
+    els.splitSource.value = md
+    refreshSplitSourceHighlight()
+  }
   markEdited(md)
 }
 
@@ -2250,11 +2552,29 @@ function wire() {
   els.btnModeRaw.addEventListener('click', () => {
     if (state.mode !== 'raw') setMode('raw')
   })
-  els.btnSplit.addEventListener('click', toggleSplit)
+  // Selects, like its peers. It used to toggle back to Formatted, which is what
+  // made Split read as a modifier on a mode rather than a mode of its own.
+  els.btnSplit.addEventListener('click', () => {
+    if (state.mode !== 'split') setMode('split')
+  })
   els.splitSource.addEventListener('input', onSplitEdited)
   els.splitSource.addEventListener('scroll', syncSplitSourceScroll)
-  els.splitPreview.addEventListener('scroll', syncSplitPreviewScroll)
+  els.wysiwyg.addEventListener('scroll', syncSplitFormattedScroll)
+  // Keystrokes and pointer presses name the authority, not focus changes.
+  //
+  // Focus was tried first and measured wrong: the editor already holds focus
+  // when split mode opens, so focusin never fires for the formatted pane and it
+  // could never become authoritative — typing there reached the document and
+  // never reached the source pane. Focus is also the one signal a rebuild can
+  // raise by itself, since the editor takes focus when it mounts, which would
+  // have let an echo pass for an edit.
+  for (const [pane, owner] of [[els.splitSource, 'source'], [els.splitFormatted, 'formatted']]) {
+    for (const event of ['keydown', 'pointerdown']) {
+      pane.addEventListener(event, () => { splitAuthority = owner })
+    }
+  }
   els.btnInsertMenu.addEventListener('click', toggleInsertPopover)
+  els.btnFileMenu.addEventListener('click', toggleFileMenu)
   els.btnSettings.addEventListener('click', openSettings)
   els.workspace.addEventListener('click', (event) => {
     const button = event.target.closest('[data-panel-toggle]')
@@ -2318,14 +2638,26 @@ function wire() {
       else runCommand(button.dataset.command)
     })
   })
+  wireFindBar()
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      // The find bar closes before anything else: it is the surface the user
+      // is looking at when they press Escape while it is open.
+      if (find.open) {
+        closeFind()
+        return
+      }
       closeTransientSurfaces()
       return
     }
     const mod = e.ctrlKey || e.metaKey
     if (!mod) return
     const key = e.key.toLowerCase()
+    if (key === 'f') {
+      e.preventDefault()
+      openFind({ replace: e.altKey })
+      return
+    }
     if (key === 'r' && e.shiftKey) {
       e.preventDefault()
       toggleMode()
@@ -2403,6 +2735,10 @@ async function boot() {
     closeActiveTab,
     runCommand,
     printDocument,
+    openFind,
+    closeFind,
+    findNext: () => stepFind(1),
+    findPrevious: () => stepFind(-1),
     setImageAltText,
     setImageWidth,
     handleDroppedFiles,

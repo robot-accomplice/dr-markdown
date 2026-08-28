@@ -268,6 +268,14 @@ static void installMenuBar(NSString *appName) {
   // webview — taking it would silently break a documented shortcut.
   [fileMenu addItem:jsItem(@"Save As…", @"", 0, @"globalThis.__app?.saveAs()")];
   [fileMenu addItem:[NSMenuItem separatorItem]];
+  // Export lives here too. It was the one File command that existed only in
+  // the shell, so the menu bar was incomplete in exactly the place a Mac user
+  // looks first.
+  [fileMenu addItem:jsItem(@"Print…", @"p", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.printDocument('print')")];
+  [fileMenu addItem:jsItem(@"Export as PDF…", @"", 0,
+                           @"globalThis.__app?.printDocument('pdf')")];
+  [fileMenu addItem:[NSMenuItem separatorItem]];
   // Cmd-W closes the TAB here, matching the application. The window gets
   // Shift-Cmd-W, which is the convention when Cmd-W is a tab.
   [fileMenu addItem:jsItem(@"Close Tab", @"w", NSEventModifierFlagCommand,
@@ -288,6 +296,25 @@ static void installMenuBar(NSString *appName) {
   [editMenu addItem:sel(@"Copy", @selector(copy:), @"c", NSEventModifierFlagCommand)];
   [editMenu addItem:sel(@"Paste", @selector(paste:), @"v", NSEventModifierFlagCommand)];
   [editMenu addItem:sel(@"Select All", @selector(selectAll:), @"a", NSEventModifierFlagCommand)];
+  [editMenu addItem:[NSMenuItem separatorItem]];
+  // Find (#132). These are jsItem rather than the standard performFindPanelAction:
+  // selector: that selector drives AppKit's own find panel against an NSTextView,
+  // and this document is not one — it is a markdown string shown in three
+  // different substrates, searched in the source coordinate they share.
+  //
+  // The menu is also the reason these key equivalents work at all in a WKWebView:
+  // a menu item's key equivalent is matched before the web content sees the
+  // event, so claiming them here is what stops Cmd-F reaching the page unhandled.
+  [editMenu addItem:jsItem(@"Find…", @"f", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.openFind()")];
+  [editMenu addItem:jsItem(@"Find and Replace…", @"f",
+                           NSEventModifierFlagCommand | NSEventModifierFlagOption,
+                           @"globalThis.__app?.openFind({ replace: true })")];
+  [editMenu addItem:jsItem(@"Find Next", @"g", NSEventModifierFlagCommand,
+                           @"globalThis.__app?.findNext()")];
+  [editMenu addItem:jsItem(@"Find Previous", @"g",
+                           NSEventModifierFlagCommand | NSEventModifierFlagShift,
+                           @"globalThis.__app?.findPrevious()")];
   editItem.submenu = editMenu;
   [bar addItem:editItem];
 
@@ -299,7 +326,7 @@ static void installMenuBar(NSString *appName) {
   [viewMenu addItem:jsItem(@"Raw", @"2", NSEventModifierFlagCommand,
                            @"globalThis.__app?.setMode('raw')")];
   [viewMenu addItem:jsItem(@"Split", @"3", NSEventModifierFlagCommand,
-                           @"globalThis.__app?.toggleSplit()")];
+                           @"globalThis.__app?.setMode('split')")];
   [viewMenu addItem:[NSMenuItem separatorItem]];
   // No key equivalents: Cmd-B is Bold in the editor, and a menu would take it.
   [viewMenu addItem:jsItem(@"Toggle Files", @"", 0,

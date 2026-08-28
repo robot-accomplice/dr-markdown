@@ -10,7 +10,7 @@
         "The frontend can remain static assets embedded in the binary",
         "Native file dialogs and close guards live in Go",
         "Browser-only behavior must be suppressed or replaced where it leaks into the desktop UX",
-        "SUPERSEDED 2026-08-10 by own-the-host. Kept because the reasoning still holds \u2014 a local desktop app with embedded assets and native Go file operations \u2014 and only the framework underneath changed."
+        "SUPERSEDED 2026-08-10 by own-the-host. Kept because the reasoning still holds — a local desktop app with embedded assets and native Go file operations — and only the framework underneath changed."
       ],
       "relatedNodes": [
         "desktop-app",
@@ -205,12 +205,12 @@
       "status": "accepted",
       "title": "Give the markdown document domain a single owner, separate from the editor adapter",
       "context": "Five fidelity defects were fixed in two days and every one lived at the seam where the vendored editor's output is patched back into the user's markdown; one grew the file by a duplicated footnote definition on every save, without bound. Five preservations (frontmatter, <br> sentinels, link references, image alt text, trailing newline) are the same concept implemented five ad-hoc ways, with state on WysiwygEditor private fields and a hand-ordered restore chain, so adding one is a three-place edit and nothing can enumerate or uniformly test them. More broadly, app.js is 2835 lines and 189 top-level functions spanning about ten domains, and app.go is both the Wails binding surface and the application logic behind it. A large part of this product is pure string-to-string markdown logic sitting in the outermost circle, which matters here because e2e is the ONLY frontend coverage, takes about 210 seconds, and has a nondeterministic browser launch.",
-      "decision": "Adopt inward-pointing domain boundaries. Introduce a fidelity preservation port \u2014 name, capture(original), restore(serialized, state) \u2014 with a registry module owning the ordering, so adding a preservation is one file plus one registry line and editor.js returns to owning only the Crepe lifecycle. Then move the pure markdown logic (command transforms, table operations, fence operations, image tokens, link safety) out of app.js into domain modules taking and returning strings. Then lift open, save, resolve-unsaved and asset import out of app.go into use-case types, leaving App as a thin adapter; the injected ports already exist and do not change. No Node toolchain, no framework, no DI container; pure modules are exercised through the existing chromedp harness by importing them directly. internal/* is untouched \u2014 it already has single ownership and is the model the rest follows.",
+      "decision": "Adopt inward-pointing domain boundaries. Introduce a fidelity preservation port — name, capture(original), restore(serialized, state) — with a registry module owning the ordering, so adding a preservation is one file plus one registry line and editor.js returns to owning only the Crepe lifecycle. Then move the pure markdown logic (command transforms, table operations, fence operations, image tokens, link safety) out of app.js into domain modules taking and returning strings. Then lift open, save, resolve-unsaved and asset import out of app.go into use-case types, leaving App as a thin adapter; the injected ports already exist and do not change. No Node toolchain, no framework, no DI container; pure modules are exercised through the existing chromedp harness by importing them directly. internal/* is untouched — it already has single ownership and is the model the rest follows.",
       "consequences": [
         "Phase 1 LANDED 2026-08-09: six compensations moved into frontend/dist/src/fidelity/ behind two ports, with a registry owning both orders. editor.js went from 286 lines owning the Crepe lifecycle AND five preservations to 118 owning only the lifecycle, and a test now fails if it names any preservation. Every gate stayed green and UNCHANGED through all eight steps.",
-        "Phase 2 LANDED 2026-08-09: 360 lines of pure markdown logic moved from app.js into frontend/dist/src/markdown/ across six modules \u2014 tables, fences, images, links, text, commands. Five were leaves with zero dependencies on the rest of app.js, measured from the call graph before the move. app.js went 2835 -> 2452 lines. Every existing test stayed green and unchanged.",
-        "Phase 3 LANDED 2026-08-09: the open-document session moved to internal/session \u2014 tabs, dirty state and the on-disk baseline \u2014 with their invariants tested directly rather than through the binding surface. Scope was deliberately narrowed from this decision's section 3: the use-case-TYPE split was NOT done, because newAppWithDependencies already injects every port and the save path was already testable with zero infrastructure, so it would have moved code without making anything newly safe. The move surfaced two things the plan missed: the loop deciding which tab a write lands on was duplicated verbatim across save and open (now AdoptPath), and the unsynced-dirty flag must re-check the tab count at read time rather than trust it from write time.",
-        "Fidelity gains one owner and one shape \u2014 the thing whose absence produced five defects in two days.",
+        "Phase 2 LANDED 2026-08-09: 360 lines of pure markdown logic moved from app.js into frontend/dist/src/markdown/ across six modules — tables, fences, images, links, text, commands. Five were leaves with zero dependencies on the rest of app.js, measured from the call graph before the move. app.js went 2835 -> 2452 lines. Every existing test stayed green and unchanged.",
+        "Phase 3 LANDED 2026-08-09: the open-document session moved to internal/session — tabs, dirty state and the on-disk baseline — with their invariants tested directly rather than through the binding surface. Scope was deliberately narrowed from this decision's section 3: the use-case-TYPE split was NOT done, because newAppWithDependencies already injects every port and the save path was already testable with zero infrastructure, so it would have moved code without making anything newly safe. The move surfaced two things the plan missed: the loop deciding which tab a write lands on was duplicated verbatim across save and open (now AdoptPath), and the unsynced-dirty flag must re-check the tab count at read time rather than trust it from write time.",
+        "Fidelity gains one owner and one shape — the thing whose absence produced five defects in two days.",
         "The bulk of the product's logic becomes verifiable without booting a browser per behaviour, which matters because e2e is the only frontend coverage, runs ~210s, and has a nondeterministic browser launch.",
         "Adding a fidelity preservation becomes one file plus one registry line, instead of a three-place edit with hand-ordered restore steps.",
         "Sequencing is fidelity first (highest defect density, smallest blast radius, already fenced by two behavioural gates), pure markdown domain second (larger, and partly bootstraps its own safety net), Go use cases last (dependency inversion already exists, so deferring costs clarity rather than safety).",
@@ -232,8 +232,8 @@
       "id": "own-the-host",
       "status": "accepted",
       "title": "Own the macOS host instead of depending on an application framework",
-      "context": "Wails met every stated requirement, and was rejected on the relationship rather than on capability. Three maintainer objections: no control over the internals of one of the largest pieces of the application; dependence on an upstream bug-resolution schedule, which issue #61 demonstrated concretely \u2014 a panicking bound call left the frontend promise unsettled forever, with no downstream fix available and none in v2.14.0; and a 151-module trust surface. A fourth objection, that the framework involved TCP between Go and the frontend, was CHECKED AND REFUTED and is recorded so it is not derived again: both net.Listen sites in v3/pkg sit behind the server and mcp build tags.",
-      "decision": "Write the macOS host against AppKit and WebKit directly, behind the hostPort boundary already established. Measured before committing: a working host is the size of the boundary it replaces, not the size of the framework \u2014 Wails' macOS layer is 5,116 lines, but it buys a tray, custom chrome and a dev server this application does not use.",
+      "context": "Wails met every stated requirement, and was rejected on the relationship rather than on capability. Three maintainer objections: no control over the internals of one of the largest pieces of the application; dependence on an upstream bug-resolution schedule, which issue #61 demonstrated concretely — a panicking bound call left the frontend promise unsettled forever, with no downstream fix available and none in v2.14.0; and a 151-module trust surface. A fourth objection, that the framework involved TCP between Go and the frontend, was CHECKED AND REFUTED and is recorded so it is not derived again: both net.Listen sites in v3/pkg sit behind the server and mcp build tags.",
+      "decision": "Write the macOS host against AppKit and WebKit directly, behind the hostPort boundary already established. Measured before committing: a working host is the size of the boundary it replaces, not the size of the framework — Wails' macOS layer is 5,116 lines, but it buys a tray, custom chrome and a dev server this application does not use.",
       "consequences": [
         "No third-party dependency remains in the running application",
         "A panicking bound call REJECTS the frontend promise, closing #61 with no upstream involved",
@@ -272,6 +272,95 @@
         "syntax-highlighter",
         "diagram-renderer",
         "vendored-editor-assets"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
+    },
+    {
+      "id": "app-store-distribution",
+      "status": "planned",
+      "title": "Mac App Store distribution is deferred; Developer ID notarization is the path",
+      "context": "Apple Developer Program enrolment costs $99 a year and covers both distribution paths, which invites the assumption that notarizing for direct download also permits publishing to the Mac App Store. It does not. They are different paths: different certificates, a .pkg rather than a .dmg, App Review in place of notarization, and the App Sandbox is mandatory rather than optional. Measured against the source at 1.6.3, the sandbox blocks three things this application does. It reads files the user never picked, because assets.LoadForDocument resolves a relative image path against the document's own directory and reads it — opening notes.md grants notes.md, not notes.assets/figure.png beside it. It writes beside the document, creating <document>.assets/ on image import. And OpenRecentDocument opens a recorded path with no picker, which under the sandbox requires security-scoped bookmarks; internal/preferences stores plain path strings and has no concept of one.",
+      "decision": "Defer Mac App Store distribution. Ship notarized direct download via a Developer ID certificate, which delivers the actual objective — a stranger downloads the application and it opens — for $99 and an afternoon, with no sandbox rework and no review queue. What the App Store adds beyond that is discovery and payments, both worth close to nothing for an MIT-licensed editor with no price and no marketing surface.",
+      "consequences": [
+        "Cannot be listed on the Mac App Store without reworking asset resolution and the recents system around security-scoped bookmarks, threading the bookmark lifecycle through the preference store and the asset manager.",
+        "Every release would additionally wait on App Review, on Apple's schedule.",
+        "Behaviour a user can see would change: an assets folder never individually granted needs re-authorising, and a recents entry whose bookmark went stale needs re-picking.",
+        "Revisit if paid distribution or App Store discovery becomes worth funding that work.",
+        "Not before source-preserving editing lands: the WYSIWYG re-serialization blocker is the larger constraint, and sandbox work ahead of it buys reach rather than correctness."
+      ],
+      "relatedNodes": [],
+      "relatedFlows": []
+    },
+    {
+      "id": "one-renderer-for-preview-and-print",
+      "status": "accepted",
+      "title": "One parser renders the preview and the print surface, behind an allowlist sanitizer",
+      "context": "The split preview and print/PDF export shared a 43-line renderer built from regular expressions over lines. Enumerated against sixteen ordinary constructs, sixteen rendered wrongly: a GFM table became paragraphs of pipe characters, an ordered list lost its numbering, nested lists flattened, task lists kept literal brackets, emphasis inside a heading or blockquote stayed as asterisks, and a hard-wrapped paragraph split in two. The editor surface was correct throughout, so the two disagreed about the same document. The weight is on print rather than preview: a PDF leaves the application, reaches a reader who never sees the source, and cannot be corrected afterwards.",
+      "decision": "Render both surfaces with vendored markdown-it plus markdown-it-footnote and markdown-it-task-lists, configured html:true and linkify:false, and pass every rendered tree through an allowlist sanitizer before it is inserted. markdown-it's own validateLink is turned off so that the sanitizer is the single authority on which URLs survive.",
+      "consequences": [
+        "All sixteen constructs now render correctly on both surfaces, verified construct-by-construct rather than by markup comparison.",
+        "html:true is what makes the sanitizer mandatory rather than defensive: it hands untrusted document bytes to a DOM that shares an origin with the native bindings. The renderer it replaced was safe from this only by accident, because it emitted text nodes and never built hostile markup into elements at all.",
+        "Disabling validateLink is not a relaxation. markdown-it refuses four schemes by denylist; the sanitizer runs an allowlist, so everything markdown-it refused is still refused. What changes is that the refusal now happens where it can be seen and recorded: a link dissolved during parsing leaves no element, so nothing downstream could tell a refused link from a document that never had one.",
+        "Fenced blocks render through a slot rather than as HTML, because the diagram and the code-block chrome are event listeners as much as markup, and those belong to the application rather than to the renderer.",
+        "A document embedding raw inline <svg> now shows nothing for it, and document-authored id and style attributes are dropped. Both are real fidelity losses accepted deliberately: inline SVG is a second sanitizer's worth of rules, and a document-authored id can answer a getElementById query meant for the application."
+      ],
+      "relatedNodes": [
+        "document-html-renderer",
+        "vendored-editor-assets",
+        "markdown-domain"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
+    },
+    {
+      "id": "split-shows-the-real-editor",
+      "status": "accepted",
+      "title": "Split shows the real editor, not a second rendering of the document",
+      "context": "Split mode's formatted pane was a preview drawn by a separate renderer. That renderer disagreed with the editor about sixteen ordinary markdown constructs, carried its own typography scale — h1 at 32px against the editor's 36px, its own blockquote and pre styling — and fell further behind every time the editor gained something it did not have. It also made the pane read-only, so the formatted half of split was the one surface in a WYSIWYG editor you could not type into. Two renderings of one document is the defect; fixing the renderer only narrows the gap.",
+      "decision": "Move the editor ELEMENT into the split formatted pane on entering split mode, and back to the document card on leaving. The editor instance is not rebuilt to move it: reparenting a live ProseMirror tree preserves its content, editability and serialization, which was measured before the design was built on it.",
+      "consequences": [
+        "The two surfaces cannot drift apart in typography, highlighting or construct coverage, because there is only one of them. The second typography scale was deleted rather than corrected.",
+        "The formatted pane is editable, which is what the rest of the product already promised.",
+        "Both panes are live editors over one document, so each one's refresh fires the other's change handler. An explicit authority — the pane the user last pressed a key or pointer in — decides which one wins; without it the pane being typed into is rebuilt from the pane merely echoing it, and the caret jumps every keystroke.",
+        "The authority is driven by keydown and pointerdown rather than focus. Focus was tried and measured wrong: the editor already holds focus when split opens, so focusin never fires for the formatted pane, and focus is also the one signal a rebuild raises by itself.",
+        "Rebuilding the formatted pane is rebuilding a real editor, so it waits for a pause in typing rather than running per keystroke, and re-checks the authority when it fires.",
+        "markdown/render.js now has exactly one consumer, the print surface. Every assertion about it moved there, and the print arm is the one that mattered most anyway.",
+        "Code-block chrome geometry can only be measured under emulated print media now. A display:none element measures 0 for every rect, which reported a layout fault where the CSS was untouched."
+      ],
+      "relatedNodes": [
+        "frontend-shell",
+        "wysiwyg-editor",
+        "document-html-renderer"
+      ],
+      "relatedFlows": [
+        "edit-markdown-document",
+        "switch-editor-mode"
+      ]
+    },
+    {
+      "id": "search-is-a-source-coordinate",
+      "status": "accepted",
+      "title": "Find and replace work on the markdown source, in every mode",
+      "context": "The application had no document search at all; the only search in it filtered the file list. The obstacle was never the text box: the document is shown in three substrates — a textarea in Raw, a ProseMirror document in Formatted, and both at once in Split — and a search over whichever surface happened to be visible would answer differently in each. Split is the worst case, because it would be one document, searched twice, disagreeing with itself about how many matches exist. Replace raised a second problem: an edit driven through the editor re-serializes the whole document, so a replace-all could rewrite lines the user never touched.",
+      "decision": "A match is an offset range into the MARKDOWN SOURCE, which is the only coordinate every mode shares, and replace is a string-to-string transform on that source followed by a remount — the same shape as tables.js, fences.js and commands.js. Each surface is responsible only for REVEALING a source range in its own terms.",
+      "consequences": [
+        "All three modes report the same match count, because they are all counting in the same document rather than in their own rendering of it.",
+        "Raw and Split's source pane select the matched characters exactly. Split reveals in both halves at once — the source pane selects and the formatted pane marks the block — since both are visible.",
+        "Formatted has no source offsets, so a match is revealed by the BLOCK it falls in. That is derived from the same source string as the match, so it cannot disagree with the count; a second search over the rendered DOM would have counted different things, because markdown syntax characters are not in the rendered text. Exact in-place selection there needs source-to-model mapping, which is a separate piece of work (probe/source-range-patching) rather than something skipped.",
+        "Replace carries exactly the risk every other document command already carries, and no more. Replacements are applied from the end backwards, because a forward pass shifts every later match by the difference in length and corrupts the document whenever the replacement is a different size.",
+        "The replacement is literal even in regex mode: capture-group substitution is a second syntax in a box that mostly holds ordinary words, and it silently mangles any replacement containing a dollar sign.",
+        "An unusable regular expression is reported on the field rather than answered with 'No results', which is indistinguishable from a document that genuinely lacks the text.",
+        "Find is on the Edit menu, not only on a document key handler. A menu item's key equivalent is matched before web content sees the event, so claiming Cmd-F there is what stops it reaching the page unhandled."
+      ],
+      "relatedNodes": [
+        "markdown-domain",
+        "frontend-shell",
+        "raw-editor"
       ],
       "relatedFlows": [
         "edit-markdown-document",

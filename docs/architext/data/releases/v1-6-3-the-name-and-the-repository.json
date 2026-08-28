@@ -1,0 +1,168 @@
+{
+  "id": "v1-6-3-the-name-and-the-repository",
+  "version": "1.6.3",
+  "name": "The name, and what the repository carries",
+  "status": "complete",
+  "posture": "on-track",
+  "summary": "SUPERSEDED BY 1.6.4, AND NEVER RELEASED. This record was marked complete on the strength of the work landing on develop, but no v1.6.3 tag was ever created and no release was ever published: the last release users could install remained 1.6.2. The work described below is real and shipped — it reaches users in 1.6.4, recorded there under 'The naming and repository work prepared for 1.6.3'. The lesson is the record's own: 'complete' has to mean reached a user, not merged to a branch, or Release Truth describes the repository rather than the product.\n\nA patch cut from installing 1.6.2 and looking at it. The launcher showed the application as 'Dr. Markdown.app' — with the extension — and showed it more than once. Both had causes worth recording rather than working around. macOS strips a .app suffix for display only when the basename has no other dot in it, so the period in 'Dr.' was the whole reason the extension appeared; the name is now Dr Markdown everywhere, one name right in every place it shows. The duplicates were build artifacts: the clean step removed only the current bundle so a previously named one survived beside it, and the DMG staging copy was registered by macOS and its registration outlived the directory being deleted. Separately, and larger: docs/superpowers was tracked and shipping — 38 files, 384K — because .gitignore covered .superpowers/ and not this. It had become load-bearing, cited 33 times including three comments in shipping code, so every live citation was repointed at a durable record before the files were untracked.",
+  "targetWindow": "Current milestone",
+  "lastUpdated": "2026-08-28T00:00:00.000Z",
+  "updateSource": "Cut from using the packaged 1.6.2 build",
+  "scope": {
+    "required": [
+      {
+        "id": "name-without-the-period",
+        "title": "The application is named Dr Markdown",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "presentation",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "The launcher showed 'Dr. Markdown.app' while its neighbours showed plain names. Not a setting and not required: macOS strips a .app suffix for display only when the basename has no other dot: measured across four bundles built from the same app, 'Dr. Markdown.app' and 'Dr.Markdown.app' show the extension while 'Dr Markdown.app' and 'DrMarkdown.app' do not. AppleShowAllExtensions was unset, the extension-hidden FinderInfo bit was absent on ours AND on a correctly-displaying neighbour, both declared the same bundle keys, and neither mdimport nor SetFile -a E changed anything. Dropped everywhere rather than only from the filename, so Finder and the menu bar cannot disagree. kMDItemDisplayName is now 'Dr Markdown' with 'Dr Markdown.app' as an alternate name — the shape every correctly named application has, where ours had null."
+      },
+      {
+        "id": "launcher-shows-one-application",
+        "title": "Build artifacts do not appear in the launcher",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "presentation",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "Four entries appeared in the launcher, two of them a version behind. Two causes. The clean step removed only \"$APP\" — this build's bundle — so the previously named one stayed in build/bin, indexed, forever; it now clears the output directory, verified by planting a decoy and building. And the DMG staging copy is registered by macOS the moment it appears, with the registration OUTLIVING the files, so deleting the staging directory left a launcher entry pointing at a path that no longer existed — which is why a duplicate kept returning with nothing on disk to explain it. Both artifacts are now withdrawn from LaunchServices, the staged copy before its directory is deleted. The installed application is untouched."
+      },
+      {
+        "id": "no-ephemeral-docs",
+        "title": "Ephemeral documentation is not committed",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "repository",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "docs/superpowers was tracked on main and shipping in every release — 38 plan and spec files, 384K — because .gitignore covered .superpowers/ and not this path. It had also become load-bearing, which is what made removal more than tidying: 33 citations pointed at it from decision records, release records, roadmap data and THREE comments in shipping Go source. Deleting the files without touching those would have left host.go, host_darwin.go and walk_darwin.go citing documents the repository does not contain. Every live citation was repointed at docs/decisions/2026-08-10-host-replacement.md or rewritten to describe rather than link; the 25 inside a historical release record were left alone, as historical prose is. Recorded as a project rule so a review catches the next one."
+      },
+      {
+        "id": "readme-and-name-consistency",
+        "title": "The README and every visible string say Dr Markdown",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "presentation",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "The README carried 35 em-dashes, a title of 'Dr. Markdown, .MD', and a link to a design document the repository no longer contains — the one live citation missed when ephemeral documentation was untracked. All 35 rewritten as commas, colons or separate sentences; the dead link removed. The name is now Dr Markdown in every place a user sees it: window title, crash dialog, unsupported-platform error, banner wordmark, screenshots and README. The on-disk data directories deliberately KEEP the original name, with the reason recorded in the code: renaming them would silently abandon the user's settings, recents and event trail on upgrade, which is worse than a directory whose name is a release behind, and the user never sees it."
+      },
+      {
+        "id": "dead-code-removed",
+        "title": "Two functions that nothing calls are removed",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "repository",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Found by a magma call-graph sweep and verified by hand. tableSection in e2e/e2e_test.go and disc in tools/genbanner/main.go were each declared once and called nowhere. 31 of the 33 candidates the map produced were REFUTED rather than deleted: every //export function and everything it reaches is called from host_darwin.m, and cgo C-to-Go edges are invisible to a Go call graph. The refutation was checked per symbol, not assumed from the caveat."
+      },
+      {
+        "id": "notarized-builds",
+        "title": "The build can produce a notarized DMG",
+        "kind": "feature",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "distribution",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "DRMD_SIGN_IDENTITY selects Developer ID signing with the hardened runtime and a secure timestamp; DRMD_NOTARY_PROFILE then signs the DMG, submits it, staples the ticket and verifies the result as Gatekeeper sees it. Without either the build is ad-hoc signed exactly as before, which is what CI does and what a contributor with no certificate gets. It never falls back silently: a profile without an identity refuses BEFORE the upload rather than failing on Apple's side minutes later, and a nonexistent identity fails at signing. All three paths tested. No entitlements file, measured rather than assumed: the bundle links only system frameworks, carries one executable with no nested code, and its JavaScript runs in WebKit's own process, so allow-jit, allow-unsigned-executable-memory and a library-validation exception are all unnecessary. --timestamp is recorded as more than a requirement — it proves the signature was made while the certificate was valid, so the application keeps opening after that certificate expires."
+      },
+      {
+        "id": "app-store-deferred",
+        "title": "Mac App Store distribution recorded as a deferred decision",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "distribution",
+        "dependsOn": [],
+        "evidence": [
+          "issue-11"
+        ],
+        "summary": "The $99 membership covers both distribution paths; the application does not. Measured against the source rather than generalised: under the App Sandbox, selecting a file grants access to that file alone, and this application reads images resolved against the document's own directory, writes <document>.assets/ beside it, and reopens recents with no picker. The first would surface through the existing missing-asset state and look like data loss rather than a permission refusal. Deferred rather than rejected, with what would change it recorded, including that it should not precede source-preserving editing."
+      }
+    ],
+    "planned": [],
+    "stretch": [],
+    "deferred": [],
+    "outOfScope": []
+  },
+  "workstreams": [
+    {
+      "id": "presentation",
+      "name": "How the application presents itself",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "What the user sees of the application before opening it.",
+      "itemIds": [
+        "name-without-the-period",
+        "launcher-shows-one-application",
+        "readme-and-name-consistency"
+      ]
+    },
+    {
+      "id": "repository",
+      "name": "What the repository carries",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "What is committed, and what has no business being committed.",
+      "itemIds": [
+        "no-ephemeral-docs",
+        "dead-code-removed"
+      ]
+    },
+    {
+      "id": "distribution",
+      "name": "How the application reaches a user",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Signing, notarization, and which distribution path this project takes.",
+      "itemIds": [
+        "notarized-builds",
+        "app-store-deferred"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "wysiwyg-reserialization-class",
+      "title": "The WYSIWYG surface still re-serializes the whole document",
+      "severity": "high",
+      "status": "accepted",
+      "summary": "Carried forward unchanged. Only source-preserving editing would close the class. The unmerged probe/source-range-patching branch holds a spike at it and is kept for that reason — it is the one branch of five that survived this release's sweep."
+    }
+  ],
+  "milestones": [],
+  "dependencies": [],
+  "evidence": [
+    "full-test-suite",
+    "packaging",
+    "menu-check"
+  ]
+}

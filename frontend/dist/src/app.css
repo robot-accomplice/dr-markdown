@@ -8,6 +8,14 @@
   /* A settings row's title and its control occupy one band, so they read as a
      pair however far the description below them runs. Every row control is
      sized from this; a control that opts out of it will not line up. */
+  /* One shape for every control. There were six literals — 6, 7, 8, 9, 10px and
+     50% — across fourteen rules with nothing holding them together, which is a
+     large part of why the shell read as assembled rather than designed. */
+  /* Toolbar feedback. A desktop control shows state by filling, not by
+     outlining, so these are the two surfaces a command paints on. */
+  --hover: oklch(0.965 0.004 285);
+  --pressed: oklch(0.935 0.005 285);
+  --control-radius: 6px;
   --row-band: 32px;
   --row-toggle-height: 20px;
   --chrome: oklch(0.985 0.002 285);
@@ -109,10 +117,42 @@ button:disabled {
 
 .empty-actions button,
 .template-grid button,
-.ribbon-controls button,
+/* A toolbar command is borderless until you touch it.
+   
+   Every command used to be an outlined, rounded, filled rectangle, so a ribbon
+   row was a line of discrete pills. That is web styling, not a desktop toolbar:
+   what tells you a thing is a command is its placement in a group, not a box
+   drawn around it. The border returns on hover and while pressed, which is where
+   it carries information rather than decoration. */
+.ribbon-controls button {
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--ink);
+}
+
+.ribbon-controls button:hover {
+  background: var(--hover);
+}
+
+.ribbon-controls button:active {
+  background: var(--pressed);
+}
+
+/* A command that is ON. Nothing in the ribbon carries this state today — Bold
+   and Italic are stateless — but the rule exists so that adding it is a class
+   rather than a redesign, and so it cannot be given back a border by default. */
+.ribbon-controls button.active,
+.ribbon-controls button[aria-pressed="true"] {
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+}
+
+/* A select still needs an edge: it has to read as something you can open, and
+   nothing else about it says so. */
 .ribbon-controls select {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--panel);
   color: var(--ink);
 }
@@ -159,12 +199,15 @@ button.primary {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+/* Settings sits in the tab row, among borderless tabs, and was the one
+   bordered pill in that band. It opens a modal rather than switching a tab,
+   so it keeps a weight the tabs do not have, but it stops being a bubble. */
 .tab-row-settings {
   height: 28px;
   margin-left: 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  background: transparent;
   color: var(--ink);
   padding: 0 11px;
   font-size: 11.5px;
@@ -172,7 +215,11 @@ button.primary {
 }
 
 .tab-row-settings:hover {
-  background: oklch(0.965 0.004 285);
+  background: var(--hover);
+}
+
+.tab-row-settings:active {
+  background: var(--pressed);
 }
 
 .mode-controls {
@@ -182,17 +229,28 @@ button.primary {
   gap: 10px;
 }
 
+/* One control for one choice.
+
+   Formatted, Raw and Split are three peers — setMode takes one of them and the
+   application holds a single state.mode — but the shell showed two as a
+   segmented pair and the third as a toggle beside a divider. That raised a
+   question the application cannot answer: is Split a mode, or a modifier on the
+   mode you picked? toggleSplit returned to Formatted from Split regardless of
+   whether you had been in Raw, so it behaved as a mode. It is shown as one now.
+
+   The View menu already treated all three as peers on Cmd-1/2/3; the shell
+   agrees with it. */
 .mode-switch {
   display: flex;
   gap: 2px;
   padding: 3px;
-  border-radius: 9px;
-  background: oklch(0.965 0.004 285);
+  border-radius: var(--control-radius);
+  background: var(--hover);
 }
 
 .mode-switch button {
   border: 0;
-  border-radius: 7px;
+  border-radius: calc(var(--control-radius) - 2px);
   background: transparent;
   color: var(--muted);
   padding: 5px 12px;
@@ -200,33 +258,14 @@ button.primary {
   font-weight: 600;
 }
 
+.mode-switch button:hover:not(.active) {
+  color: var(--ink);
+}
+
 .mode-switch button.active {
-  background: #fff;
+  background: var(--panel);
   color: var(--ink);
   box-shadow: 0 1px 2px oklch(0.5 0.02 285 / 0.14);
-}
-
-.mode-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--line);
-}
-
-.split-toggle {
-  min-width: 68px;
-  height: 30px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--ink-2);
-  font-size: 11.5px;
-  font-weight: 650;
-}
-
-.split-toggle.active {
-  border-color: var(--accent-wash-border);
-  background: var(--accent-wash);
-  color: var(--accent);
 }
 
 .ribbon-panels {
@@ -258,7 +297,7 @@ button.primary {
   gap: 2px;
   padding: 6px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--control-radius);
   background: var(--panel);
   box-shadow: 0 18px 40px oklch(0.3 0.02 285 / 0.16);
 }
@@ -278,7 +317,7 @@ button.primary {
   align-items: center;
   gap: 10px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--ink);
   padding: 8px 10px;
@@ -400,11 +439,10 @@ button.primary {
   color: var(--ink);
 }
 
-.ribbon-controls button:hover,
 .ribbon-controls select:hover,
 .rail-row:hover,
 .new-document:hover {
-  background: oklch(0.965 0.004 285);
+  background: var(--hover);
 }
 
 .glyph {
@@ -546,9 +584,6 @@ button.primary {
     padding-right: 8px;
   }
 
-  .split-toggle {
-    min-width: 54px;
-  }
 
   .ribbon-group {
     gap: 4px;
@@ -1671,53 +1706,22 @@ body.source-hide-markers .source-highlight .markdown-marker {
   padding: 34px 22px;
 }
 
-#split-preview {
+/* The formatted pane IS the editor in split mode, so it drops the document
+   card's chrome — border, radius, shadow and the 52px/60px page inset are the
+   look of a standalone page, not of one half of a split. Everything else about
+   the editor is untouched, which is the point: the two surfaces cannot drift
+   apart in typography or highlighting when there is only one of them. The
+   block replaced here was the second typography scale, and the drift itself:
+   it set h1 to 32px where the editor sets 36px, and restyled blockquote and
+   pre on its own terms. */
+.split-pane > #wysiwyg {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   padding: 34px 44px;
-  user-select: text;
-  font-family: var(--document-font);
-}
-
-#split-preview h1,
-#split-preview h2,
-#split-preview h3,
-#split-preview p,
-#split-preview blockquote,
-#split-preview pre,
-#split-preview .code-block-shell {
-  margin: 0 0 18px;
-}
-
-#split-preview h1 {
-  font-size: 32px;
-  letter-spacing: -0.02em;
-}
-
-#split-preview h2 {
-  font-size: 22px;
-}
-
-#split-preview p,
-#split-preview blockquote {
-  color: var(--ink-2);
-  font-size: var(--document-font-size);
-  line-height: 1.6;
-}
-
-#split-preview blockquote {
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 14px;
-  background: var(--canvas);
-}
-
-#split-preview pre {
-  font-family: var(--code-font);
-  font-variant-ligatures: var(--code-ligatures);
-  font-feature-settings: var(--code-font-features);
-  white-space: pre-wrap;
 }
 
 #raw .cm-editor {
@@ -2565,6 +2569,124 @@ body.dark {
 /* Anchored to the pane, and deliberately OUTSIDE #editor-host: inside it the
    control would zoom itself, shrinking as you zoomed out — smallest exactly
    when it is hardest to hit. */
+/* Find bar.
+   It overlays the top of the document region rather than sitting in the layout:
+   opening a bar that reflows the page scrolls the text you were looking for out
+   from under you at the moment you asked to find it. Same surface treatment as
+   the zoom control at the other corner, so the two read as one family of
+   floating document controls rather than two different ideas. */
+#find-bar {
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px oklch(0.3 0.02 285 / 0.12);
+}
+
+#find-bar[hidden] {
+  display: none;
+}
+
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#find-bar input {
+  width: 200px;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--canvas);
+  color: var(--ink);
+  font: 12px/1 var(--ui-font);
+}
+
+#find-bar input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* An unusable regular expression is reported on the field, not by silently
+   answering "no results" — which is indistinguishable from a document that
+   genuinely does not contain the text. */
+#find-bar input[aria-invalid='true'] {
+  border-color: var(--danger, #b4341f);
+}
+
+.find-count {
+  min-width: 84px;
+  color: var(--muted);
+  font: 11px/1 var(--mono);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.find-toggles {
+  display: flex;
+  gap: 2px;
+}
+
+#find-bar button {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--ink-2);
+  font: 11px/1 var(--mono);
+  cursor: pointer;
+}
+
+#find-bar button:hover {
+  background: var(--hover);
+}
+
+#find-bar button:active {
+  background: var(--pressed);
+}
+
+#find-bar button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+#replace-one,
+#replace-all {
+  font: 11px/1 var(--ui-font);
+}
+
+/* The replace row is hidden for a plain find, so the common case is one row.
+   Both are the same bar, so opening replace does not move the find field. */
+#find-bar:not([data-replace]) [data-find-replace-row] {
+  display: none;
+}
+
+/* The current match, and the others. Marking only the current one loses the
+   sense of how the matches are distributed; marking them all identically loses
+   which one is selected. */
+.find-hit {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 2px;
+}
+
+.find-hit-current {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  outline: 1px solid var(--accent);
+}
+
 .document-zoom {
   position: absolute;
   right: 18px;
@@ -2622,4 +2744,88 @@ body.app-empty .document-zoom {
 
 #status-message.showing {
   opacity: 1;
+}
+
+/* The File menu, and the button that opens it.
+
+   Shaped to read as a macOS menu rather than as a web dropdown: a tight radius,
+   a hairline border, a real shadow, generous horizontal padding for the shortcut
+   column, and a full-width accent highlight on the hovered row rather than a
+   rounded pill inside it. A native menu highlights the ROW; a web dropdown
+   highlights a box within it, and that difference is most of why one reads as
+   part of the system and the other does not. */
+.file-menu-button {
+  height: 28px;
+  margin-right: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--ink);
+  padding: 0 11px;
+  font-size: 12.5px;
+  font-weight: 550;
+}
+
+.file-menu-button:hover {
+  background: var(--hover);
+}
+
+.file-menu-button[aria-expanded="true"] {
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+}
+
+#file-menu-root {
+  position: absolute;
+  top: 46px;
+  left: 8px;
+  z-index: 60;
+}
+
+.native-menu {
+  min-width: 220px;
+  padding: 4px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  box-shadow: 0 12px 32px oklch(0.3 0.02 285 / 0.18);
+}
+
+.native-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 4px 14px;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.native-menu button:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* The shortcut column greys out on hover too, or it stays dark on the accent
+   and reads as a different element than the row it belongs to. */
+.native-menu kbd {
+  color: var(--muted);
+  font: inherit;
+}
+
+.native-menu button:hover kbd {
+  color: #fff;
+  opacity: 0.75;
+}
+
+.native-menu-separator {
+  height: 1px;
+  margin: 4px 10px;
+  background: var(--line);
 }

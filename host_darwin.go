@@ -4,7 +4,8 @@ package main
 
 // A macOS host with nothing between the application and the operating system.
 //
-// SPIKE — see docs/superpowers/specs/2026-08-10-own-the-host-spike-design.md.
+// Began as a spike; the decision it produced is recorded in
+// docs/decisions/2026-08-10-host-replacement.md.
 // It implements only what carries risk: a window, embedded assets over a custom
 // URL scheme, a bound call, and a panicking bound call that REJECTS. The twelve
 // nativePort operations are deliberately absent.
@@ -971,6 +972,11 @@ func hostReportMenu() {
 		{"Edit", "Copy", "c"},
 		{"Edit", "Paste", "v"},
 		{"Edit", "Select All", "a"},
+		// Find lives on the menu for a reason beyond discoverability: a menu
+		// item's key equivalent is matched before web content sees the event, so
+		// claiming Cmd-F here is what stops it reaching the page unhandled (#132).
+		{"Edit", "Find\u2026", "f"},
+		{"Edit", "Find Next", "g"},
 		{"View", "Formatted", "1"},
 		{"View", "Raw", "2"},
 		// The only route to Reveal in Finder since the contextual bar was
