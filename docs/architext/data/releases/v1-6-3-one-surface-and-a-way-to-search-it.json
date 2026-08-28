@@ -1,0 +1,392 @@
+{
+  "id": "v1-6-3-one-surface-and-a-way-to-search-it",
+  "version": "1.6.3",
+  "name": "One surface, and a way to search it",
+  "status": "complete",
+  "posture": "on-track",
+  "summary": "The release cut from living with 1.6.2 for a while. Everything in it came from using the application rather than from a plan, and the two largest items turned out to be the same defect seen from different sides: the product had more than one renderer, and they disagreed. Split's formatted pane and the print/PDF surface shared a 43-line renderer built from regular expressions over lines; enumerated against sixteen ordinary markdown constructs, sixteen were wrong. Print is the half that mattered most, because a PDF leaves the application and cannot be corrected once sent. Print now goes through a real parser, and Split simply shows the editor itself, so the two surfaces cannot drift apart again because there is only one of them. Adopting a real parser removed an accident that had been doing security work: the old renderer emitted text nodes, so hostile markup in an opened document never became an element. That guarantee is now stated deliberately by a sanitizer rather than inherited from an implementation detail. The release also carries the first document search this product has had, the ribbon and mode controls the feedback asked for, and the naming and repository work first prepared under this version number.\n\nIt was cut once as 1.6.4 and withdrawn before anyone could install it. The go/no-go review on the frozen tree returned four NO-GO stations and a NO-GO board, the dealbreaker being a reproduced path from an opened document to the native file bindings: a mermaid diagram link is an SVG anchor carrying only xlink:href, which the click guard's a[href] selector could not match. Three more followed it — Cmd-Q bypassed the unsaved-changes guard entirely, Replace All could not be undone while the Edit menu promised it could, and uncaught frontend errors reached nobody. All four are fixed here. The number went back to 1.6.3 because 1.6.4's artifacts were never published, and a version nobody could install is not a version that happened.",
+  "targetWindow": "Current milestone",
+  "lastUpdated": "2026-08-28T00:00:00.000Z",
+  "updateSource": "maintainer",
+  "scope": {
+    "required": [
+      {
+        "id": "one-renderer-for-print",
+        "title": "Print and PDF export render through a real parser",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "one-surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "The split preview and print/PDF export shared a 43-line renderer that matched constructs with regular expressions over lines. Enumerated against sixteen ordinary constructs, SIXTEEN were wrong: a GFM table became paragraphs of pipe characters, an ordered list lost its numbering and became bullets, nested lists flattened, task lists kept literal brackets, emphasis inside a heading or blockquote stayed as asterisks, and a hard-wrapped paragraph split in two. The editor was correct throughout, so the two disagreed about one document. Both now render through vendored markdown-it with the footnote and task-list plugins, which is what makes the dialect CommonMark plus GFM rather than CommonMark alone. Sixteen of sixteen verified correct, pinned by construct rather than by markup so a future renderer that regresses one differently still fails. (#134)"
+      },
+      {
+        "id": "document-html-is-sanitized",
+        "title": "Rendered document HTML passes an allowlist sanitizer",
+        "kind": "security",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "one-surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "link-security-tests"
+        ],
+        "summary": "Rendering with html:true preserves the inline HTML this dialect round-trips, and hands every byte of an opened document into a DOM that shares an origin with the native bindings, where a javascript: URL reaches SaveDocument and OpenRecentDocument with no path restriction. The renderer this replaced was safe from that ONLY BY ACCIDENT: it emitted text nodes, so hostile markup never became an element. sanitize.js states the guarantee deliberately — element, attribute and URL-scheme allowlists, never denylists. markdown-it's own validateLink is disabled so the sanitizer is the single URL authority; that is not a relaxation, but it moves the refusal somewhere it can be SEEN, since a link refused during parsing leaves no element and went unrecorded. Refusals now surface as link.refused and image.refused, deduped per distinct value and capped so a document already judged hostile cannot evict the rest of the trail. (#134)"
+      },
+      {
+        "id": "split-is-the-editor",
+        "title": "Split shows the real editor, not a second rendering",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "one-surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Split's formatted pane was a preview drawn by the separate renderer. It carried its own typography scale — h1 at 32px against the editor's 36px, its own blockquote and pre styling — and it was READ-ONLY, so the formatted half of split was the one surface in a WYSIWYG editor you could not type into. Fixing the renderer only narrows that gap, so the editor element now moves into the pane instead. The instance is not rebuilt to move it: reparenting a live ProseMirror tree preserves content, editability and serialization, measured before the design was built on it. Both panes are live editors over one document, so an explicit authority — the pane the user last pressed a key or pointer in — decides which one wins. (#134)"
+      },
+      {
+        "id": "document-search",
+        "title": "The document can be searched, and text replaced",
+        "kind": "feature",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "search",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "menu-check"
+        ],
+        "summary": "The application had no document search; the only search in it filtered the file list. The obstacle was never the text box: the document is shown in three substrates, and a search over whichever surface was visible would answer differently in each — in Split, differently from itself. A match is therefore an offset range into the markdown SOURCE, the one coordinate every mode shares, and each surface reveals a source range in its own terms. Replace rewrites the source and remounts, the same shape as every other document command, which is the answer to the re-serialization hazard: an edit driven through the editor would rewrite lines the user never touched. Find, Find and Replace, Find Next and Find Previous are on the Edit menu, because a menu item's key equivalent is matched before web content sees the event. (#132)"
+      },
+      {
+        "id": "images-survive-a-mode-switch",
+        "title": "Embedded images no longer distort when switching to Split",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "controls",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "The image node view measured its container with getBoundingClientRect, which reports ZOOMED pixels, and wrote an explicit height from it; the width then derived from that height. At a document zoom of 0.9 a 538px pane measured 484, and every switch compounded it. clientWidth is the layout width and is unaffected by zoom. Fixed as a vendor patch, since the measurement is inside the vendored bundle. (#131)"
+      },
+      {
+        "id": "one-control-for-three-modes",
+        "title": "Formatted, Raw and Split are one control",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "controls",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Mode selection was two separate controls for what is one choice between three states. It is now a single radiogroup, which is also what makes the current mode announceable rather than inferred from which of two buttons looks pressed. (#129)"
+      },
+      {
+        "id": "file-is-a-menu",
+        "title": "File is a menu, not a ribbon tab",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "controls",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "File was a ribbon tab, so opening it replaced the ribbon's contents and took the formatting controls away to show a list of file commands. It is now a dropdown that leaves the ribbon alone, and the ribbon opens on Format. (#130)"
+      },
+      {
+        "id": "ribbon-reads-as-a-toolbar",
+        "title": "The ribbon reads as a toolbar, not a row of pills",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "controls",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Ribbon commands were bordered, filled, rounded buttons — the look of a web page rather than a desktop toolbar. They are now borderless and transparent at rest and show their affordance on hover and press, while controls that genuinely are fields keep their borders. (#133)"
+      },
+      {
+        "id": "name-without-the-period",
+        "title": "The application is named Dr Markdown",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "carried",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "The launcher showed 'Dr. Markdown.app' while its neighbours showed plain names. Not a setting and not required: macOS strips a .app suffix for display only when the basename has no other dot: measured across four bundles built from the same app, 'Dr. Markdown.app' and 'Dr.Markdown.app' show the extension while 'Dr Markdown.app' and 'DrMarkdown.app' do not. AppleShowAllExtensions was unset, the extension-hidden FinderInfo bit was absent on ours AND on a correctly-displaying neighbour, both declared the same bundle keys, and neither mdimport nor SetFile -a E changed anything. Dropped everywhere rather than only from the filename, so Finder and the menu bar cannot disagree. kMDItemDisplayName is now 'Dr Markdown' with 'Dr Markdown.app' as an alternate name — the shape every correctly named application has, where ours had null."
+      },
+      {
+        "id": "launcher-shows-one-application",
+        "title": "Build artifacts do not appear in the launcher",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "carried",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "Four entries appeared in the launcher, two of them a version behind. Two causes. The clean step removed only \"$APP\" — this build's bundle — so the previously named one stayed in build/bin, indexed, forever; it now clears the output directory, verified by planting a decoy and building. And the DMG staging copy is registered by macOS the moment it appears, with the registration OUTLIVING the files, so deleting the staging directory left a launcher entry pointing at a path that no longer existed — which is why a duplicate kept returning with nothing on disk to explain it. Both artifacts are now withdrawn from LaunchServices, the staged copy before its directory is deleted. The installed application is untouched."
+      },
+      {
+        "id": "no-ephemeral-docs",
+        "title": "Ephemeral documentation is not committed",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "carried",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "docs/superpowers was tracked on main and shipping in every release — 38 plan and spec files, 384K — because .gitignore covered .superpowers/ and not this path. It had also become load-bearing, which is what made removal more than tidying: 33 citations pointed at it from decision records, release records, roadmap data and THREE comments in shipping Go source. Deleting the files without touching those would have left host.go, host_darwin.go and walk_darwin.go citing documents the repository does not contain. Every live citation was repointed at docs/decisions/2026-08-10-host-replacement.md or rewritten to describe rather than link; the 25 inside a historical release record were left alone, as historical prose is. Recorded as a project rule so a review catches the next one."
+      },
+      {
+        "id": "readme-and-name-consistency",
+        "title": "The README and every visible string say Dr Markdown",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "carried",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "The README carried 35 em-dashes, a title of 'Dr. Markdown, .MD', and a link to a design document the repository no longer contains — the one live citation missed when ephemeral documentation was untracked. All 35 rewritten as commas, colons or separate sentences; the dead link removed. The name is now Dr Markdown in every place a user sees it: window title, crash dialog, unsupported-platform error, banner wordmark, screenshots and README. The on-disk data directories deliberately KEEP the original name, with the reason recorded in the code: renaming them would silently abandon the user's settings, recents and event trail on upgrade, which is worse than a directory whose name is a release behind, and the user never sees it."
+      },
+      {
+        "id": "dead-code-removed",
+        "title": "Two functions that nothing calls are removed",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "carried",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Found by a magma call-graph sweep and verified by hand. tableSection in e2e/e2e_test.go and disc in tools/genbanner/main.go were each declared once and called nowhere. 31 of the 33 candidates the map produced were REFUTED rather than deleted: every //export function and everything it reaches is called from host_darwin.m, and cgo C-to-Go edges are invisible to a Go call graph. The refutation was checked per symbol, not assumed from the caveat."
+      },
+      {
+        "id": "notarized-builds",
+        "title": "The build can produce a notarized DMG",
+        "kind": "feature",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "carried",
+        "dependsOn": [],
+        "evidence": [
+          "packaged-app-check"
+        ],
+        "summary": "DRMD_SIGN_IDENTITY selects Developer ID signing with the hardened runtime and a secure timestamp; DRMD_NOTARY_PROFILE then signs the DMG, submits it, staples the ticket and verifies the result as Gatekeeper sees it. Without either the build is ad-hoc signed exactly as before, which is what CI does and what a contributor with no certificate gets. It never falls back silently: a profile without an identity refuses BEFORE the upload rather than failing on Apple's side minutes later, and a nonexistent identity fails at signing. All three paths tested. No entitlements file, measured rather than assumed: the bundle links only system frameworks, carries one executable with no nested code, and its JavaScript runs in WebKit's own process, so allow-jit, allow-unsigned-executable-memory and a library-validation exception are all unnecessary. --timestamp is recorded as more than a requirement — it proves the signature was made while the certificate was valid, so the application keeps opening after that certificate expires."
+      },
+      {
+        "id": "app-store-deferred",
+        "title": "Mac App Store distribution recorded as a deferred decision",
+        "kind": "chore",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "carried",
+        "dependsOn": [],
+        "evidence": [
+          "issue-11"
+        ],
+        "summary": "The $99 membership covers both distribution paths; the application does not. Measured against the source rather than generalised: under the App Sandbox, selecting a file grants access to that file alone, and this application reads images resolved against the document's own directory, writes <document>.assets/ beside it, and reopens recents with no picker. The first would surface through the existing missing-asset state and look like data loss rather than a permission refusal. Deferred rather than rejected, with what would change it recorded, including that it should not precede source-preserving editing."
+      },
+      {
+        "id": "guard-at-the-sink",
+        "title": "A diagram link can no longer navigate the webview",
+        "kind": "security",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "review-findings",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "link-security-tests"
+        ],
+        "summary": "A mermaid diagram link is an SVG anchor carrying its destination only in the XLINK namespace, and an unprefixed CSS attribute selector matches only null-namespace attributes — so the click guard's a[href] never saw it, returned before preventDefault, and WebKit navigated. The bridge is installed for the main frame with no origin restriction, so the new page inherited SaveDocument and OpenRecentDocument. The guard is now sited at the sink: any anchor, either spelling. A WKNavigationDelegate refuses any main-frame navigation off the app's own scheme, because a guard that must enumerate every spelling will eventually miss one. (#145)"
+      },
+      {
+        "id": "quit-consults-the-guard",
+        "title": "Cmd-Q no longer discards unsaved work",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "review-findings",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "quit-gate"
+        ],
+        "summary": "The unsaved-changes guard was reachable only from windowShouldClose:. Quit goes through terminate:, which consults applicationShouldTerminate: — absent, so AppKit defaulted to NSTerminateNow and the primary quit gesture on macOS lost every dirty tab with no dialog. It now routes through the same guard, two-phase via NSTerminateLater because the dialog needs the main thread the selector runs on. Nothing had exercised terminate: at all, so -quit and -quit-dirty gates drive the real gesture, and reaching termination without a verdict is itself a FAIL. (#146)"
+      },
+      {
+        "id": "replace-can-be-reverted",
+        "title": "Replace All can be undone",
+        "kind": "bug-fix",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "review-findings",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "Applying a replace remounts the editor, which discards ProseMirror's history, while the Edit menu advertises Undo and the OS delivers Cmd-Z — so the user pressed the key the system offered and the document did not come back. The pre-replace document is kept for one step and Cmd-Z restores it, abandoned the moment any other edit lands. The match cap is no longer silent. The claim that replace carried no more risk than any other document command is corrected: true about re-serialization, false about blast radius. (#147)"
+      },
+      {
+        "id": "errors-reach-the-trail",
+        "title": "Uncaught frontend errors reach the event trail",
+        "kind": "architecture",
+        "status": "complete",
+        "owner": "Project maintainers",
+        "workstreamId": "review-findings",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "The host listened for error and unhandledrejection, but into an array only the gate harness reads, so a shipped build dropped everything unanticipated while the handlers existed and read as coverage. They now reach recordEvent, deduped and capped. It matters most for what is newest: the async paths behind find and replace await a remount with no catch of their own. (#148)"
+      }
+    ],
+    "planned": [],
+    "stretch": [],
+    "deferred": [
+      {
+        "id": "exact-match-position-in-formatted",
+        "title": "Exact in-place match selection in the formatted surface",
+        "kind": "feature",
+        "status": "deferred",
+        "owner": "Project maintainers",
+        "workstreamId": "search",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "DEFERRED because it requires source-offset to editor-position mapping, which is a separate piece of work held on the unmerged probe/source-range-patching branch — the same machinery the standing re-serialization blocker needs. Shipping search without it costs precision in ONE surface and nothing else: the match count is identical in all three modes because it is computed from the source, Raw and Split's source pane select the matched characters exactly, and the formatted surface scrolls to and marks the block the match falls in. Doing the mapping first would have delayed a feature the product had none of."
+      },
+      {
+        "id": "inline-svg-in-documents",
+        "title": "Raw inline <svg> in a document is not rendered",
+        "kind": "chore",
+        "status": "deferred",
+        "owner": "Project maintainers",
+        "workstreamId": "one-surface",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite"
+        ],
+        "summary": "DEFERRED, and it is a real fidelity loss taken knowingly. An inline <svg> carries its own script elements and its own xlink: URL surface — a second sanitizer's worth of rules — so it is dropped rather than partially trusted. Mermaid diagrams are unaffected: they are injected after the sanitizing pass. Revisit only with a reason to accept that surface, not to close a gap for its own sake."
+      }
+    ],
+    "outOfScope": []
+  },
+  "workstreams": [
+    {
+      "id": "one-surface",
+      "name": "One document, one rendering of it",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "The product had more than one renderer and they disagreed. This is the work that reduced it to one.",
+      "itemIds": [
+        "one-renderer-for-print",
+        "document-html-is-sanitized",
+        "split-is-the-editor"
+      ]
+    },
+    {
+      "id": "search",
+      "name": "Finding text in the document",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "The first document search this product has had, and the coordinate decision that lets it answer the same in every mode.",
+      "itemIds": [
+        "document-search"
+      ]
+    },
+    {
+      "id": "controls",
+      "name": "The controls the application presents",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Feedback from living with 1.6.2: what the ribbon, the mode selector and the File menu should be, and an image bug that showed up on every mode switch.",
+      "itemIds": [
+        "images-survive-a-mode-switch",
+        "one-control-for-three-modes",
+        "file-is-a-menu",
+        "ribbon-reads-as-a-toolbar"
+      ]
+    },
+    {
+      "id": "carried",
+      "name": "Carried from the version number this release reclaims",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "This work was recorded complete under 1.6.3 and never tagged or published. It reaches users here, under the number it was always meant to ship as.",
+      "itemIds": [
+        "name-without-the-period",
+        "launcher-shows-one-application",
+        "no-ephemeral-docs",
+        "readme-and-name-consistency",
+        "dead-code-removed",
+        "notarized-builds",
+        "app-store-deferred"
+      ]
+    },
+    {
+      "id": "review-findings",
+      "name": "What the go/no-go review found",
+      "owner": "Project maintainers",
+      "status": "complete",
+      "posture": "on-track",
+      "progress": 100,
+      "summary": "Four blockers found by running the ABORT gate on the frozen tree, after it had already been tagged once. Every one of them was a step the ceremony had not been holding.",
+      "itemIds": [
+        "guard-at-the-sink",
+        "quit-consults-the-guard",
+        "replace-can-be-reverted",
+        "errors-reach-the-trail"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "wysiwyg-reserializes-the-document",
+      "title": "The WYSIWYG surface still re-serializes the whole document",
+      "severity": "medium",
+      "status": "accepted",
+      "summary": "Carried forward unchanged, and now with one more thing depending on it. An edit through the editor re-serializes the document, so lines the user never touched can be rewritten. Search sidesteps it by replacing through the SOURCE, but the same gap is why a match cannot be selected exactly in the formatted surface. Only source-preserving editing closes the class; the unmerged probe/source-range-patching branch holds a spike at it. The review also showed the neighbouring hazard this had been masking: because a replace remounts, it destroyed the undo history too. That half is fixed here; the re-serialization itself is not."
+    }
+  ],
+  "milestones": [],
+  "dependencies": [],
+  "evidence": [
+    "full-test-suite",
+    "packaging",
+    "menu-check",
+    "quit-gate",
+    "link-security-tests",
+    "abort-review"
+  ]
+}
