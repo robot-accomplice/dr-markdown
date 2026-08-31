@@ -3,7 +3,7 @@
     {
       "id": "local-wails-app",
       "status": "superseded",
-      "title": "Ship Dr. Markdown as a local Wails desktop app (superseded by own-the-host)",
+      "title": "Ship Dr Markdown as a local Wails desktop app (superseded by own-the-host)",
       "context": "The application is targeted at macOS and embeds frontend assets through Wails rather than serving a website.",
       "decision": "Use Wails to host the editor UI locally and bind native Go document operations into the frontend.",
       "consequences": [

@@ -1,0 +1,129 @@
+{
+  "id": "v1-7-0-desktop-integration-and-packaging",
+  "version": "1.7.0",
+  "name": "Desktop integration and packaging hardening",
+  "status": "planned",
+  "posture": "on-track",
+  "summary": "Approved scope, not yet started. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application on first launch — a spec already recorded in docs/decisions/2026-08-25-default-markdown-handler.md with one open question about whether macOS shows its own consent dialog. Stretch: lift the Go use cases out of app.go so App becomes a thin adapter. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
+  "targetWindow": "Next release",
+  "lastUpdated": "2026-08-31T00:00:00.000Z",
+  "updateSource": "maintainer",
+  "scope": {
+    "required": [
+      {
+        "id": "default-markdown-handler",
+        "title": "Offer to become the default .md application",
+        "kind": "feature",
+        "status": "planned",
+        "owner": "Project maintainers",
+        "workstreamId": "desktop-integration",
+        "dependsOn": [],
+        "evidence": [],
+        "source": "roadmap",
+        "summary": "Offer once, on first launch, to make Dr Markdown the default application for .md and .markdown via LSSetDefaultRoleHandlerForContentType, with three guards: already the default, already answered, and running from a mounted disk image. The bundle already declares CFBundleDocumentTypes, so the app appears under Open With today and simply never becomes the default. One question remains for the implementer to answer by driving the built app: whether recent macOS shows its own consent dialog, which would make our prompt the second one. Full spec: docs/decisions/2026-08-25-default-markdown-handler.md."
+      },
+      {
+        "id": "m12-packaging-signing-updates",
+        "title": "M12 remainder: checksums, packaged smoke test, update-channel policy",
+        "kind": "feature",
+        "status": "planned",
+        "owner": "Project maintainers",
+        "workstreamId": "packaging-hardening",
+        "dependsOn": [],
+        "evidence": [],
+        "source": "roadmap",
+        "summary": "The M12 milestone with signing and notarization removed — those already ship: both published DMGs are Developer-ID signed and notarized, and the release ceremony verifies codesign, stapler and spctl on the .app and both images before every publish. What remains is the three unshipped acceptance criteria from #11: release artifacts carrying checksums, a packaged-app smoke test running before publication (the host gates exist but are a manual step on a Mac), and an alpha/beta/stable update-channel policy, which is a decision before it is code."
+      }
+    ],
+    "planned": [],
+    "stretch": [
+      {
+        "id": "go-use-cases-out-of-app",
+        "title": "Separate Go use cases from the app binding surface",
+        "kind": "chore",
+        "status": "planned",
+        "owner": "Project maintainers",
+        "workstreamId": "go-use-case-extraction",
+        "dependsOn": [],
+        "evidence": [],
+        "source": "roadmap",
+        "summary": "Lift open, save, resolve-unsaved and asset import out of app.go (730 lines) into use-case types, leaving App as a thin adapter. The injected ports already exist and do not change. Stretch because it addresses comprehension rather than correctness: dependency inversion is already in place, so deferring it costs clarity, not safety."
+      }
+    ],
+    "deferred": [
+      {
+        "id": "m9-comments-review-workflow",
+        "title": "Comments and review workflow",
+        "kind": "feature",
+        "status": "deferred",
+        "owner": "Project maintainers",
+        "workstreamId": "desktop-integration",
+        "dependsOn": [],
+        "evidence": [],
+        "source": "roadmap",
+        "summary": "DEFERRED on scope: comment anchoring, persistence and review workflow is a design-led milestone that deserves its own release rather than sharing one with packaging hardening."
+      },
+      {
+        "id": "m10-direct-export-pipeline",
+        "title": "Direct export pipeline",
+        "kind": "feature",
+        "status": "deferred",
+        "owner": "Project maintainers",
+        "workstreamId": "desktop-integration",
+        "dependsOn": [],
+        "evidence": [],
+        "source": "roadmap",
+        "summary": "DEFERRED on sequencing: the strongest candidate for the release immediately after this one, because print and split now share the editor's one renderer — direct PDF/HTML export no longer needs a second rendering pipeline, only an artifact writer."
+      },
+      {
+        "id": "m11-share-sync-git-extensions",
+        "title": "Share, Sync/Git, and Extensions architecture",
+        "kind": "feature",
+        "status": "deferred",
+        "owner": "Project maintainers",
+        "workstreamId": "desktop-integration",
+        "dependsOn": [],
+        "evidence": [],
+        "source": "roadmap",
+        "summary": "DEFERRED on scope: three separately backed subsystems with explicit trust boundaries is architecture work that must be designed before it is built, and does not mix with a packaging release."
+      }
+    ],
+    "outOfScope": []
+  },
+  "workstreams": [
+    {
+      "id": "desktop-integration",
+      "name": "Become a good macOS citizen",
+      "owner": "Project maintainers",
+      "status": "planned",
+      "posture": "on-track",
+      "progress": 0,
+      "summary": "The default-.md-handler offer: the one user-facing feature in this release.",
+      "itemIds": ["default-markdown-handler"]
+    },
+    {
+      "id": "packaging-hardening",
+      "name": "Finish the packaging milestone",
+      "owner": "Project maintainers",
+      "status": "planned",
+      "posture": "on-track",
+      "progress": 0,
+      "summary": "The unshipped M12 acceptance criteria: checksums, a packaged smoke test before publish, and an update-channel policy.",
+      "itemIds": ["m12-packaging-signing-updates"]
+    },
+    {
+      "id": "go-use-case-extraction",
+      "name": "Thin the App adapter",
+      "owner": "Project maintainers",
+      "status": "planned",
+      "posture": "on-track",
+      "progress": 0,
+      "summary": "Stretch only: use-case extraction out of app.go, sequenced last because it costs clarity, not safety.",
+      "itemIds": ["go-use-cases-out-of-app"]
+    }
+  ],
+  "blockers": [],
+  "milestones": [],
+  "dependencies": [],
+  "evidence": []
+}
