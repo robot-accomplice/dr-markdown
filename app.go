@@ -110,6 +110,12 @@ type nativePort interface {
 	ShowError(context.Context, string, string)
 	ConfirmUnsaved(context.Context) (string, error)
 	SetTitle(context.Context, string)
+	// The default-handler offer (docs/decisions/2026-08-25-default-markdown-handler.md).
+	// Set means ASK: macOS shows its own consent dialog and applies the change
+	// only if the user confirms, and the call returns success while the question
+	// is still unanswered — so a nil error means "asked", never "set".
+	IsDefaultMarkdownHandler(context.Context) (bool, error)
+	SetDefaultMarkdownHandler(context.Context) error
 	EmitFileOpen(context.Context, string)
 }
 
@@ -509,6 +515,30 @@ func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 		return err
 	}
 	return nil
+}
+
+// SetAsDefaultMarkdownHandler backs the application-menu offer. The menu item
+// is disabled in exactly the two states this refuses, but menu state is a
+// rendering of a decision, not the decision — a stale menu must not be able to
+// set a handler from a disk image, so the guards run again here.
+func (a *App) SetAsDefaultMarkdownHandler() {
+	defer a.reportPanic("SetAsDefaultMarkdownHandler")
+	isDefault, err := a.native.IsDefaultMarkdownHandler(a.ctx)
+	if err != nil {
+		a.native.ShowError(a.ctx, "Default Application", err.Error())
+		return
+	}
+	switch defaultHandlerMenuState(isDefault, executablePath()) {
+	case defaultHandlerIsDefault:
+		return
+	case defaultHandlerDiskImage:
+		a.native.ShowError(a.ctx, "Default Application",
+			"Dr Markdown is running from a disk image. Drag it to Applications first — otherwise every .md file would open an app on a volume that gets ejected.")
+		return
+	}
+	if err := a.native.SetDefaultMarkdownHandler(a.ctx); err != nil {
+		a.native.ShowError(a.ctx, "Default Application", err.Error())
+	}
 }
 
 // ResolveUnsavedChanges reports whether the frontend may discard the

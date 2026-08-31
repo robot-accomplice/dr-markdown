@@ -48,6 +48,7 @@ import "C"
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"mime"
@@ -939,6 +940,18 @@ func (darwinNative) OpenExternalURL(_ context.Context, url string) error {
 	defer free()
 	C.hostOpenURL(cu)
 	return nil
+}
+
+// Stubs that keep the package compiling until the Launch Services calls land
+// (docs/decisions/2026-08-25-default-markdown-handler.md). They report rather
+// than pretend: a nil here would claim a question was asked when no question
+// exists yet.
+func (darwinNative) IsDefaultMarkdownHandler(context.Context) (bool, error) {
+	return false, errors.New("querying the default markdown handler is not implemented yet")
+}
+
+func (darwinNative) SetDefaultMarkdownHandler(context.Context) error {
+	return errors.New("setting the default markdown handler is not implemented yet")
 }
 
 func (darwinNative) SetTitle(_ context.Context, title string) {
