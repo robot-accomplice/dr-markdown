@@ -1009,6 +1009,24 @@ func hostReportBlockedNavigation(curl *C.char) {
 	handler(C.GoString(curl))
 }
 
+// hostDefaultHandlerMenuState backs validateMenuItem: for the default-handler
+// menu item. AppKit calls it synchronously on the main thread at
+// menu-validation time; the Launch Services query is a local database lookup,
+// so this never blocks.
+//
+// A query failure fails OPEN to offering: the click path re-runs the decision
+// and reports the error, so a transient failure costs an enabled item that
+// explains itself rather than a silently dead one.
+//
+//export hostDefaultHandlerMenuState
+func hostDefaultHandlerMenuState() C.int {
+	isDefault, err := darwinNative{}.IsDefaultMarkdownHandler(context.Background())
+	if err != nil {
+		return C.int(defaultHandlerOffer)
+	}
+	return C.int(defaultHandlerMenuState(isDefault, executablePath()))
+}
+
 func setNavigationBlockHandler(onBlocked func(url string)) {
 	navigationMu.Lock()
 	defer navigationMu.Unlock()
@@ -1227,6 +1245,11 @@ func hostReportMenu() {
 	// name there and ignores whatever it is called.
 	required := []struct{ menu, item, key string }{
 		{"", "Quit", "q"},
+		// The default-handler offer (spec: docs/decisions/2026-08-25-default-markdown-handler.md).
+		// Presence and action only: its enabled/checked state depends on the
+		// machine's current default, so a gate running on the maintainer's Mac
+		// sees a different state than one running anywhere else.
+		{"", "Set as Default Markdown Application", ""},
 		{"File", "New", "n"},
 		{"File", "Open", "o"},
 		{"File", "Save", "s"},

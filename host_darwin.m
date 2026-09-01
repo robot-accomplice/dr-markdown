@@ -306,9 +306,26 @@ void hostTerminateApproved(void) {
 - (void)runJS:(NSMenuItem *)sender;
 @end
 
+static NSString *const kDefaultHandlerItemJS =
+    @"globalThis.__app?.setAsDefaultMarkdownHandler()";
+
 @implementation DrmdMenuTarget
 - (void)runJS:(NSMenuItem *)sender {
   hostEvalJS([sender.representedObject UTF8String]);
+}
+
+// AppKit calls this on every menu open and key-equivalent match. Every item
+// except the default-handler offer is always enabled; the offer derives its
+// state from a FRESH Launch Services query each time, because the set call
+// reports success while the system consent dialog is still unanswered — menu
+// state is never assumed from a previous call.
+- (BOOL)validateMenuItem:(NSMenuItem *)item {
+  if ([item.representedObject isEqualToString:kDefaultHandlerItemJS]) {
+    int state = hostDefaultHandlerMenuState();
+    item.state = state == 1 ? NSControlStateValueOn : NSControlStateValueOff;
+    return state == 0;
+  }
+  return YES;
 }
 @end
 
@@ -341,6 +358,10 @@ static void installMenuBar(NSString *appName) {
   NSMenu *appMenu = [[NSMenu alloc] init];
   [appMenu addItem:sel([@"About " stringByAppendingString:appName],
                        @selector(orderFrontStandardAboutPanel:), @"", 0)];
+  // The default-.md-handler offer. No key equivalent — it is a once-in-a-while
+  // choice, not a command. State is derived in validateMenuItem: above.
+  [appMenu addItem:jsItem(@"Set as Default Markdown Application…", @"", 0,
+                          kDefaultHandlerItemJS)];
   [appMenu addItem:[NSMenuItem separatorItem]];
   [appMenu addItem:sel([@"Hide " stringByAppendingString:appName], @selector(hide:), @"h",
                        NSEventModifierFlagCommand)];
