@@ -14,7 +14,7 @@
         "id": "default-markdown-handler",
         "title": "Offer to become the default .md application",
         "kind": "feature",
-        "status": "planned",
+        "status": "in-progress",
         "owner": "Project maintainers",
         "workstreamId": "desktop-integration",
         "dependsOn": [],
