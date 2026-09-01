@@ -17,6 +17,7 @@ func TestDefaultHandlerMenuState(t *testing.T) {
 		{"offer from a normal install", false, "/Applications/Dr Markdown.app/Contents/MacOS/Dr Markdown", defaultHandlerOffer},
 		{"checked and disabled when already default", true, "/Applications/Dr Markdown.app/Contents/MacOS/Dr Markdown", defaultHandlerIsDefault},
 		{"disabled when running from a mounted image", false, "/Volumes/Dr Markdown/Dr Markdown.app/Contents/MacOS/Dr Markdown", defaultHandlerDiskImage},
+		{"disabled when running translocated by Gatekeeper", false, "/private/var/folders/xx/yyy/AppTranslocation/ABC/d/Dr Markdown.app/Contents/MacOS/Dr Markdown", defaultHandlerDiskImage},
 		{"already-default wins over disk image", true, "/Volumes/Dr Markdown/Dr Markdown.app/Contents/MacOS/Dr Markdown", defaultHandlerIsDefault},
 		{"a home-directory install is fine", false, "/Users/u/Applications/Dr Markdown.app/Contents/MacOS/Dr Markdown", defaultHandlerOffer},
 		{"a bare gate binary outside any bundle offers", false, "/tmp/drmd-gate", defaultHandlerOffer},

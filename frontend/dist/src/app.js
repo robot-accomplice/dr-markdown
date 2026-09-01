@@ -1236,7 +1236,6 @@ async function setAsDefaultMarkdownHandler() {
   }
 }
 
-
 function currentEditorContext() {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0) return state.editorContext

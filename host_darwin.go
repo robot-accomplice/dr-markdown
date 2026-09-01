@@ -951,7 +951,13 @@ func (darwinNative) IsDefaultMarkdownHandler(_ context.Context) (bool, error) {
 }
 
 func (darwinNative) SetDefaultMarkdownHandler(_ context.Context) error {
-	if status := C.hostSetDefaultMarkdownHandler(); status != 0 {
+	status := C.hostSetDefaultMarkdownHandler()
+	if status == -1 {
+		// -1 is the host's own sentinel for "no bundle identifier", not a
+		// Launch Services status — say what is actually wrong.
+		return fmt.Errorf("not running from an application bundle")
+	}
+	if status != 0 {
 		return fmt.Errorf("Launch Services returned status %d", int(status))
 	}
 	return nil

@@ -23,9 +23,12 @@ func defaultHandlerMenuState(isDefault bool, execPath string) int {
 	}
 	// A bundle run straight out of the DMG must never become the default: the
 	// association would point every future .md double-click at a volume that
-	// will be unmounted. The check is the path prefix, not "/Applications"
+	// will be unmounted. Gatekeeper's app translocation is the same failure
+	// class with a different path shape: a quarantined app launched in place
+	// runs from a randomized read-only copy under /AppTranslocation/, which
+	// vanishes too. The checks are on the path, not "/Applications"
 	// membership — ~/Applications and elsewhere are legitimate installs.
-	if strings.HasPrefix(execPath, "/Volumes/") {
+	if strings.HasPrefix(execPath, "/Volumes/") || strings.Contains(execPath, "/AppTranslocation/") {
 		return defaultHandlerDiskImage
 	}
 	return defaultHandlerOffer

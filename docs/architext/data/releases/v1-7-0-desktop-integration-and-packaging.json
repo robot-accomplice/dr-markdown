@@ -4,9 +4,9 @@
   "name": "Desktop integration and packaging hardening",
   "status": "planned",
   "posture": "on-track",
-  "summary": "Approved scope, not yet started. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application on first launch — a spec already recorded in docs/decisions/2026-08-25-default-markdown-handler.md with one open question about whether macOS shows its own consent dialog. Stretch: lift the Go use cases out of app.go so App becomes a thin adapter. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
+  "summary": "Approved scope, in progress. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. Stretch: lift the Go use cases out of app.go so App becomes a thin adapter. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
   "targetWindow": "Next release",
-  "lastUpdated": "2026-08-31T00:00:00.000Z",
+  "lastUpdated": "2026-09-01T00:00:00.000Z",
   "updateSource": "maintainer",
   "scope": {
     "required": [
@@ -20,7 +20,7 @@
         "dependsOn": [],
         "evidence": [],
         "source": "roadmap",
-        "summary": "Offer once, on first launch, to make Dr Markdown the default application for .md and .markdown via LSSetDefaultRoleHandlerForContentType, with three guards: already the default, already answered, and running from a mounted disk image. The bundle already declares CFBundleDocumentTypes, so the app appears under Open With today and simply never becomes the default. One question remains for the implementer to answer by driving the built app: whether recent macOS shows its own consent dialog, which would make our prompt the second one. Full spec: docs/decisions/2026-08-25-default-markdown-handler.md."
+        "summary": "Offer, from a standing menu item, to make Dr Markdown the default application for .md and .markdown via LSSetDefaultRoleHandlerForContentType. macOS shows its own consent dialog for the claim (measured 2026-08-31 on macOS 26.6.2), so the app asks nothing itself. Two guards: already the default, and running from a disk image or Gatekeeper app translocation. The bundle already declares CFBundleDocumentTypes, so the app appears under Open With today and simply never becomes the default. Full spec: docs/decisions/2026-08-25-default-markdown-handler.md."
       },
       {
         "id": "m12-packaging-signing-updates",

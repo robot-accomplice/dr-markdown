@@ -73,7 +73,10 @@ helpful offer into a broken file association that the user then has to diagnose.
 
 The guard is on the bundle path being on a mounted image, not on being under `/Applications`
 specifically: people legitimately keep applications in `~/Applications` and elsewhere, and a check
-that insists on one location would refuse a correct install.
+that insists on one location would refuse a correct install. The same guard also covers Gatekeeper
+app translocation: a quarantined app launched in place runs from a path containing
+`/AppTranslocation/`, a randomized read-only copy that vanishes — the same broken-association
+failure as the DMG case.
 
 The original design had a third guard — "already answered, never ask again", persisted on
 `Preferences`. It is deleted: with no prompt of our own there is nothing to throttle, and the OS's

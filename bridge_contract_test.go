@@ -61,6 +61,62 @@ func TestBridgeOnlyCallsMethodsAppProvides(t *testing.T) {
 	}
 }
 
+// Every method the bridge calls on native() must be in the bound surface the
+// Objective-C host installs.
+//
+// TestBridgeOnlyCallsMethodsAppProvides proves the Go side can answer a call;
+// it says nothing about the JS object the host builds, which comes from a
+// hardcoded NAMES array in host_darwin.m. SetAsDefaultMarkdownHandler was
+// added to bridge.js and app.go but not to NAMES, so the call threw a
+// TypeError in the real app behind bridge.js's degradation message. This
+// compares the bridge against the bound surface itself, so the next method
+// added on two of the three surfaces fails here.
+func TestBridgeOnlyCallsMethodsTheBoundSurfaceProvides(t *testing.T) {
+	bridge, err := os.ReadFile("frontend/dist/src/bridge.js")
+	if err != nil {
+		t.Fatalf("read bridge: %v", err)
+	}
+	host, err := os.ReadFile("host_darwin.m")
+	if err != nil {
+		t.Fatalf("read host_darwin.m: %v", err)
+	}
+
+	// The bound surface, parsed out of the ObjC string literals: the region
+	// between "const NAMES = [" and "];" holds the names as 'Name' literals.
+	namesRegion := regexp.MustCompile(`(?s)const NAMES = \[(.*?)\];`).FindStringSubmatch(string(host))
+	if namesRegion == nil {
+		t.Fatal("found no NAMES array in host_darwin.m; the detector is broken, not the code")
+	}
+	bound := map[string]bool{}
+	for _, m := range regexp.MustCompile(`'([A-Z]\w*)'`).FindAllStringSubmatch(namesRegion[1], -1) {
+		bound[m[1]] = true
+	}
+	if len(bound) == 0 {
+		t.Fatal("the NAMES region held no method names; the detector is broken, not the code")
+	}
+
+	// Names the bridge reaches for on the native object — in CODE, not in
+	// prose, for the reasons given in TestBridgeOnlyCallsMethodsAppProvides.
+	var missing []string
+	seen := map[string]bool{}
+	code := stripJSComments(string(bridge))
+	for _, m := range regexp.MustCompile(`(?:native\(\)|app)\??\.([A-Z]\w*)`).FindAllStringSubmatch(code, -1) {
+		name := m[1]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		if !bound[name] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		t.Fatalf("bridge.js calls methods missing from the bound surface in host_darwin.m: %s\nNAMES provides: %s",
+			strings.Join(missing, ", "), strings.Join(keys(bound), ", "))
+	}
+}
+
 func keys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

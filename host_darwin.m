@@ -525,8 +525,12 @@ char *hostMenuJSON(void) {
 int hostIsDefaultMarkdownHandler(void) {
   NSString *selfID = NSBundle.mainBundle.bundleIdentifier;
   if (!selfID) return 0;
+  // Queried at kLSRolesEditor, NOT kLSRolesAll: the set below claims Editor |
+  // Viewer, so the query must ask about a role the set actually claims —
+  // asking All could report a handler that only holds the Shell role, which a
+  // set claiming Editor | Viewer would never replace.
   CFStringRef handler = LSCopyDefaultRoleHandlerForContentType(
-      CFSTR("net.daringfireball.markdown"), kLSRolesAll);
+      CFSTR("net.daringfireball.markdown"), kLSRolesEditor);
   if (!handler) return 0;
   BOOL match = [(__bridge NSString *)handler isEqualToString:selfID];
   CFRelease(handler);
@@ -611,7 +615,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"  'SetDirty','UpdateContent','ListFontFamilies','LoadPreferences','SavePreferences',"
         @"  'OpenRecentDocument','ImportImage','ImportDroppedImage','LoadImageAsset',"
         @"  'OpenExternalURL','RecordClientEvent','RevealImageAsset','ResolveUnsavedChanges',"
-        @"  'FrontendReady','Ping','Boom'];"
+        @"  'SetAsDefaultMarkdownHandler','FrontendReady','Ping','Boom'];"
         @"const App = {};"
         @"for (const n of NAMES) App[n] = (...args) => call(n, args);"
         @"globalThis.drmd = { native: App };"
