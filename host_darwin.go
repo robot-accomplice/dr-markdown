@@ -42,13 +42,14 @@ void hostOpenURL(const char *url);
 void hostSetTitle(const char *title);
 void hostCloseNow(void);
 char *hostMenuJSON(void);
+int hostIsDefaultMarkdownHandler(void);
+int hostSetDefaultMarkdownHandler(void);
 */
 import "C"
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"mime"
@@ -942,16 +943,18 @@ func (darwinNative) OpenExternalURL(_ context.Context, url string) error {
 	return nil
 }
 
-// Stubs that keep the package compiling until the Launch Services calls land
-// (docs/decisions/2026-08-25-default-markdown-handler.md). They report rather
-// than pretend: a nil here would claim a question was asked when no question
-// exists yet.
-func (darwinNative) IsDefaultMarkdownHandler(context.Context) (bool, error) {
-	return false, errors.New("querying the default markdown handler is not implemented yet")
+// Both Launch Services calls are local database operations — no UI comes from
+// this process (the system consent dialog belongs to the OS), so neither needs
+// the main queue.
+func (darwinNative) IsDefaultMarkdownHandler(_ context.Context) (bool, error) {
+	return C.hostIsDefaultMarkdownHandler() == 1, nil
 }
 
-func (darwinNative) SetDefaultMarkdownHandler(context.Context) error {
-	return errors.New("setting the default markdown handler is not implemented yet")
+func (darwinNative) SetDefaultMarkdownHandler(_ context.Context) error {
+	if status := C.hostSetDefaultMarkdownHandler(); status != 0 {
+		return fmt.Errorf("Launch Services returned status %d", int(status))
+	}
+	return nil
 }
 
 func (darwinNative) SetTitle(_ context.Context, title string) {

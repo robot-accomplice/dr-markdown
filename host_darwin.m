@@ -491,6 +491,39 @@ char *hostMenuJSON(void) {
   return strdup(s.UTF8String);
 }
 
+// The default-.md-handler offer (docs/decisions/2026-08-25-default-markdown-handler.md).
+//
+// LSSetDefaultRoleHandlerForContentType is deprecated as of macOS 12 and still
+// functional. The NSWorkspace replacement is 12.0+ while the deployment target
+// is 11.0, so this is the only single-path call. If the floor ever rises to
+// 12, switch — this comment exists so the deprecation is not rediscovered.
+//
+// The bundle identifier comes from the RUNNING BUNDLE, not a literal: the gate
+// binary runs outside any bundle, where bundleIdentifier is nil and both calls
+// must degrade to "not the default" rather than set anything.
+int hostIsDefaultMarkdownHandler(void) {
+  NSString *selfID = NSBundle.mainBundle.bundleIdentifier;
+  if (!selfID) return 0;
+  CFStringRef handler = LSCopyDefaultRoleHandlerForContentType(
+      CFSTR("net.daringfireball.markdown"), kLSRolesAll);
+  if (!handler) return 0;
+  BOOL match = [(__bridge NSString *)handler isEqualToString:selfID];
+  CFRelease(handler);
+  return match ? 1 : 0;
+}
+
+// Returns the OSStatus. 0 means the REQUEST was accepted — macOS shows its own
+// consent dialog and applies the change only if the user confirms, so 0 does
+// NOT mean the handler changed. Measured 2026-08-31 on macOS 26.6.2.
+int hostSetDefaultMarkdownHandler(void) {
+  NSString *selfID = NSBundle.mainBundle.bundleIdentifier;
+  if (!selfID) return -1;
+  return (int)LSSetDefaultRoleHandlerForContentType(
+      CFSTR("net.daringfireball.markdown"),
+      kLSRolesEditor | kLSRolesViewer,
+      (__bridge CFStringRef)selfID);
+}
+
 // Asks AppKit to terminate, which is what the Quit menu item and Cmd-Q do. The
 // harness uses this so the quit gate drives the REAL gesture rather than a
 // stand-in for it.
