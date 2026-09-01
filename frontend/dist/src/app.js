@@ -1223,6 +1223,19 @@ async function revealSelectedImage() {
   }
 }
 
+// Reachable from the application menu. The OS shows its own consent dialog and
+// applies the change only if it is confirmed there — a resolved promise means
+// "asked", not "set", so there is nothing to report on success.
+async function setAsDefaultMarkdownHandler() {
+  try {
+    await bridge.setAsDefaultMarkdownHandler()
+  } catch (error) {
+    flashStatus('The default application could not be changed.')
+    console.warn('bridge: set default handler rejected', error)
+    bridge.recordEvent('default-handler.set-failed', { error: String(error?.message ?? error) })
+  }
+}
+
 
 function currentEditorContext() {
   const selection = window.getSelection()
@@ -2985,6 +2998,7 @@ async function boot() {
     closeSettings,
     toggleSidePanel,
     revealSelectedImage,
+    setAsDefaultMarkdownHandler,
     flashStatus,
     debugReplaceRaw: (text) => raw.replaceAll(text),
     debugSimulateEdit: (md) => markEdited(md),
