@@ -42,6 +42,8 @@ void hostOpenURL(const char *url);
 void hostSetTitle(const char *title);
 void hostCloseNow(void);
 char *hostMenuJSON(void);
+int hostIsDefaultMarkdownHandler(void);
+int hostSetDefaultMarkdownHandler(void);
 */
 import "C"
 
@@ -941,6 +943,26 @@ func (darwinNative) OpenExternalURL(_ context.Context, url string) error {
 	return nil
 }
 
+// Both Launch Services calls are local database operations — no UI comes from
+// this process (the system consent dialog belongs to the OS), so neither needs
+// the main queue.
+func (darwinNative) IsDefaultMarkdownHandler(_ context.Context) (bool, error) {
+	return C.hostIsDefaultMarkdownHandler() == 1, nil
+}
+
+func (darwinNative) SetDefaultMarkdownHandler(_ context.Context) error {
+	status := C.hostSetDefaultMarkdownHandler()
+	if status == -1 {
+		// -1 is the host's own sentinel for "no bundle identifier", not a
+		// Launch Services status — say what is actually wrong.
+		return fmt.Errorf("not running from an application bundle")
+	}
+	if status != 0 {
+		return fmt.Errorf("Launch Services returned status %d", int(status))
+	}
+	return nil
+}
+
 func (darwinNative) SetTitle(_ context.Context, title string) {
 	ct, free := cstr(title)
 	defer free()
@@ -991,6 +1013,24 @@ func hostReportBlockedNavigation(curl *C.char) {
 		return
 	}
 	handler(C.GoString(curl))
+}
+
+// hostDefaultHandlerMenuState backs validateMenuItem: for the default-handler
+// menu item. AppKit calls it synchronously on the main thread at
+// menu-validation time; the Launch Services query is a local database lookup,
+// so this never blocks.
+//
+// A query failure fails OPEN to offering: the click path re-runs the decision
+// and reports the error, so a transient failure costs an enabled item that
+// explains itself rather than a silently dead one.
+//
+//export hostDefaultHandlerMenuState
+func hostDefaultHandlerMenuState() C.int {
+	isDefault, err := darwinNative{}.IsDefaultMarkdownHandler(context.Background())
+	if err != nil {
+		return C.int(defaultHandlerOffer)
+	}
+	return C.int(defaultHandlerMenuState(isDefault, executablePath()))
 }
 
 func setNavigationBlockHandler(onBlocked func(url string)) {
@@ -1211,6 +1251,11 @@ func hostReportMenu() {
 	// name there and ignores whatever it is called.
 	required := []struct{ menu, item, key string }{
 		{"", "Quit", "q"},
+		// The default-handler offer (spec: docs/decisions/2026-08-25-default-markdown-handler.md).
+		// Presence and action only: its enabled/checked state depends on the
+		// machine's current default, so a gate running on the maintainer's Mac
+		// sees a different state than one running anywhere else.
+		{"", "Set as Default Markdown Application", ""},
 		{"File", "New", "n"},
 		{"File", "Open", "o"},
 		{"File", "Save", "s"},

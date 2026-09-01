@@ -155,16 +155,16 @@
       "status": "planned",
       "posture": "on-track",
       "targetWindow": "Next release",
-      "lastUpdated": "2026-08-31T00:00:00.000Z",
-      "summary": "Approved scope, not yet started. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application on first launch — a spec already recorded in docs/decisions/2026-08-25-default-markdown-handler.md with one open question about whether macOS shows its own consent dialog. Stretch: lift the Go use cases out of app.go so App becomes a thin adapter. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
+      "lastUpdated": "2026-09-01T00:00:00.000Z",
+      "summary": "Approved scope, in progress. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. Stretch: lift the Go use cases out of app.go so App becomes a thin adapter. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
       "counts": {
         "features": 5,
         "bugFixes": 0,
         "workstreams": 3,
         "blockers": 0,
         "complete": 0,
-        "inProgress": 0,
-        "planned": 3,
+        "inProgress": 1,
+        "planned": 2,
         "stretch": 0
       },
       "file": "v1-7-0-desktop-integration-and-packaging.json"

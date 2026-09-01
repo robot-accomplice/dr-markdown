@@ -48,7 +48,8 @@
       "responsibilities": [
         "Host the local editor UI",
         "Expose native document dialogs and close guards",
-        "Embed frontend assets into the application binary"
+        "Embed frontend assets into the application binary",
+        "Offer to become the default .md application via Launch Services"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [

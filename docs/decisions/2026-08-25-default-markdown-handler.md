@@ -1,6 +1,8 @@
 # Offering to become the default `.md` application — design
 
-Date: 2026-08-25. Status: approved, not implemented.
+Date: 2026-08-25. Status: approved, not implemented. Revised 2026-08-31: the open
+question below is answered by experiment, and the answer changed the design — the
+first-launch prompt is gone, replaced by a menu item.
 
 ## What was asked
 
@@ -11,8 +13,8 @@ Date: 2026-08-25. Status: approved, not implemented.
 
 **There is no installer.** `tools/build-macos.sh` produces a `.app` and a DMG containing it beside a
 symlink to `/Applications`; the user drags it across. There is no install step to hook, so "during
-install" has to become something else, and **first launch** is the closest honest equivalent —
-approved.
+install" has to become something else. First launch was the original answer; the 2026-08-31
+experiment moved it again, to a **standing menu item** — see the decisions table.
 
 What already exists: the bundle declares `CFBundleDocumentTypes` and `UTImportedTypeDeclarations`
 for `md` and `markdown`, so Dr. Markdown appears under **Open With** today. What it never does is
@@ -22,17 +24,18 @@ for `md` and `markdown`, so Dr. Markdown appears under **Open With** today. What
 
 | Question | Answer |
 | --- | --- |
-| When to ask | **Once, on first launch.** The answer is stored either way and never asked again. |
+| When to ask | **Never unprompted** (revised 2026-08-31 — see the answered open question). Originally "once, on first launch"; the OS now asks for us, so a prompt of our own would be a second interruption. The offer is a menu item the user can choose at any time. |
 | What to claim | **The UTI `net.daringfireball.markdown`**, which covers `.md` and `.markdown` together — exactly what the bundle already advertises |
-| Where the prompt lives | A **native alert**, behind the existing `hostPort` |
+| Where the offer lives | A **native menu item** in the menu bar the host builds, behind the existing `hostPort` |
 | API | **`LSSetDefaultRoleHandlerForContentType`** |
 
-### Why a native alert rather than a webview modal
+### Why a menu item rather than any prompt
 
-The app has its own modals, but a webview dialog asking to change a *system* setting reads as less
-trustworthy than the OS's own furniture, and it would need a bridge round-trip purely for
-presentation. The host already builds native dialogs, including the `DefaultButton` handling that
-#74 fixed after a dropped default let Return destroy a file.
+Originally the offer was a native alert on first launch, chosen over a webview modal because a
+webview dialog asking to change a *system* setting reads as less trustworthy than the OS's own
+furniture. The 2026-08-31 experiment (below) showed macOS presents its own consent dialog for the
+Launch Services call itself — so any prompt of ours, native or webview, would be the second of two
+interruptions about the same question. What remains is a standing, unintrusive offer: a menu item.
 
 ### Why that API
 
@@ -53,50 +56,67 @@ Two methods on `hostPort`, mirroring how every other native operation is bound:
 - `SetDefaultMarkdownHandler(ctx) error` — `LSSetDefaultRoleHandlerForContentType` for
   `kLSRolesEditor | kLSRolesViewer`
 
-## Three guards, because the offer is wrong in three situations
+The menu item's state is **derived, never assumed**: menu validation re-queries
+`IsDefaultMarkdownHandler`, because `Set…` returns success before the user has answered the system
+dialog (measured 2026-08-31 — see below). When we are already the default, the item is checked and
+disabled.
 
-1. **Already the default.** Never ask.
-2. **Already answered.** Never ask again, whichever way it was answered. Persisted as a typed field
-   on `Preferences`, not a loose key in the `Settings` map — this is application lifecycle state, not
-   a user-facing setting, and the settings map is rendered into the Settings modal.
-3. **Running from a mounted disk image.** Never ask, and never set.
+## Two guards, because the offer is wrong in two situations
 
-The third guard is the one that matters most and is easiest to miss. People routinely run an app
+1. **Already the default.** The menu item is checked and disabled; there is nothing to offer.
+2. **Running from a mounted disk image.** The item is disabled. Never set from there.
+
+The second guard is the one that matters most and is easiest to miss. People routinely run an app
 straight out of the DMG before dragging it across. Setting the default handler to a bundle under
 `/Volumes/…` points every future `.md` double-click at a volume that will be unmounted — turning a
-helpful prompt into a broken file association that the user then has to diagnose. Refuse there.
+helpful offer into a broken file association that the user then has to diagnose. Refuse there.
 
 The guard is on the bundle path being on a mounted image, not on being under `/Applications`
 specifically: people legitimately keep applications in `~/Applications` and elsewhere, and a check
-that insists on one location would refuse a correct install.
+that insists on one location would refuse a correct install. The same guard also covers Gatekeeper
+app translocation: a quarantined app launched in place runs from a path containing
+`/AppTranslocation/`, a randomized read-only copy that vanishes — the same broken-association
+failure as the DMG case.
+
+The original design had a third guard — "already answered, never ask again", persisted on
+`Preferences`. It is deleted: with no prompt of our own there is nothing to throttle, and the OS's
+dialog is the consent. No preference is added.
 
 ## Testing
 
 The split is deliberate, because only half of this can run in CI.
 
-**The decision is pure and gets ordinary Go unit tests.** *Should we offer?* is a function of
-(is-default, has-answered, bundle-path) and all three guards are testable without touching Launch
-Services or drawing anything.
+**The decision is pure and gets ordinary Go unit tests.** *What should the menu item show?* is a
+function of (is-default, bundle-path) and both guards are testable without touching Launch Services
+or drawing anything.
 
-**The Launch Services call sits behind the port** and joins the manual host gates
-(`go run . -gates …`). It cannot run in CI: chromedp cannot see a native window, and while
+**The Launch Services calls sit behind the port** and join the manual host gates
+(`go run . -gates …`). They cannot run in CI: chromedp cannot see a native window, and while
 `ci.yml`'s `darwin` job now builds, tests and packages the app, it does not drive one.
 
-## Open question, to be answered by driving the built app
+## Open question — ANSWERED 2026-08-31 by driving the built app
 
 **Whether recent macOS presents its own consent dialog when an application changes a default
-handler.** If it does, the user meets two prompts — ours and the system's — and ours should probably
-go, leaving the offer as a menu item rather than a launch-time interruption.
+handler.** It does. Measured on macOS 26.6.2, calling `LSSetDefaultRoleHandlerForContentType` from a
+bare unsigned harness binary (less trusted than the real app will ever be):
 
-This is deliberately recorded as unresolved. It is a question about what the OS does, and this
-project's own most expensive lesson is that when the answer depends on a framework, an OS or a
-browser, your own source is not admissible evidence. Check it by running the app before the first
-line of the prompt is written.
+1. macOS presented its own dialog offering the current default and the new application by name, and
+   **the change did not apply until the user answered** — a `get` immediately after a successful
+   `set` still showed the old handler.
+2. `LSSetDefaultRoleHandlerForContentType` **returned status 0 immediately**, while the change was
+   still pending consent. The call's result carries no information about the outcome; state must be
+   re-queried.
+
+Two consequences, both now folded into the design above: our own first-launch prompt is dropped (the
+OS asks), and the menu item derives its state from a fresh query rather than from the call's return
+value.
 
 ## Not in scope
 
 - Windows and Linux. macOS is the only packaged platform.
-- Reclaiming the association if another application takes it later. Asking once means asking once.
+- Reclaiming the association if another application takes it later. Nothing proactive: because the
+  menu item's state is derived on every menu validation, another application taking the default
+  simply re-enables the item. No notification, no watcher.
 - A Settings toggle. Considered and not chosen: it is close to invisible, since most users never
-  open Settings, and the first-launch offer already covers the moment the question is live. If
-  "Not now" turns out to need an undo, a menu item is the cheaper answer than a settings row.
+  open Settings, and the menu item already covers the moment the question is live without burying
+  it in a modal.
