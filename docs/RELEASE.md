@@ -54,7 +54,9 @@ Under `docs/architext/data/releases/`:
   to the detail file's summary, and `counts` are derived, not typed:
   `features` / `bugFixes` by item `kind`, `complete` / `inProgress` by item
   `status`, `workstreams` / `blockers` by length, `planned` / `stretch` by scope
-  bucket size.
+  bucket size (which the tool derives from item status — so an item's status
+  must mirror its bucket: `stretch` in the stretch bucket, `deferred` when
+  deferred).
 - `status` and `posture` must use values the schema knows. An out-of-enum value
   breaks the viewer rather than informing it — put the nuance in the summary.
 
@@ -240,7 +242,7 @@ gh pr create --base main --title "Release vX.Y.Z — …"
 gh pr merge <n> --merge
 git checkout main && git pull --ff-only
 git tag -a vX.Y.Z -m "vX.Y.Z — …" && git push origin vX.Y.Z
-gh release create vX.Y.Z --title "…" --notes-file <notes> <arm64.dmg> <universal.dmg> <staging>/SHA256SUMS.txt
+gh release create vX.Y.Z --title "…" --notes-file <notes> <staging>/dr-markdown-X.Y.Z-macos-arm64.dmg <staging>/dr-markdown-X.Y.Z-macos-universal.dmg <staging>/SHA256SUMS.txt
 ```
 
 ## 9. Close out

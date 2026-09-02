@@ -15,6 +15,10 @@
 #   --expect-version V  assert the bundle's CFBundleShortVersionString equals V
 #                       instead of the repo's VERSION file. Exists so retained
 #                       DMGs from past releases can exercise this script.
+#                       The gates require a binary from v1.6.3 or later: older
+#                       binaries (e.g. the retained v1.6.2 DMGs) do not know
+#                       -quit, -walk or -gates, silently ignore unknown flags,
+#                       and launch the full GUI instead of exiting.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -103,7 +107,10 @@ smoke_one() (
     done
 
     echo "==> signature"
-    codesign --verify --deep --strict "$app" && echo "    signature ok"
+    # Not "codesign ... && echo ok": the left side of && is exempt from
+    # set -e, so a failed verify would silently pass. Keep them separate.
+    codesign --verify --deep --strict "$app"
+    echo "    signature ok"
 
     if [ "$AD_HOC_OK" -eq 0 ]; then
         echo "==> notarization and Gatekeeper"
