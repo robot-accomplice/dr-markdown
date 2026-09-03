@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,12 +67,14 @@ type App struct {
 	// currentPath/currentText state those operations mutate. (Not named "docs":
 	// TestAppDoesNotDuplicateSessionState guards that name against App
 	// re-declaring the open tabs the session owns.)
-	documents   *documentUseCase
-	native      nativePort
-	fonts       fontPort
-	preferences preferencePort
-	images      *imageUseCase
-	events      *eventlog.Log
+	documents      *documentUseCase
+	native         nativePort
+	fonts          fontPort
+	preferences    preferencePort
+	images         *imageUseCase
+	links          *linkUseCase
+	defaultHandler *defaultHandlerUseCase
+	events         *eventlog.Log
 	// panicDialog fires at most once. Deliberately not guarded by mu: a panic
 	// raised while mu is held would deadlock its own report. See reportPanic.
 	panicDialog sync.Once
@@ -180,12 +181,14 @@ func NewApp(native nativePort, events *eventlog.Log) *App {
 func newAppWithDependencies(deps appDependencies) *App {
 	sess := &session.Session{}
 	return &App{
-		session:     sess,
-		events:      deps.events,
-		native:      deps.native,
-		fonts:       deps.fonts,
-		preferences: deps.preferences,
-		images:      &imageUseCase{native: deps.native, images: deps.images},
+		session:        sess,
+		events:         deps.events,
+		native:         deps.native,
+		fonts:          deps.fonts,
+		preferences:    deps.preferences,
+		images:         &imageUseCase{native: deps.native, images: deps.images},
+		links:          &linkUseCase{native: deps.native},
+		defaultHandler: &defaultHandlerUseCase{native: deps.native},
 		documents: &documentUseCase{
 			native:      deps.native,
 			documents:   deps.documents,
@@ -338,15 +341,6 @@ func (a *App) LoadImageAsset(documentPath string, markdownPath string) (imageass
 	return a.images.load(a.ctx, documentPath, markdownPath)
 }
 
-// safeExternalSchemes is the Go-side allowlist for opening a URL in the user's
-// browser. It deliberately duplicates the frontend check rather than trusting
-// it: the webview is where untrusted document content is parsed, so a bound
-// method that hands any string to the OS URL opener is a second route to the
-// execution the frontend check exists to prevent — and the OS opener will
-// happily launch a registered local handler for a scheme a browser would never
-// navigate to.
-var safeExternalSchemes = map[string]bool{"http": true, "https": true, "mailto": true}
-
 // OpenExternalURL opens a web link in the user's browser.
 //
 // Without it, clicking a link in the preview navigated the app's own window to
@@ -354,25 +348,7 @@ var safeExternalSchemes = map[string]bool{"http": true, "https": true, "mailto":
 // button, from which the only escape is quitting.
 func (a *App) OpenExternalURL(raw string) error {
 	defer a.reportPanic("OpenExternalURL")
-
-	// Strip exactly what a URL parser strips, so this check cannot be fooled by
-	// a string that reads as harmless here and as `javascript:` to the opener.
-	cleaned := strings.Map(func(r rune) rune {
-		if r == '\t' || r == '\n' || r == '\r' {
-			return -1
-		}
-		return r
-	}, raw)
-	cleaned = strings.TrimFunc(cleaned, func(r rune) bool { return r <= ' ' })
-
-	parsed, err := url.Parse(cleaned)
-	if err != nil {
-		return fmt.Errorf("open link: %q is not a URL", raw)
-	}
-	if !safeExternalSchemes[strings.ToLower(parsed.Scheme)] {
-		return fmt.Errorf("open link: refusing scheme %q", parsed.Scheme)
-	}
-	return a.native.OpenExternalURL(a.ctx, cleaned)
+	return a.links.openExternal(a.ctx, raw)
 }
 
 // RecordClientEvent lets the frontend put a diagnostic into the same trail as
@@ -401,22 +377,7 @@ func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 // set a handler from a disk image, so the guards run again here.
 func (a *App) SetAsDefaultMarkdownHandler() {
 	defer a.reportPanic("SetAsDefaultMarkdownHandler")
-	isDefault, err := a.native.IsDefaultMarkdownHandler(a.ctx)
-	if err != nil {
-		a.native.ShowError(a.ctx, "Default Application", err.Error())
-		return
-	}
-	switch defaultHandlerMenuState(isDefault, executablePath()) {
-	case defaultHandlerIsDefault:
-		return
-	case defaultHandlerDiskImage:
-		a.native.ShowError(a.ctx, "Default Application",
-			"Dr Markdown is running from a disk image. Drag it to Applications first — otherwise every .md file would open an app on a volume that gets ejected.")
-		return
-	}
-	if err := a.native.SetDefaultMarkdownHandler(a.ctx); err != nil {
-		a.native.ShowError(a.ctx, "Default Application", err.Error())
-	}
+	a.defaultHandler.setAsDefault(a.ctx)
 }
 
 // ResolveUnsavedChanges reports whether the frontend may discard the
