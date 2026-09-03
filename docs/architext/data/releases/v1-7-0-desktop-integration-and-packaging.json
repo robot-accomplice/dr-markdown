@@ -6,7 +6,7 @@
   "posture": "on-track",
   "summary": "Approved scope, in progress. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. Stretch: lift the Go use cases out of app.go so App becomes a thin adapter. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
   "targetWindow": "Next release",
-  "lastUpdated": "2026-09-01T00:00:00.000Z",
+  "lastUpdated": "2026-09-02T00:00:00.000Z",
   "updateSource": "maintainer",
   "scope": {
     "required": [
@@ -26,13 +26,13 @@
         "id": "m12-packaging-signing-updates",
         "title": "M12 remainder: checksums, packaged smoke test, update-channel policy",
         "kind": "feature",
-        "status": "planned",
+        "status": "in-progress",
         "owner": "Project maintainers",
         "workstreamId": "packaging-hardening",
         "dependsOn": [],
         "evidence": [],
         "source": "roadmap",
-        "summary": "The M12 milestone with signing and notarization removed — those already ship: both published DMGs are Developer-ID signed and notarized, and the release ceremony verifies codesign, stapler and spctl on the .app and both images before every publish. What remains is the three unshipped acceptance criteria from #11: release artifacts carrying checksums, a packaged-app smoke test running before publication (the host gates exist but are a manual step on a Mac), and an alpha/beta/stable update-channel policy, which is a decision before it is code."
+        "summary": "Signing and notarization already ship. The remainder, implemented 2026-09-02 per docs/decisions/2026-09-01-m12-remainder.md: publish-time SHA256SUMS.txt over the final-named DMGs, attached to the release and verified by download-and-check at close-out; tools/smoke-macos.sh, which mounts each staged DMG, runs the binary's own gates against the packaged build, and checks signature, notarization and Gatekeeper before publish; and the channel policy — stable releases from main, betas as GitHub pre-releases when external soak is wanted, alpha never published — recorded in RELEASE.md. Closes the last acceptance criteria of #11, which closes at v1.7.0 release close-out."
       }
     ],
     "planned": [],
@@ -41,7 +41,7 @@
         "id": "go-use-cases-out-of-app",
         "title": "Separate Go use cases from the app binding surface",
         "kind": "chore",
-        "status": "planned",
+        "status": "stretch",
         "owner": "Project maintainers",
         "workstreamId": "go-use-case-extraction",
         "dependsOn": [],
