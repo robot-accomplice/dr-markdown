@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -73,7 +72,7 @@ type App struct {
 	native      nativePort
 	fonts       fontPort
 	preferences preferencePort
-	images      imageAssetPort
+	images      *imageUseCase
 	events      *eventlog.Log
 	// panicDialog fires at most once. Deliberately not guarded by mu: a panic
 	// raised while mu is held would deadlock its own report. See reportPanic.
@@ -186,7 +185,7 @@ func newAppWithDependencies(deps appDependencies) *App {
 		native:      deps.native,
 		fonts:       deps.fonts,
 		preferences: deps.preferences,
-		images:      deps.images,
+		images:      &imageUseCase{native: deps.native, images: deps.images},
 		documents: &documentUseCase{
 			native:      deps.native,
 			documents:   deps.documents,
@@ -315,34 +314,13 @@ func (a *App) OpenRecentDocument(path string) (OpenResult, error) {
 	return a.documents.open(a.ctx, path)
 }
 
-// errUnsavedImageImport rejects imports that cannot produce a portable
-// relative asset path because the document has no location on disk yet.
-var errUnsavedImageImport = errors.New("Save the document before inserting images.")
-
 // ImportImage selects an image, copies it into the document asset folder, and
 // returns markdown for insertion. A canceled picker returns an empty result.
 // An unsaved document is rejected before the picker opens, so the user is
 // never asked to choose a file the import could never have accepted.
 func (a *App) ImportImage(documentPath string) (imageassets.ImportedImage, error) {
 	defer a.reportPanic("ImportImage")
-
-	if documentPath == "" {
-		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
-		return imageassets.ImportedImage{}, errUnsavedImageImport
-	}
-	sourcePath, err := a.native.SelectImageFile(a.ctx)
-	if err != nil {
-		return imageassets.ImportedImage{}, err
-	}
-	if sourcePath == "" {
-		return imageassets.ImportedImage{}, nil
-	}
-	result, err := a.images.ImportForDocument(documentPath, sourcePath)
-	if err != nil {
-		a.native.ShowError(a.ctx, "Image Import Failed", err.Error())
-		return imageassets.ImportedImage{}, err
-	}
-	return result, nil
+	return a.images.importViaPicker(a.ctx, documentPath)
 }
 
 // ImportDroppedImage imports a file the user dropped onto the window. The
@@ -350,29 +328,16 @@ func (a *App) ImportImage(documentPath string) (imageassets.ImportedImage, error
 // unsaved-document rejection apply as for the ribbon command.
 func (a *App) ImportDroppedImage(documentPath string, sourcePath string) (imageassets.ImportedImage, error) {
 	defer a.reportPanic("ImportDroppedImage")
-
-	if documentPath == "" {
-		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
-		return imageassets.ImportedImage{}, errUnsavedImageImport
-	}
-	result, err := a.images.ImportForDocument(documentPath, sourcePath)
-	if err != nil {
-		a.native.ShowError(a.ctx, "Image Import Failed", err.Error())
-		return imageassets.ImportedImage{}, err
-	}
-	return result, nil
+	return a.images.importDropped(a.ctx, documentPath, sourcePath)
 }
 
 // LoadImageAsset inlines a document-relative image so the webview can render
 // it and so print/export artifacts stay self-contained.
 func (a *App) LoadImageAsset(documentPath string, markdownPath string) (imageassets.LoadedImage, error) {
 	defer a.reportPanic("LoadImageAsset")
-
-	return a.images.LoadForDocument(documentPath, markdownPath)
+	return a.images.load(a.ctx, documentPath, markdownPath)
 }
 
-// RevealImageAsset shows an image asset in the OS file browser. A missing
-// asset is reported instead of silently doing nothing.
 // safeExternalSchemes is the Go-side allowlist for opening a URL in the user's
 // browser. It deliberately duplicates the frontend check rather than trusting
 // it: the webview is where untrusted document content is parsed, so a bound
@@ -427,22 +392,7 @@ func (a *App) RecordClientEvent(event string, fields map[string]string) {
 
 func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 	defer a.reportPanic("RevealImageAsset")
-
-	loaded, err := a.images.LoadForDocument(documentPath, markdownPath)
-	if err != nil {
-		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
-		return err
-	}
-	if !loaded.Exists {
-		err := fmt.Errorf("image asset is missing: %s", markdownPath)
-		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
-		return err
-	}
-	if err := a.native.RevealPath(a.ctx, loaded.AbsolutePath); err != nil {
-		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
-		return err
-	}
-	return nil
+	return a.images.reveal(a.ctx, documentPath, markdownPath)
 }
 
 // SetAsDefaultMarkdownHandler backs the application-menu offer. The menu item
