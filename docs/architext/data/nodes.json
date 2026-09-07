@@ -276,7 +276,11 @@
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
-        "app.go"
+        "app.go",
+        "usecase_documents.go",
+        "usecase_images.go",
+        "usecase_links.go",
+        "usecase_defaulthandler.go"
       ],
       "runtime": "Go inside the application process",
       "interfaces": [

@@ -4,9 +4,9 @@
   "name": "Desktop integration and packaging hardening",
   "status": "planned",
   "posture": "on-track",
-  "summary": "Approved scope, in progress. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. Stretch: lift the Go use cases out of app.go so App becomes a thin adapter. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
+  "summary": "Approved scope, in progress. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. The stretch item has landed: the Go use cases are out of app.go, which is now a thin adapter over documentUseCase, imageUseCase, linkUseCase and defaultHandlerUseCase, pending release to users. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
   "targetWindow": "Next release",
-  "lastUpdated": "2026-09-02T00:00:00.000Z",
+  "lastUpdated": "2026-09-07T00:00:00.000Z",
   "updateSource": "maintainer",
   "scope": {
     "required": [
@@ -41,13 +41,13 @@
         "id": "go-use-cases-out-of-app",
         "title": "Separate Go use cases from the app binding surface",
         "kind": "chore",
-        "status": "stretch",
+        "status": "in-progress",
         "owner": "Project maintainers",
         "workstreamId": "go-use-case-extraction",
         "dependsOn": [],
         "evidence": [],
         "source": "roadmap",
-        "summary": "Lift open, save, resolve-unsaved and asset import out of app.go (730 lines) into use-case types, leaving App as a thin adapter. The injected ports already exist and do not change. Stretch because it addresses comprehension rather than correctness: dependency inversion is already in place, so deferring it costs clarity, not safety."
+        "summary": "Done on develop, pending release. open, save, resolve-unsaved, asset import, external-URL validation and the default-handler offer moved out of app.go into documentUseCase, imageUseCase, linkUseCase and defaultHandlerUseCase (same package, ports and host wiring untouched, zero behavior change), per docs/decisions/2026-09-03-go-use-case-extraction.md. app.go is now the adapter: bound methods are a panic-guard defer plus one delegation."
       }
     ],
     "deferred": [
