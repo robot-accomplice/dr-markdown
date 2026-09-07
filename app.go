@@ -366,6 +366,8 @@ func (a *App) RecordClientEvent(event string, fields map[string]string) {
 	a.events.Record("client."+event, fields)
 }
 
+// RevealImageAsset shows an image asset in the OS file browser. A missing
+// asset is reported instead of silently doing nothing.
 func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 	defer a.reportPanic("RevealImageAsset")
 	return a.images.reveal(a.ctx, documentPath, markdownPath)
