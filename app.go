@@ -3,12 +3,9 @@ package main
 import (
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +52,7 @@ var iconFreeMessageDialogPNG = []byte{
 type App struct {
 	ctx context.Context
 
+	// mu guards pendingOpen/frontendReady only.
 	mu sync.Mutex
 	// session owns the open tabs, their dirty state and the on-disk baseline.
 	session *session.Session
@@ -65,17 +63,18 @@ type App struct {
 	pendingOpen []string
 	// frontendReady flips once the webview has asked for its pending files.
 	frontendReady bool
-	// currentPath is the last path opened or saved. It names the window title
-	// and the Save-As default only; it is NEVER a write target, because
-	// inferring the target from ambient state is what destroyed documents.
-	currentPath string
-	currentText string
-	native      nativePort
-	documents   documentPort
-	fonts       fontPort
-	preferences preferencePort
-	images      imageAssetPort
-	events      *eventlog.Log
+	// documents owns open, save and resolve-unsaved, including the
+	// currentPath/currentText state those operations mutate. (Not named "docs":
+	// TestAppDoesNotDuplicateSessionState guards that name against App
+	// re-declaring the open tabs the session owns.)
+	documents      *documentUseCase
+	native         nativePort
+	fonts          fontPort
+	preferences    preferencePort
+	images         *imageUseCase
+	links          *linkUseCase
+	defaultHandler *defaultHandlerUseCase
+	events         *eventlog.Log
 	// panicDialog fires at most once. Deliberately not guarded by mu: a panic
 	// raised while mu is held would deadlock its own report. See reportPanic.
 	panicDialog sync.Once
@@ -180,14 +179,23 @@ func NewApp(native nativePort, events *eventlog.Log) *App {
 }
 
 func newAppWithDependencies(deps appDependencies) *App {
+	sess := &session.Session{}
 	return &App{
-		session:     &session.Session{},
-		events:      deps.events,
-		native:      deps.native,
-		documents:   deps.documents,
-		fonts:       deps.fonts,
-		preferences: deps.preferences,
-		images:      deps.images,
+		session:        sess,
+		events:         deps.events,
+		native:         deps.native,
+		fonts:          deps.fonts,
+		preferences:    deps.preferences,
+		images:         &imageUseCase{native: deps.native, images: deps.images},
+		links:          &linkUseCase{native: deps.native},
+		defaultHandler: &defaultHandlerUseCase{native: deps.native},
+		documents: &documentUseCase{
+			native:      deps.native,
+			documents:   deps.documents,
+			preferences: deps.preferences,
+			events:      deps.events,
+			session:     sess,
+		},
 	}
 }
 
@@ -217,15 +225,7 @@ type OpenResult struct {
 // A canceled dialog returns an empty OpenResult and nil error.
 func (a *App) OpenDocument() (OpenResult, error) {
 	defer a.reportPanic("OpenDocument")
-
-	path, err := a.native.OpenMarkdownFile(a.ctx)
-	if err != nil {
-		return OpenResult{}, err
-	}
-	if path == "" {
-		return OpenResult{}, nil
-	}
-	return a.openPath(path)
+	return a.documents.openViaDialog(a.ctx)
 }
 
 // SaveDocument writes content to path atomically. path must be non-empty.
@@ -236,46 +236,14 @@ func (a *App) OpenDocument() (OpenResult, error) {
 // no prompt.
 func (a *App) SaveDocument(path, content string) error {
 	defer a.reportPanic("SaveDocument")
-
-	if path == "" {
-		return fmt.Errorf("SaveDocument: empty path")
-	}
-	if err := a.confirmNoExternalChange(path); err != nil {
-		return err
-	}
-	if err := a.documents.WriteMarkdown(path, content); err != nil {
-		a.events.Record("document.save.failed", map[string]string{"path": path, "error": err.Error()})
-		a.native.ShowError(a.ctx, "Save Failed", err.Error())
-		return err
-	}
-	a.events.Record("document.saved", map[string]string{"path": path, "bytes": strconv.Itoa(len(content))})
-	a.mu.Lock()
-	a.currentPath = path
-	a.currentText = content
-	a.mu.Unlock()
-	a.session.RememberOnDisk(path, content)
-	a.session.AdoptPath(path, content)
-	a.recordRecent(path)
-	a.updateTitle()
-	return nil
+	return a.documents.save(a.ctx, path, content)
 }
 
 // SaveDocumentAs shows a native save dialog and writes content atomically.
 // Returns the saved path, or "" if the user canceled.
 func (a *App) SaveDocumentAs(content string) (string, error) {
 	defer a.reportPanic("SaveDocumentAs")
-
-	path, err := a.native.SaveMarkdownFile(a.ctx, "untitled.md")
-	if err != nil {
-		return "", err
-	}
-	if path == "" {
-		return "", nil
-	}
-	if err := a.SaveDocument(path, content); err != nil {
-		return "", err
-	}
-	return path, nil
+	return a.documents.saveAs(a.ctx, content)
 }
 
 // OpenDocument is one editor tab as the frontend sees it. Go does not infer
@@ -297,7 +265,7 @@ func (a *App) SyncDocuments(docs []OpenDocument) {
 	defer a.reportPanic("SyncDocuments")
 
 	a.session.Sync(docs)
-	a.updateTitle()
+	a.documents.updateTitle(a.ctx)
 }
 
 // SetDirty records the frontend's dirty state for the active tab.
@@ -309,14 +277,8 @@ func (a *App) SetDirty(dirty bool) {
 	defer a.reportPanic("SetDirty")
 
 	a.session.SetDirty(dirty)
-	a.updateTitle()
+	a.documents.updateTitle(a.ctx)
 }
-
-// dirtyDocuments returns a copy of every tab with unsaved changes.
-func (a *App) dirtyDocuments() []OpenDocument { return a.session.Dirty() }
-
-// activeDocument returns the focused tab, or the first, or a zero value.
-func (a *App) activeDocument() OpenDocument { return a.session.Active() }
 
 // UpdateContent stores the latest markdown for the active tab (pushed
 // debounced by the frontend) so the close guard can save without a round-trip.
@@ -349,16 +311,11 @@ func (a *App) SavePreferences(prefs preferences.Preferences) error {
 // OpenRecentDocument opens a known recent path without showing a native picker.
 func (a *App) OpenRecentDocument(path string) (OpenResult, error) {
 	defer a.reportPanic("OpenRecentDocument")
-
 	if path == "" {
 		return OpenResult{}, fmt.Errorf("OpenRecentDocument: empty path")
 	}
-	return a.openPath(path)
+	return a.documents.open(a.ctx, path)
 }
-
-// errUnsavedImageImport rejects imports that cannot produce a portable
-// relative asset path because the document has no location on disk yet.
-var errUnsavedImageImport = errors.New("Save the document before inserting images.")
 
 // ImportImage selects an image, copies it into the document asset folder, and
 // returns markdown for insertion. A canceled picker returns an empty result.
@@ -366,24 +323,7 @@ var errUnsavedImageImport = errors.New("Save the document before inserting image
 // never asked to choose a file the import could never have accepted.
 func (a *App) ImportImage(documentPath string) (imageassets.ImportedImage, error) {
 	defer a.reportPanic("ImportImage")
-
-	if documentPath == "" {
-		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
-		return imageassets.ImportedImage{}, errUnsavedImageImport
-	}
-	sourcePath, err := a.native.SelectImageFile(a.ctx)
-	if err != nil {
-		return imageassets.ImportedImage{}, err
-	}
-	if sourcePath == "" {
-		return imageassets.ImportedImage{}, nil
-	}
-	result, err := a.images.ImportForDocument(documentPath, sourcePath)
-	if err != nil {
-		a.native.ShowError(a.ctx, "Image Import Failed", err.Error())
-		return imageassets.ImportedImage{}, err
-	}
-	return result, nil
+	return a.images.importViaPicker(a.ctx, documentPath)
 }
 
 // ImportDroppedImage imports a file the user dropped onto the window. The
@@ -391,37 +331,15 @@ func (a *App) ImportImage(documentPath string) (imageassets.ImportedImage, error
 // unsaved-document rejection apply as for the ribbon command.
 func (a *App) ImportDroppedImage(documentPath string, sourcePath string) (imageassets.ImportedImage, error) {
 	defer a.reportPanic("ImportDroppedImage")
-
-	if documentPath == "" {
-		a.native.ShowError(a.ctx, "Image Import Failed", errUnsavedImageImport.Error())
-		return imageassets.ImportedImage{}, errUnsavedImageImport
-	}
-	result, err := a.images.ImportForDocument(documentPath, sourcePath)
-	if err != nil {
-		a.native.ShowError(a.ctx, "Image Import Failed", err.Error())
-		return imageassets.ImportedImage{}, err
-	}
-	return result, nil
+	return a.images.importDropped(a.ctx, documentPath, sourcePath)
 }
 
 // LoadImageAsset inlines a document-relative image so the webview can render
 // it and so print/export artifacts stay self-contained.
 func (a *App) LoadImageAsset(documentPath string, markdownPath string) (imageassets.LoadedImage, error) {
 	defer a.reportPanic("LoadImageAsset")
-
-	return a.images.LoadForDocument(documentPath, markdownPath)
+	return a.images.load(a.ctx, documentPath, markdownPath)
 }
-
-// RevealImageAsset shows an image asset in the OS file browser. A missing
-// asset is reported instead of silently doing nothing.
-// safeExternalSchemes is the Go-side allowlist for opening a URL in the user's
-// browser. It deliberately duplicates the frontend check rather than trusting
-// it: the webview is where untrusted document content is parsed, so a bound
-// method that hands any string to the OS URL opener is a second route to the
-// execution the frontend check exists to prevent — and the OS opener will
-// happily launch a registered local handler for a scheme a browser would never
-// navigate to.
-var safeExternalSchemes = map[string]bool{"http": true, "https": true, "mailto": true}
 
 // OpenExternalURL opens a web link in the user's browser.
 //
@@ -430,56 +348,7 @@ var safeExternalSchemes = map[string]bool{"http": true, "https": true, "mailto":
 // button, from which the only escape is quitting.
 func (a *App) OpenExternalURL(raw string) error {
 	defer a.reportPanic("OpenExternalURL")
-
-	// Strip exactly what a URL parser strips, so this check cannot be fooled by
-	// a string that reads as harmless here and as `javascript:` to the opener.
-	cleaned := strings.Map(func(r rune) rune {
-		if r == '\t' || r == '\n' || r == '\r' {
-			return -1
-		}
-		return r
-	}, raw)
-	cleaned = strings.TrimFunc(cleaned, func(r rune) bool { return r <= ' ' })
-
-	parsed, err := url.Parse(cleaned)
-	if err != nil {
-		return fmt.Errorf("open link: %q is not a URL", raw)
-	}
-	if !safeExternalSchemes[strings.ToLower(parsed.Scheme)] {
-		return fmt.Errorf("open link: refusing scheme %q", parsed.Scheme)
-	}
-	return a.native.OpenExternalURL(a.ctx, cleaned)
-}
-
-// confirmNoExternalChange refuses a save that would overwrite a change the app
-// never saw, unless the user explicitly chooses to overwrite.
-//
-// It compares against what the app last READ OR WROTE, not against what it
-// first opened — otherwise every second save to the same file would look like
-// an external edit and the prompt would become noise the user learns to click
-// through, which is worse than no prompt at all.
-//
-// A path the app has never touched has no baseline and is saved without
-// interruption; so is one that cannot be re-read, because failing to verify is
-// not evidence of a conflict and must not block the user from saving their work.
-func (a *App) confirmNoExternalChange(path string) error {
-	expected, known := a.session.BaselineFor(path)
-	if !known {
-		return nil
-	}
-	current, err := a.documents.ReadMarkdown(path)
-	if err != nil || current == expected {
-		return nil
-	}
-	choice, err := a.native.ConfirmOverwriteChanged(a.ctx, path)
-	if err != nil {
-		return err
-	}
-	a.events.Record("document.conflict", map[string]string{"path": path, "choice": choice})
-	if choice != "Overwrite" {
-		return fmt.Errorf("save canceled: %s changed on disk since it was opened", filepath.Base(path))
-	}
-	return nil
+	return a.links.openExternal(a.ctx, raw)
 }
 
 // RecordClientEvent lets the frontend put a diagnostic into the same trail as
@@ -497,24 +366,11 @@ func (a *App) RecordClientEvent(event string, fields map[string]string) {
 	a.events.Record("client."+event, fields)
 }
 
+// RevealImageAsset shows an image asset in the OS file browser. A missing
+// asset is reported instead of silently doing nothing.
 func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 	defer a.reportPanic("RevealImageAsset")
-
-	loaded, err := a.images.LoadForDocument(documentPath, markdownPath)
-	if err != nil {
-		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
-		return err
-	}
-	if !loaded.Exists {
-		err := fmt.Errorf("image asset is missing: %s", markdownPath)
-		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
-		return err
-	}
-	if err := a.native.RevealPath(a.ctx, loaded.AbsolutePath); err != nil {
-		a.native.ShowError(a.ctx, "Reveal Failed", err.Error())
-		return err
-	}
-	return nil
+	return a.images.reveal(a.ctx, documentPath, markdownPath)
 }
 
 // SetAsDefaultMarkdownHandler backs the application-menu offer. The menu item
@@ -523,22 +379,7 @@ func (a *App) RevealImageAsset(documentPath string, markdownPath string) error {
 // set a handler from a disk image, so the guards run again here.
 func (a *App) SetAsDefaultMarkdownHandler() {
 	defer a.reportPanic("SetAsDefaultMarkdownHandler")
-	isDefault, err := a.native.IsDefaultMarkdownHandler(a.ctx)
-	if err != nil {
-		a.native.ShowError(a.ctx, "Default Application", err.Error())
-		return
-	}
-	switch defaultHandlerMenuState(isDefault, executablePath()) {
-	case defaultHandlerIsDefault:
-		return
-	case defaultHandlerDiskImage:
-		a.native.ShowError(a.ctx, "Default Application",
-			"Dr Markdown is running from a disk image. Drag it to Applications first — otherwise every .md file would open an app on a volume that gets ejected.")
-		return
-	}
-	if err := a.native.SetDefaultMarkdownHandler(a.ctx); err != nil {
-		a.native.ShowError(a.ctx, "Default Application", err.Error())
-	}
+	a.defaultHandler.setAsDefault(a.ctx)
 }
 
 // ResolveUnsavedChanges reports whether the frontend may discard the
@@ -548,121 +389,14 @@ func (a *App) SetAsDefaultMarkdownHandler() {
 // Cancel (or a dialog/save failure) aborts.
 func (a *App) ResolveUnsavedChanges() bool {
 	defer a.reportPanic("ResolveUnsavedChanges")
-
-	if !a.activeDocument().Dirty {
-		return true
-	}
-	return !a.promptUnsaved()
+	return a.documents.resolveUnsaved(a.ctx)
 }
 
 // beforeClose implements the unsaved-changes guard: Save / Don't Save /
 // Cancel, matching the spec's error-handling contract.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	defer a.reportPanic("beforeClose")
-
-	unsynced := a.session.HasUnsyncedDirty()
-	if len(a.dirtyDocuments()) == 0 && !unsynced {
-		return false
-	}
-	return a.promptUnsaved()
-}
-
-// promptUnsaved shows the Save / Don't Save / Cancel dialog and returns
-// whether the pending action (close, open, …) must be prevented.
-func (a *App) promptUnsaved() (prevent bool) {
-	choice, err := a.native.ConfirmUnsaved(a.ctx)
-	if err != nil {
-		return true // dialog failed — do not lose data
-	}
-	switch choice {
-	case "Don't Save":
-		return false
-	case "Save":
-		return !a.saveCurrent()
-	default: // Cancel
-		return true
-	}
-}
-
-// saveCurrent writes the latest known content. Returns false if the save
-// failed or the user canceled a Save As dialog.
-// saveCurrent saves EVERY tab with unsaved changes, each to its own path.
-//
-// It does not consult a "current" path. Choosing the target from ambient state
-// is precisely what allowed one tab's content to be written over another tab's
-// file. A pathless tab goes through Save As. Any failure or cancellation stops
-// the close so the remaining documents are not lost.
-func (a *App) saveCurrent() bool {
-	a.mu.Lock()
-	content := a.currentText
-	a.mu.Unlock()
-	unsynced := a.session.HasUnsyncedDirty()
-	if unsynced {
-		// No document list, so no known target. Ask rather than guess.
-		path, err := a.SaveDocumentAs(content)
-		return err == nil && path != ""
-	}
-	for _, doc := range a.dirtyDocuments() {
-		if doc.Path == "" {
-			path, err := a.SaveDocumentAs(doc.Content)
-			if err != nil || path == "" {
-				return false
-			}
-			continue
-		}
-		if err := a.SaveDocument(doc.Path, doc.Content); err != nil {
-			return false
-		}
-	}
-	return true
-}
-
-func (a *App) openPath(path string) (OpenResult, error) {
-	content, err := a.documents.ReadMarkdown(path)
-	if err != nil {
-		a.events.Record("document.open.failed", map[string]string{"path": path, "error": err.Error()})
-		a.native.ShowError(a.ctx, "Open Failed", err.Error())
-		return OpenResult{}, err
-	}
-	a.events.Record("document.opened", map[string]string{"path": path, "bytes": strconv.Itoa(len(content))})
-	a.mu.Lock()
-	a.currentPath = path
-	a.currentText = content
-	a.mu.Unlock()
-	a.session.RememberOnDisk(path, content)
-	a.session.AdoptPath(path, content)
-	a.recordRecent(path)
-	a.updateTitle()
-	return OpenResult{Path: path, Content: content}, nil
-}
-
-func (a *App) recordRecent(path string) {
-	if a.preferences == nil || path == "" {
-		return
-	}
-	_, _ = a.preferences.RecordRecent(path)
-}
-
-func (a *App) updateTitle() {
-	if a.ctx == nil {
-		return
-	}
-	active := a.activeDocument()
-	path, dirty := active.Path, active.Dirty
-	if path == "" {
-		a.mu.Lock()
-		path = a.currentPath
-		a.mu.Unlock()
-	}
-	name := "untitled"
-	if path != "" {
-		name = path
-	}
-	title := "Dr Markdown — " + name
-	if dirty {
-		title += " •"
-	}
-	a.native.SetTitle(a.ctx, title)
+	return a.documents.preventClose(ctx)
 }
 
 type documentAdapter struct{}
