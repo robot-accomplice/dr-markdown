@@ -32,6 +32,40 @@ nobody could install is not a version that happened.
 `develop` is `main` plus the post-release morph-sweep test PR (#151). No open PRs, nothing in flight.
 CI is green; the full local suite, e2e included, passes on this tree.
 
+## In flight: fix/wysiwyg-cursor-probe (2026-09-09/10)
+
+The branch fixes the reported WYSIWYG caret bug and carries the instrument that
+found it. Root cause, measured end to end: document zoom is CSS `zoom` on
+`#editor-host`; Crepe runs ProseMirror's virtual-cursor plugin, which suppresses
+the native caret and positions its own `.prosemirror-virtual-cursor` div in
+viewport-convention coordinates — and WKWebView's zoom scales those a SECOND
+time. At 130% the plugin div painted at (461.8, 284.2, h 29.9) where the DOM
+selection rect was (433.1, 268.2, h 23.0): displaced down-right by 0.3x the
+distance from the zoom origin, 1.3x too tall. Text always landed correctly —
+insertion and hit-testing never broke. Chrome keeps the plugin's math
+consistent, which is why no browser-side test could see this.
+
+The fix: at zoom ≠ 100% the plugin's div is `display: none` and the caret is
+`#virtual-caret`, a fixed element on `<body>` OUTSIDE the zoom context, placed
+at the collapsed selection's own client rect (`frontend/dist/src/virtual-caret.js`,
+wired in app.js; styles and the full mechanism comment in app.css next to the
+`zoom` rule). At 100% the plugin's own cursor stays — it is truthful there.
+Gates: `e2e/virtual_caret_test.go` (Chrome, logic), and the real-host probe
+below.
+
+`-cursor-probe` (probe_darwin.go, host wiring in host_darwin.{go,m},
+`e2e/cursor_probe_test.go` for the Chrome variant) drives a real click and real
+keystrokes through AppKit and reports where text landed; with
+`DRMD_PROBE_EXTERNAL=1` a human drives, and it photographs the painted caret
+with `screencapture`. It is marked TEMPORARY DIAGNOSTIC; whether it ships as a
+permanent gate or is stripped is a PR-time decision.
+
+Known-unknowns: (1) whether the raw-mode and split-source textareas (also
+under the zoomed `#editor-host`) show the same displacement — a textarea has
+no DOM caret-rect API, so that answer would look different. (Checked and
+cleared 2026-09-10 by driving the real app at 130%: the selection HIGHLIGHT
+paints on the glyphs, and the caret reads as glued to the text.)
+
 ## Open threads
 
 - **Issues:** only milestone trackers remain open — #5 (post-alpha roadmap), #10 (M10 export), #11
