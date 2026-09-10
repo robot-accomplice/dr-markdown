@@ -54,4 +54,6 @@ export const bridge = {
   savePreferences: (prefs) => native()?.SavePreferences?.(prefs) ?? null,
   resolveUnsavedChanges: () =>
     native()?.ResolveUnsavedChanges() ?? missing('ResolveUnsavedChanges'),
+  setAsDefaultMarkdownHandler: () =>
+    native()?.SetAsDefaultMarkdownHandler() ?? missing('SetAsDefaultMarkdownHandler'),
 }

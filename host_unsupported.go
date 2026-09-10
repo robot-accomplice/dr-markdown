@@ -43,5 +43,8 @@ func (unsupportedNative) ConfirmOverwriteChanged(context.Context, string) (strin
 	return "", nil
 }
 
+func (unsupportedNative) IsDefaultMarkdownHandler(context.Context) (bool, error) { return false, nil }
+func (unsupportedNative) SetDefaultMarkdownHandler(context.Context) error        { return nil }
+
 // runHarness is a no-op off macOS: the harness drives a native window.
 func runHarness() bool { return false }

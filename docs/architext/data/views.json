@@ -2,7 +2,7 @@
   "views": [
     {
       "id": "system-map",
-      "name": "Dr. Markdown System Map",
+      "name": "Dr Markdown System Map",
       "type": "system-map",
       "summary": "Local Desktop app boundary, frontend shell, native Go API, editor adapters, and vendored editor assets.",
       "lanes": [
@@ -92,7 +92,7 @@
       "id": "c4-context",
       "name": "C4 Context",
       "type": "c4-context",
-      "summary": "Dr. Markdown is a local desktop system used by a Desktop user.",
+      "summary": "Dr Markdown is a local desktop system used by a Desktop user.",
       "lanes": [
         {
           "id": "people",

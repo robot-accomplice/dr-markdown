@@ -116,6 +116,9 @@ func dispatchBound(app *App, name string, args []json.RawMessage) (result any, e
 			return nil, err, true
 		}
 		return nil, app.RevealImageAsset(a0, a1), true
+	case "SetAsDefaultMarkdownHandler":
+		app.SetAsDefaultMarkdownHandler()
+		return nil, nil, true
 	case "ResolveUnsavedChanges":
 		return app.ResolveUnsavedChanges(), nil, true
 	case "FrontendReady":

@@ -311,6 +311,11 @@ type fakeNative struct {
 	errorTitle         string
 	errorMessage       string
 	errorCount         int
+
+	isDefault        bool
+	isDefaultErr     error
+	setDefaultCalled bool
+	setDefaultErr    error
 }
 
 func (f *fakeNative) OpenMarkdownFile(context.Context) (string, error) {
@@ -356,6 +361,15 @@ func (f *fakeNative) ConfirmOverwriteChanged(_ context.Context, _ string) (strin
 		return "Cancel", nil
 	}
 	return f.overwriteChoice, nil
+}
+
+func (f *fakeNative) IsDefaultMarkdownHandler(context.Context) (bool, error) {
+	return f.isDefault, f.isDefaultErr
+}
+
+func (f *fakeNative) SetDefaultMarkdownHandler(context.Context) error {
+	f.setDefaultCalled = true
+	return f.setDefaultErr
 }
 
 func (f *fakeNative) ShowError(_ context.Context, title string, message string) {

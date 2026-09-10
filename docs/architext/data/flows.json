@@ -5,7 +5,7 @@
       "name": "Application boot",
       "status": "implemented",
       "summary": "the host embeds frontend assets, creates the Go app binding, loads persisted preferences through the bridge, and mounts the editor shell with a blank in-memory document.",
-      "trigger": "User launches Dr. Markdown",
+      "trigger": "User launches Dr Markdown",
       "actors": [
         "macos-user"
       ],

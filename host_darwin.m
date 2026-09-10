@@ -306,9 +306,26 @@ void hostTerminateApproved(void) {
 - (void)runJS:(NSMenuItem *)sender;
 @end
 
+static NSString *const kDefaultHandlerItemJS =
+    @"globalThis.__app?.setAsDefaultMarkdownHandler()";
+
 @implementation DrmdMenuTarget
 - (void)runJS:(NSMenuItem *)sender {
   hostEvalJS([sender.representedObject UTF8String]);
+}
+
+// AppKit calls this on every menu open and key-equivalent match. Every item
+// except the default-handler offer is always enabled; the offer derives its
+// state from a FRESH Launch Services query each time, because the set call
+// reports success while the system consent dialog is still unanswered — menu
+// state is never assumed from a previous call.
+- (BOOL)validateMenuItem:(NSMenuItem *)item {
+  if ([item.representedObject isEqualToString:kDefaultHandlerItemJS]) {
+    int state = hostDefaultHandlerMenuState();
+    item.state = state == 1 ? NSControlStateValueOn : NSControlStateValueOff;
+    return state == 0;
+  }
+  return YES;
 }
 @end
 
@@ -341,6 +358,10 @@ static void installMenuBar(NSString *appName) {
   NSMenu *appMenu = [[NSMenu alloc] init];
   [appMenu addItem:sel([@"About " stringByAppendingString:appName],
                        @selector(orderFrontStandardAboutPanel:), @"", 0)];
+  // The default-.md-handler offer. No key equivalent — it is a once-in-a-while
+  // choice, not a command. State is derived in validateMenuItem: above.
+  [appMenu addItem:jsItem(@"Set as Default Markdown Application…", @"", 0,
+                          kDefaultHandlerItemJS)];
   [appMenu addItem:[NSMenuItem separatorItem]];
   [appMenu addItem:sel([@"Hide " stringByAppendingString:appName], @selector(hide:), @"h",
                        NSEventModifierFlagCommand)];
@@ -491,6 +512,43 @@ char *hostMenuJSON(void) {
   return strdup(s.UTF8String);
 }
 
+// The default-.md-handler offer (docs/decisions/2026-08-25-default-markdown-handler.md).
+//
+// LSSetDefaultRoleHandlerForContentType is deprecated as of macOS 12 and still
+// functional. The NSWorkspace replacement is 12.0+ while the deployment target
+// is 11.0, so this is the only single-path call. If the floor ever rises to
+// 12, switch — this comment exists so the deprecation is not rediscovered.
+//
+// The bundle identifier comes from the RUNNING BUNDLE, not a literal: the gate
+// binary runs outside any bundle, where bundleIdentifier is nil and both calls
+// must degrade to "not the default" rather than set anything.
+int hostIsDefaultMarkdownHandler(void) {
+  NSString *selfID = NSBundle.mainBundle.bundleIdentifier;
+  if (!selfID) return 0;
+  // Queried at kLSRolesEditor, NOT kLSRolesAll: the set below claims Editor |
+  // Viewer, so the query must ask about a role the set actually claims —
+  // asking All could report a handler that only holds the Shell role, which a
+  // set claiming Editor | Viewer would never replace.
+  CFStringRef handler = LSCopyDefaultRoleHandlerForContentType(
+      CFSTR("net.daringfireball.markdown"), kLSRolesEditor);
+  if (!handler) return 0;
+  BOOL match = [(__bridge NSString *)handler isEqualToString:selfID];
+  CFRelease(handler);
+  return match ? 1 : 0;
+}
+
+// Returns the OSStatus. 0 means the REQUEST was accepted — macOS shows its own
+// consent dialog and applies the change only if the user confirms, so 0 does
+// NOT mean the handler changed. Measured 2026-08-31 on macOS 26.6.2.
+int hostSetDefaultMarkdownHandler(void) {
+  NSString *selfID = NSBundle.mainBundle.bundleIdentifier;
+  if (!selfID) return -1;
+  return (int)LSSetDefaultRoleHandlerForContentType(
+      CFSTR("net.daringfireball.markdown"),
+      kLSRolesEditor | kLSRolesViewer,
+      (__bridge CFStringRef)selfID);
+}
+
 // Asks AppKit to terminate, which is what the Quit menu item and Cmd-Q do. The
 // harness uses this so the quit gate drives the REAL gesture rather than a
 // stand-in for it.
@@ -499,6 +557,15 @@ void hostTerminateNow(void) {
     [NSApp terminate:nil];
   });
 }
+
+// The zoom the cursor probe should normalize to, set by Go from
+// DRMD_PROBE_ZOOM before hostRun builds the injected script.
+static NSString *gProbeZoom = @"1.0";
+
+// DRMD_PROBE_EXTERNAL=1: the probe reports WHERE to click and a real human or
+// System Events drives the input, so the events are WindowServer-sourced
+// rather than posted.
+static BOOL gProbeExternal = NO;
 
 void hostRun(const char *title, int width, int height, int dropMode) {
   @autoreleasepool {
@@ -527,7 +594,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
     // a host implementing nothing. A proxy would make every method look present
     // and route it to a dispatcher with no answer.
     NSString *js =
-        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@; globalThis.__drmdDocMode = %@; globalThis.__drmdGateMode = %@; globalThis.__drmdQuitMode = %@; globalThis.__drmdQuitDirty = %@; globalThis.__drmdNavMode = %@;",
+        [NSString stringWithFormat:@"globalThis.__drmdDropMode = %@; globalThis.__drmdWalkMode = %@; globalThis.__drmdCloseMode = %@; globalThis.__drmdCloseDirty = %@; globalThis.__drmdDocMode = %@; globalThis.__drmdGateMode = %@; globalThis.__drmdQuitMode = %@; globalThis.__drmdQuitDirty = %@; globalThis.__drmdNavMode = %@; globalThis.__drmdProbeMode = %@; globalThis.__drmdProbeZoom = %@; globalThis.__drmdProbeExternal = %@;",
                                     dropMode == 1 ? @"true" : @"false",
                                     dropMode == 2 ? @"true" : @"false",
                                     (dropMode == 3 || dropMode == 4) ? @"true" : @"false",
@@ -536,7 +603,10 @@ void hostRun(const char *title, int width, int height, int dropMode) {
                                     dropMode == 7 ? @"true" : @"false",
                                     (dropMode == 8 || dropMode == 9) ? @"true" : @"false",
                                     dropMode == 9 ? @"true" : @"false",
-                                    dropMode == 10 ? @"true" : @"false"];
+                                    dropMode == 10 ? @"true" : @"false",
+                                    dropMode == 11 ? @"true" : @"false",
+                                    [NSString stringWithFormat:@"\"%@\"", gProbeZoom],
+                                    gProbeExternal ? @"true" : @"false"];
     js = [js stringByAppendingString:
         @"(() => {"
         @"let nextId = 1; const pending = new Map();"
@@ -557,7 +627,7 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"  'SetDirty','UpdateContent','ListFontFamilies','LoadPreferences','SavePreferences',"
         @"  'OpenRecentDocument','ImportImage','ImportDroppedImage','LoadImageAsset',"
         @"  'OpenExternalURL','RecordClientEvent','RevealImageAsset','ResolveUnsavedChanges',"
-        @"  'FrontendReady','Ping','Boom'];"
+        @"  'SetAsDefaultMarkdownHandler','FrontendReady','Ping','Boom'];"
         @"const App = {};"
         @"for (const n of NAMES) App[n] = (...args) => call(n, args);"
         @"globalThis.drmd = { native: App };"
@@ -763,6 +833,12 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"    })();"
         @"  }"
         @"  else if (globalThis.__drmdDocMode) { import('drmd://app/__doc.js'); }"
+        // The cursor probe is a MODULE for the same reason the walk is: escaping
+        // a script of any size through an Objective-C literal turns \n into a
+        // real newline and kills the whole injected script at parse time.
+        @"  else if (globalThis.__drmdProbeMode) { import('drmd://app/__probe.js').catch((e) =>"
+        @"    window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__probe',"
+        @"      args: [{ phase: 'error', message: 'probe module failed to load: ' + String(e && e.message) }] })); }"
         // Gates run ONLY when asked for. They were the default, which meant the
         // shipped application started a test harness and exited -- every
         // verification run looked right because every verification run passed a
@@ -1004,6 +1080,134 @@ void hostSetTitle(const char *title) {
   NSString *t = [NSString stringWithUTF8String:title];
   dispatch_async(dispatch_get_main_queue(), ^{
     gWebView.window.title = t;
+  });
+}
+
+// ---- CURSOR PROBE --------------------------------------------------------
+// TEMPORARY DIAGNOSTIC for the reported WYSIWYG caret bug. The probe needs
+// REAL AppKit events — a JS-dispatched click never touches WebKit's coordinate
+// mapping, which is the thing under suspicion (CSS `zoom` breaking caret
+// hit-testing).
+
+void hostSetProbeZoom(const char *zoom) {
+  gProbeZoom = [NSString stringWithUTF8String:zoom];
+}
+
+void hostSetProbeExternal(int external) {
+  gProbeExternal = external != 0;
+}
+
+// The bare probe places the caret programmatically, and a programmatic
+// selection paints no caret while the webview is not the key window's first
+// responder. Posted events do not ACTIVATE the app the way a real click does
+// — the window can sit frontmost yet not key, with the terminal still owning
+// key status — so activation is explicit here.
+void hostProbeFocus(void) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (gWindow == nil || gWebView == nil) return;
+    [NSApp activateIgnoringOtherApps:YES];
+    [gWindow makeKeyAndOrderFront:nil];
+    [gWindow makeFirstResponder:gWebView];
+  });
+}
+
+// Converts the probe's VIEWPORT target (CSS pixels, top-left origin) to GLOBAL
+// screen coordinates in the Quartz convention (top-left of the primary display
+// is 0,0), which is what CGEvent and System Events clicks take.
+//
+// Two flips, not one: the viewport is top-left-origin while window base
+// coordinates are bottom-left-origin (the webview IS the content view, so its
+// bounds are the window's content region), and convertRectToScreen answers in
+// Cocoa screen coordinates — bottom-left of the PRIMARY screen — so the y is
+// flipped against that screen's height. NSScreen.screens[0] is the primary
+// screen by definition (it holds the menu bar and sits at 0,0); mainScreen
+// would be wrong, being merely the screen the key window is on.
+//
+// dispatch_sync rather than reading the views from the Go goroutine directly:
+// window and view geometry are main-thread state. Safe here because the caller
+// is a Go goroutine, never the main thread.
+void hostProbeExternalPoint(double x, double y, double *outX, double *outY) {
+  __block NSPoint quartz = NSZeroPoint;
+  dispatch_sync(dispatch_get_main_queue(), ^{
+    if (gWebView == nil || gWindow == nil) return;
+    NSPoint inWindow = NSMakePoint(x, gWebView.bounds.size.height - y);
+    NSPoint onScreen = [gWindow convertPointToScreen:inWindow];
+    CGFloat primaryHeight = NSScreen.screens.firstObject.frame.size.height;
+    quartz = NSMakePoint(onScreen.x, primaryHeight - onScreen.y);
+  });
+  *outX = quartz.x;
+  *outY = quartz.y;
+}
+
+// The target arrives as VIEWPORT coordinates: CSS pixels, top-left origin.
+// locationInWindow wants points with a BOTTOM-left origin. The webview IS the
+// window's content view, so its bounds are the window's content region; CSS
+// pixels are points here because the backing scale factor only changes
+// rasterisation, not geometry. WKWebView is not flipped, so the flip is ours
+// to do. The probe self-verifies: if the selection after this click is not in
+// the paragraph the click was aimed at, THIS conversion is what is wrong.
+void hostProbeClick(double x, double y) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (gWebView == nil || gWindow == nil) return;
+    NSPoint inWindow = NSMakePoint(x, gWebView.bounds.size.height - y);
+    NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+    NSEvent *down = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
+                                       location:inWindow
+                                  modifierFlags:0
+                                      timestamp:now
+                                   windowNumber:gWindow.windowNumber
+                                        context:nil
+                                    eventNumber:0
+                                     clickCount:1
+                                       pressure:1.0];
+    NSEvent *up = [NSEvent mouseEventWithType:NSEventTypeLeftMouseUp
+                                     location:inWindow
+                                modifierFlags:0
+                                    timestamp:now
+                                 windowNumber:gWindow.windowNumber
+                                      context:nil
+                                  eventNumber:0
+                                   clickCount:1
+                                     pressure:1.0];
+    [NSApp postEvent:down atStart:NO];
+    [NSApp postEvent:up atStart:NO];
+  });
+}
+
+static unsigned short probeKeyCode(unichar c) {
+  // ANSI virtual key codes, so the events look like the real keys rather than
+  // all claiming to be A.
+  switch (c) {
+    case 'X': return 7;
+    case 'Y': return 16;
+    case 'Z': return 6;
+  }
+  return 0;
+}
+
+void hostProbeType(const char *chars) {
+  NSString *text = [NSString stringWithUTF8String:chars];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (gWindow == nil) return;
+    NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+    for (NSUInteger i = 0; i < text.length; i++) {
+      unichar c = [text characterAtIndex:i];
+      NSString *ch = [NSString stringWithCharacters:&c length:1];
+      NSString *plain = ch.lowercaseString;
+      for (int phase = 0; phase < 2; phase++) {
+        NSEvent *key = [NSEvent keyEventWithType:phase == 0 ? NSEventTypeKeyDown : NSEventTypeKeyUp
+                                        location:NSZeroPoint
+                                   modifierFlags:0
+                                       timestamp:now
+                                    windowNumber:gWindow.windowNumber
+                                         context:nil
+                                      characters:ch
+                     charactersIgnoringModifiers:plain
+                                       isARepeat:NO
+                                         keyCode:probeKeyCode(c)];
+        [NSApp postEvent:key atStart:NO];
+      }
+    }
   });
 }
 

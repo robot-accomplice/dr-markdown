@@ -41,7 +41,14 @@ void hostRevealPath(const char *path);
 void hostOpenURL(const char *url);
 void hostSetTitle(const char *title);
 void hostCloseNow(void);
+void hostSetProbeZoom(const char *zoom);
+void hostSetProbeExternal(int external);
+void hostProbeClick(double x, double y);
+void hostProbeType(const char *chars);
+void hostProbeFocus(void);
 char *hostMenuJSON(void);
+int hostIsDefaultMarkdownHandler(void);
+int hostSetDefaultMarkdownHandler(void);
 */
 import "C"
 
@@ -145,6 +152,28 @@ func (darwinHost) Run(cfg hostConfig) error {
 		}()
 	}
 
+	// The probe is a conversation — target, click, selection, keys, result — and
+	// any broken leg of it would otherwise look like a window that opened and
+	// did nothing. A deadline makes that a verdict instead. The external variant
+	// waits on a human or a System Events round trip, so it gets longer.
+	if cursorProbeMode {
+		deadline := 30 * time.Second
+		// Read the env var here rather than cursorProbeExternal, which is only
+		// set later in Run() — this goroutine would always see false.
+		if os.Getenv("DRMD_PROBE_EXTERNAL") == "1" {
+			deadline = 90 * time.Second
+		}
+		go func() {
+			select {
+			case <-time.After(deadline):
+				fmt.Printf("PROBE: nothing reported in %v.\n", deadline)
+				fmt.Println("VERDICT: FAIL (no report)")
+				os.Exit(1)
+			case <-hostDone:
+			}
+		}()
+	}
+
 	// Lifecycle callbacks the application supplied. OnStartup must run before
 	// the frontend can ask for anything, and it is what subscribes to file
 	// drops — a host that never calls it leaves drag-and-drop silently dead.
@@ -190,6 +219,20 @@ func (darwinHost) Run(cfg hostConfig) error {
 		mode = 3
 		if closeDirty {
 			mode = 4
+		}
+	}
+	if cursorProbeMode {
+		mode = 11
+		zoom := os.Getenv("DRMD_PROBE_ZOOM")
+		if zoom == "" {
+			zoom = "1.0"
+		}
+		czoom, freeZoom := cstr(zoom)
+		C.hostSetProbeZoom(czoom)
+		freeZoom()
+		if os.Getenv("DRMD_PROBE_EXTERNAL") == "1" {
+			cursorProbeExternal = true
+			C.hostSetProbeExternal(1)
 		}
 	}
 	C.hostRun(title, C.int(cfg.Width), C.int(cfg.Height), mode)
@@ -247,7 +290,8 @@ func hostServeAsset(cpath *C.char, outLen *C.int, outMime **C.char) unsafe.Point
 // line. Every one of them is set from argv, so this is false for a user launch.
 func harnessRun() bool {
 	return dropWaitMode || walkMode || docCheckMode || menuCheckMode ||
-		closeCheckMode || gateMode || quitCheckMode || navCheckMode
+		closeCheckMode || gateMode || quitCheckMode || navCheckMode ||
+		cursorProbeMode
 }
 
 func serveHarnessAsset(requested string, outLen *C.int, outMime **C.char) unsafe.Pointer {
@@ -271,6 +315,16 @@ func serveHarnessAsset(requested string, outLen *C.int, outMime **C.char) unsafe
 
 	if requested == "/__walk.js" {
 		body := []byte(walkModuleJS)
+		*outLen = C.int(len(body))
+		*outMime = C.CString("text/javascript")
+		return C.CBytes(body)
+	}
+
+	if requested == "/__probe.js" {
+		body := []byte(probeModuleJS)
+		if probeBare {
+			body = []byte(bareProbeModuleJS)
+		}
 		*outLen = C.int(len(body))
 		*outMime = C.CString("text/javascript")
 		return C.CBytes(body)
@@ -418,6 +472,9 @@ func dispatchCall(app *App, method, argsJSON string) (ok bool, payload string) {
 	case "__walk":
 		reportWalk(argsJSON)
 		return true, mustJSON("reported")
+	case "__probe":
+		reportProbe(argsJSON)
+		return true, mustJSON("reported")
 	case "__doc":
 		reportComposite(argsJSON)
 		return true, mustJSON("reported")
@@ -529,6 +586,16 @@ var dropWaitMode bool
 
 // walkMode drives the whole UI surface instead of the gates.
 var walkMode bool
+
+// cursorProbeMode drives the temporary WYSIWYG caret probe: a real click and
+// real keystrokes through AppKit, with the landing point reported back.
+var cursorProbeMode bool
+
+// cursorProbeExternal (DRMD_PROBE_EXTERNAL=1) changes who drives the input: the
+// probe reports WHERE to click in global screen coordinates and a real human —
+// or System Events — supplies the click and the keystrokes, so the events are
+// WindowServer-sourced rather than posted in-process.
+var cursorProbeExternal bool
 
 // navCheckMode exercises the navigation delegate.
 //
@@ -941,6 +1008,26 @@ func (darwinNative) OpenExternalURL(_ context.Context, url string) error {
 	return nil
 }
 
+// Both Launch Services calls are local database operations — no UI comes from
+// this process (the system consent dialog belongs to the OS), so neither needs
+// the main queue.
+func (darwinNative) IsDefaultMarkdownHandler(_ context.Context) (bool, error) {
+	return C.hostIsDefaultMarkdownHandler() == 1, nil
+}
+
+func (darwinNative) SetDefaultMarkdownHandler(_ context.Context) error {
+	status := C.hostSetDefaultMarkdownHandler()
+	if status == -1 {
+		// -1 is the host's own sentinel for "no bundle identifier", not a
+		// Launch Services status — say what is actually wrong.
+		return fmt.Errorf("not running from an application bundle")
+	}
+	if status != 0 {
+		return fmt.Errorf("Launch Services returned status %d", int(status))
+	}
+	return nil
+}
+
 func (darwinNative) SetTitle(_ context.Context, title string) {
 	ct, free := cstr(title)
 	defer free()
@@ -991,6 +1078,24 @@ func hostReportBlockedNavigation(curl *C.char) {
 		return
 	}
 	handler(C.GoString(curl))
+}
+
+// hostDefaultHandlerMenuState backs validateMenuItem: for the default-handler
+// menu item. AppKit calls it synchronously on the main thread at
+// menu-validation time; the Launch Services query is a local database lookup,
+// so this never blocks.
+//
+// A query failure fails OPEN to offering: the click path re-runs the decision
+// and reports the error, so a transient failure costs an enabled item that
+// explains itself rather than a silently dead one.
+//
+//export hostDefaultHandlerMenuState
+func hostDefaultHandlerMenuState() C.int {
+	isDefault, err := darwinNative{}.IsDefaultMarkdownHandler(context.Background())
+	if err != nil {
+		return C.int(defaultHandlerOffer)
+	}
+	return C.int(defaultHandlerMenuState(isDefault, executablePath()))
 }
 
 func setNavigationBlockHandler(onBlocked func(url string)) {
@@ -1211,6 +1316,11 @@ func hostReportMenu() {
 	// name there and ignores whatever it is called.
 	required := []struct{ menu, item, key string }{
 		{"", "Quit", "q"},
+		// The default-handler offer (spec: docs/decisions/2026-08-25-default-markdown-handler.md).
+		// Presence and action only: its enabled/checked state depends on the
+		// machine's current default, so a gate running on the maintainer's Mac
+		// sees a different state than one running anywhere else.
+		{"", "Set as Default Markdown Application", ""},
 		{"File", "New", "n"},
 		{"File", "Open", "o"},
 		{"File", "Save", "s"},

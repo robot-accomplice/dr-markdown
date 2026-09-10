@@ -43,12 +43,13 @@
     {
       "id": "desktop-app",
       "type": "software-system",
-      "name": "Dr. Markdown",
+      "name": "Dr Markdown",
       "summary": "A macOS markdown editor with embedded frontend assets and Go-bound native file operations. As of v0.6.0 it depends on NO application framework: the window, the webview, the asset scheme and the native dialogs are AppKit and WebKit directly, behind hostPort.",
       "responsibilities": [
         "Host the local editor UI",
         "Expose native document dialogs and close guards",
-        "Embed frontend assets into the application binary"
+        "Embed frontend assets into the application binary",
+        "Offer to become the default .md application via Launch Services"
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
@@ -275,7 +276,11 @@
       ],
       "owner": "Project maintainers",
       "sourcePaths": [
-        "app.go"
+        "app.go",
+        "usecase_documents.go",
+        "usecase_images.go",
+        "usecase_links.go",
+        "usecase_defaulthandler.go"
       ],
       "runtime": "Go inside the application process",
       "interfaces": [
@@ -630,7 +635,7 @@
       "responsibilities": [
         "Initialize the vendored Mermaid runtime once",
         "Render Mermaid fenced-block source into SVG",
-        "Apply Dr. Markdown theme variables to Mermaid output",
+        "Apply Dr Markdown theme variables to Mermaid output",
         "Return a visible fallback panel when Mermaid rendering fails"
       ],
       "owner": "Project maintainers",

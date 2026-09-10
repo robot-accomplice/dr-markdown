@@ -54,7 +54,9 @@ Under `docs/architext/data/releases/`:
   to the detail file's summary, and `counts` are derived, not typed:
   `features` / `bugFixes` by item `kind`, `complete` / `inProgress` by item
   `status`, `workstreams` / `blockers` by length, `planned` / `stretch` by scope
-  bucket size.
+  bucket size (which the tool derives from item status — so an item's status
+  must mirror its bucket: `stretch` in the stretch bucket, `deferred` when
+  deferred).
 - `status` and `posture` must use values the schema knows. An out-of-enum value
   breaks the viewer rather than informing it — put the nuance in the summary.
 
@@ -211,7 +213,28 @@ lipo -archs "build/bin/Dr Markdown.app/Contents/MacOS/Dr Markdown"
 
 Expect `accepted` and `source=Notarized Developer ID` every time.
 
-## 7. Publish
+Generate the checksums over the final-named staged artifacts — the names a
+user downloads, so the file verifies against the release assets as published:
+
+```sh
+(cd <staging> && shasum -a 256 dr-markdown-X.Y.Z-macos-arm64.dmg dr-markdown-X.Y.Z-macos-universal.dmg > SHA256SUMS.txt)
+```
+
+## 7. Smoke test the packaged artifacts
+
+```sh
+tools/smoke-macos.sh <staging>/dr-markdown-X.Y.Z-macos-arm64.dmg \
+                     <staging>/dr-markdown-X.Y.Z-macos-universal.dmg
+```
+
+This runs the binary's own gates against the **packaged** build and checks the
+signature, notarization and Gatekeeper assessment a user's Mac will check. It
+exits non-zero on any failure, and a release whose artifacts fail it does not
+publish. The host gates in step 5 prove the source; this proves the artifact —
+the gates existed for two releases before anyone ran them against the thing
+users actually install.
+
+## 8. Publish
 
 ```sh
 gh pr create --base main --title "Release vX.Y.Z — …"
@@ -219,10 +242,10 @@ gh pr create --base main --title "Release vX.Y.Z — …"
 gh pr merge <n> --merge
 git checkout main && git pull --ff-only
 git tag -a vX.Y.Z -m "vX.Y.Z — …" && git push origin vX.Y.Z
-gh release create vX.Y.Z --title "…" --notes-file <notes> <arm64.dmg> <universal.dmg>
+gh release create vX.Y.Z --title "…" --notes-file <notes> <staging>/dr-markdown-X.Y.Z-macos-arm64.dmg <staging>/dr-markdown-X.Y.Z-macos-universal.dmg <staging>/SHA256SUMS.txt
 ```
 
-## 8. Close out
+## 9. Close out
 
 ```sh
 git checkout develop && git merge main --no-edit && git push
@@ -233,7 +256,31 @@ git checkout develop && git merge main --no-edit && git push
   body that says "closes the print half of #134" is not a closing keyword — so
   issues stay open unless closed deliberately.
 - Confirm `main..develop` is 0 commits and both carry the new `VERSION`.
-- Confirm the release lists both assets.
+- Confirm the release lists all three assets.
+- Download the published assets and verify the checksums against the bytes
+  users actually get, not just the ones staged locally:
+
+  ```sh
+  gh release download vX.Y.Z --dir <verify-tmp> --pattern '*.dmg' --pattern 'SHA256SUMS.txt'
+  (cd <verify-tmp> && shasum -a 256 -c SHA256SUMS.txt)
+  rm -rf <verify-tmp>
+  ```
+
+## Channels
+
+Decided 2026-09-01 (`docs/decisions/2026-09-01-m12-remainder.md`): stable +
+pre-release betas.
+
+- **stable** — a GitHub Release cut from `main` by this ceremony. The only
+  channel ordinary users ever see.
+- **beta** — a GitHub pre-release (tagged `vX.Y.Z-beta.N`), published only when
+  external soak is wanted. Same signing, notarization, checksum and smoke-test
+  requirements as stable.
+- **alpha** — local and CI builds. Never published.
+
+No in-app updater exists, so channels are a publishing contract, not app
+behavior. If an updater is ever adopted, the app tracks stable with beta
+opt-in.
 
 ## Attribution
 

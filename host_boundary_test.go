@@ -16,6 +16,7 @@ var hostFiles = map[string]bool{
 	"harness_darwin.go":        true,
 	"walk_darwin.go":           true,
 	"modal_check_darwin.go":    true,
+	"probe_darwin.go":          true,
 	"host_unsupported.go":      true,
 }
 
