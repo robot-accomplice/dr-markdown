@@ -311,6 +311,157 @@ setTimeout(() => {
 }, 4000)
 `
 
+// rawProbeModuleJS (DRMD_PROBE_RAW=1) runs the same click-and-photograph
+// conversation against the raw-mode source textarea. A textarea caret has no
+// DOM rect API, so the expected caret position comes from the mirror-div
+// technique: an invisible div with the textarea's own layout metrics holding
+// the same text, a span marking the offset, measured with
+// getBoundingClientRect. The mirror sits in the SAME zoomed container as the
+// textarea, so the measured rect is the true viewport position of the
+// character — the position a correctly painted caret must occupy. The red
+// marker is drawn on <body>, OUTSIDE the zoom context, 6px right of that
+// spot: near enough to compare at a glance, far enough never to occlude the
+// painted caret. Daylight between the painted caret and the marker in the
+// photographs is the defect.
+const rawProbeModuleJS = `
+const post = (payload) =>
+  window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__probe', args: [payload] })
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+for (let i = 0; i < 200 && !globalThis.__app?.ready; i++) {
+  await sleep(50)
+}
+if (!globalThis.__app?.ready) {
+  post({ phase: 'error', message: 'app never became ready' })
+  throw new Error('app never became ready')
+}
+
+await globalThis.__app.setMode('__PROBE_SURFACE__')
+
+const fixture = "Alpha bravo charlie delta echo foxtrot.\n\nSecond paragraph with several words here.\n\nThird paragraph to finish things off.\n"
+await globalThis.__app.setMarkdown(fixture)
+
+const selector = '__PROBE_SURFACE__' === 'split' ? '#split-source' : '#raw textarea'
+let ta = null
+for (let i = 0; i < 100; i++) {
+  ta = document.querySelector(selector)
+  if (ta && ta.value.indexOf('Alpha') === 0) break
+  await sleep(100)
+}
+if (!ta || ta.value.indexOf('Alpha') !== 0) {
+  post({ phase: 'error', message: 'source textarea never showed the fixture' })
+  throw new Error('source textarea not ready')
+}
+
+const zoomLabel = () => {
+  const el = document.querySelector('[data-zoom-level]')
+  return el ? el.textContent : '?'
+}
+const zoomAtBoot = zoomLabel()
+const resetBtn = document.querySelector('[data-zoom="reset"]')
+if (resetBtn) resetBtn.click()
+const requested = globalThis.__drmdProbeZoom || '1.0'
+if (requested === '1.3') {
+  const inBtn = document.querySelector('[data-zoom="in"]')
+  for (let i = 0; i < 3; i++) { if (inBtn) inBtn.click() }
+}
+if (requested === '0.9') {
+  const outBtn = document.querySelector('[data-zoom="out"]')
+  if (outBtn) outBtn.click()
+}
+await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+
+// Offset 51 sits between "par" and "agraph" on the third line of the fixture
+// (39 chars + two newlines + "Second par").
+const TARGET = 51
+
+// The textarea is position:absolute inset:0 inside .source-stack, so the
+// mirror is laid out identically by copying the textarea's metrics and its
+// offset position within the same offsetParent.
+const measure = (offset) => {
+  const cs = getComputedStyle(ta)
+  const mirror = document.createElement('div')
+  const props = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight',
+    'letterSpacing', 'whiteSpace', 'overflowWrap', 'tabSize', 'textIndent',
+    'boxSizing', 'width',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth']
+  mirror.style.cssText = 'position:absolute;visibility:hidden;margin:0;height:auto;overflow:hidden;'
+  for (const p of props) mirror.style[p] = cs[p]
+  mirror.style.left = ta.offsetLeft + 'px'
+  mirror.style.top = ta.offsetTop + 'px'
+  mirror.appendChild(document.createTextNode(ta.value.slice(0, offset)))
+  const mark = document.createElement('span')
+  mark.textContent = ta.value.slice(offset, offset + 1) || ' '
+  mirror.appendChild(mark)
+  const host = ta.offsetParent || ta.parentElement
+  host.appendChild(mirror)
+  const r = mark.getBoundingClientRect()
+  mirror.remove()
+  return { x: r.x, y: r.y, h: r.height }
+}
+
+const m = measure(TARGET)
+const clickX = m.x + 1
+const clickY = m.y + m.h / 2
+
+let resultPosted = false
+const postResult = (why) => {
+  if (resultPosted) return
+  resultPosted = true
+  post({
+    phase: 'result',
+    why: why,
+    // NOT __app.getEditorMarkdown(): that name is pinned to the WYSIWYG
+    // surface, which holds no document in raw or split-source editing.
+    markdown: ta.value,
+    para: 1,
+    offset: ta.selectionStart,
+  })
+}
+ta.addEventListener('input', () => {
+  setTimeout(() => postResult('400ms after input'), 400)
+})
+
+// The native side answers 'target' with a real click. Once it has landed, read
+// where the click put the caret, mark the EXPECTED caret spot with the red
+// bar, and post 'selection' to trigger the photographs and the keystrokes.
+setTimeout(() => {
+  const got = ta.selectionStart
+  const mm = measure(got)
+  const marker = document.createElement('div')
+  marker.style.cssText = 'position:fixed;left:' + (mm.x + 6) + 'px;top:' + mm.y +
+    'px;width:2px;height:' + mm.h + 'px;background:red;z-index:2147483647;pointer-events:none;'
+  document.body.appendChild(marker)
+  post({
+    phase: 'selection',
+    seq: 0,
+    para: got === TARGET ? 1 : -1,
+    offset: got,
+    text: ta.value.slice(Math.max(0, got - 12), got + 12),
+    caretX: mm.x,
+    caretY: mm.y,
+    caretH: mm.h,
+  })
+  // If the keystrokes never land (a focus failure), still report.
+  setTimeout(() => postResult('6s after the click with no input'), 6000)
+}, 1500)
+
+post({
+  phase: 'target',
+  x: clickX,
+  y: clickY,
+  zoomAtBoot: zoomAtBoot,
+  zoomNow: zoomLabel(),
+  requested: requested,
+  dpr: window.devicePixelRatio,
+  viewportW: window.innerWidth,
+  viewportH: window.innerHeight,
+  paraCount: -1,
+  paraText: '__PROBE_SURFACE__' + ' source textarea, mirror-measured target at offset ' + TARGET,
+})
+`
+
 // probeMessage is one phase report from the injected probe script. Every field
 // is optional in the payload — which phase populates which is visible in
 // probeModuleJS above.
@@ -359,6 +510,16 @@ var probeGlobalX, probeGlobalY float64
 // contenteditable with nothing but CSS zoom on it, and places the caret
 // programmatically. It isolates caret PAINTING from the editor stack.
 var probeBare = os.Getenv("DRMD_PROBE_BARE") == "1"
+
+// probeRaw (DRMD_PROBE_RAW=1|raw|split) swaps the WYSIWYG fixture for a
+// source textarea — raw mode, or the split pane's source half: the same
+// click-and-photograph conversation, but aimed at a surface whose native
+// caret is the only caret it has. The WYSIWYG defect was a plugin div
+// positioned in the wrong coordinate convention; a textarea has no such div
+// and no DOM caret-rect API, so the expected position is measured with the
+// mirror-div technique and marked with a red bar, and the verdict is
+// photographic: daylight between the bar and the painted caret is the bug.
+var probeRaw = os.Getenv("DRMD_PROBE_RAW")
 
 // probeScreenshots photographs the screen around the last probe target. The
 // DOM selection is only half the story — the DEFECT report is about where the
