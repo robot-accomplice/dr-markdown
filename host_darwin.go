@@ -325,6 +325,13 @@ func serveHarnessAsset(requested string, outLen *C.int, outMime **C.char) unsafe
 		if probeBare {
 			body = []byte(bareProbeModuleJS)
 		}
+		if probeRaw != "" {
+			surface := "raw"
+			if probeRaw == "split" {
+				surface = "split"
+			}
+			body = []byte(strings.ReplaceAll(rawProbeModuleJS, "__PROBE_SURFACE__", surface))
+		}
 		*outLen = C.int(len(body))
 		*outMime = C.CString("text/javascript")
 		return C.CBytes(body)
