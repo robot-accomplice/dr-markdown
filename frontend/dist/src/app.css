@@ -2566,6 +2566,55 @@ body.dark {
   zoom: var(--doc-zoom, 1);
 }
 
+/* The virtual caret, and the suppression of the one it replaces.
+                                                                             .
+   The caret a user sees in the formatted editor is not the native one: Crepe
+   runs ProseMirror's virtual-cursor plugin, which sets caret-color:
+   transparent and draws its own .prosemirror-virtual-cursor div INSIDE this
+   zoomed container. The plugin positions that div in viewport-convention
+   coordinates, and WKWebView's zoom then scales them a second time. Measured
+   in the real host at 130%: DOM selection rect (433.1, 268.2, h 23.0), the
+   plugin's div painted at (461.8, 284.2, h 29.9) — 0.3x the distance from
+   the zoom origin to the right and below, and 1.3x too tall — while typed
+   text still lands exactly where the click put the insertion point. Chrome
+   keeps the plugin's math consistent, so no browser test ever saw it; the
+   real-host probe (-cursor-probe) is what caught and measured it.
+                                                                             .
+   So at any zoom but 100% the plugin's div is hidden and the caret is
+   #virtual-caret: a fixed element on <body>, OUTSIDE the zoom context for
+   the same reason as the zoom control, placed by virtual-caret.js at the
+   collapsed selection's own client rect — the one mechanism proven to paint
+   truthfully in WKWebView. At 100% none of this applies: the plugin's own
+   cursor is truthful, and two carets is worse than one. */
+html[data-virtual-caret="on"] #wysiwyg .prosemirror-virtual-cursor {
+  display: none;
+}
+
+#virtual-caret {
+  position: fixed;
+  width: 2px;
+  z-index: 5;
+  pointer-events: none;
+  background: var(--accent);
+  animation: vcaret-blink 1.06s step-end infinite;
+}
+
+#virtual-caret[hidden] {
+  display: none;
+}
+
+/* 1.06s is the platform blink period. virtual-caret.js restarts the
+   animation on every move, so the caret is solid while it is being placed
+   and settles into blinking once it stays. */
+@keyframes vcaret-blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  50.01%, 100% {
+    opacity: 0;
+  }
+}
+
 /* Anchored to the pane, and deliberately OUTSIDE #editor-host: inside it the
    control would zoom itself, shrinking as you zoomed out — smallest exactly
    when it is hardest to hit. */

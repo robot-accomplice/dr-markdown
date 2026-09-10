@@ -26,6 +26,12 @@ func runHarness() bool {
 			gateMode = true
 		case "-walk":
 			walkMode = true
+		case "-cursor-probe":
+			// TEMPORARY DIAGNOSTIC for the WYSIWYG caret bug. Drives a real
+			// click and real keystrokes through AppKit and reports where the
+			// typed text landed. DRMD_PROBE_ZOOM ("1.0" or "1.3") selects the
+			// document zoom the probe normalizes to before clicking.
+			cursorProbeMode = true
 		case "-close":
 			closeCheckMode = true
 		case "-nav":

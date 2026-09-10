@@ -13,6 +13,7 @@ import { findMatches, replaceMatch, replaceAllMatches, nextMatchIndex, sourceBlo
 import { safeLinkHref } from './markdown/links.js'
 import { detectLineEnding, toEditorText, toFileText, titleForPath } from './markdown/text.js'
 import { applyCommand, appendBlock } from './markdown/commands.js'
+import { initVirtualCaret } from './virtual-caret.js'
 
 const BLANK_DOCUMENT = ''
 
@@ -170,6 +171,10 @@ const els = {
 
 const wysiwyg = new WysiwygEditor()
 const raw = new RawEditor()
+const virtualCaret = initVirtualCaret({
+  getZoom: () => state.settings.documentZoom ?? 1,
+  editorRoot: els.wysiwyg,
+})
 
 let nextDocID = 1
 let pushTimer = null
@@ -720,6 +725,13 @@ function startEditing() {
 //
 // The control lives in the pane but OUTSIDE #editor-host, or it would zoom
 // itself and shrink as you zoomed out.
+//
+// One consequence is NOT visible in a browser: under WKWebView, CSS zoom
+// breaks the coordinate convention Crepe's cursor plugin positions its caret
+// div by, so the painted caret lands away from the insertion point at any
+// zoom but 100%. virtual-caret.js hides the plugin's div and draws the caret
+// itself at those zoom levels. Do not "simplify" that module away — Chrome
+// will tell you it is dead code, and Chrome is wrong.
 const ZOOM_MIN = 0.5
 const ZOOM_MAX = 2
 const ZOOM_STEP = 0.1
@@ -729,6 +741,8 @@ function setDocumentZoom(zoom) {
   state.settings.documentZoom = clamped
   document.documentElement.style.setProperty('--doc-zoom', String(clamped))
   refreshZoomControl()
+  virtualCaret.syncZoomState()
+  virtualCaret.update()
   persistSettings()
 }
 
@@ -937,6 +951,9 @@ async function setMode(mode) {
   }
   state.mode = mode
   syncActiveState()
+  // The caret overlay only belongs on the formatted surface; raw hides the
+  // editor element, which update() reads as its cue to hide.
+  virtualCaret.update()
 }
 
 // --- files ---
@@ -1317,6 +1334,10 @@ function applyRuntimeSettings() {
   document.documentElement.style.setProperty('--editor-width', `${state.settings.editorWidth}ch`)
   document.documentElement.style.setProperty('--doc-zoom', String(state.settings.documentZoom))
   refreshZoomControl()
+  // Boot can restore a zoomed session, and the plugin's cursor div is
+  // displaced at any zoom but 100% — the suppression attribute must be right
+  // before the first selection, not after it.
+  virtualCaret.syncZoomState()
   document.documentElement.style.setProperty('--code-ligatures', state.settings.codeLigatures ? 'common-ligatures' : 'none')
   document.documentElement.style.setProperty('--code-font-features', state.settings.codeLigatures ? 'normal' : '"liga" 0, "calt" 0')
   document.body.classList.toggle('show-formatted-markers', state.settings.showFormattedMarkers)
@@ -2766,6 +2787,7 @@ function cancelPendingPush() {
 function wire() {
   document.addEventListener('selectionchange', () => {
     currentEditorContext()
+    virtualCaret.update()
   })
 
   els.emptyStart.addEventListener('click', () => {
