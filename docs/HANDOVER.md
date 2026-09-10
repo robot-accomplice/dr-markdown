@@ -57,14 +57,24 @@ below.
 `e2e/cursor_probe_test.go` for the Chrome variant) drives a real click and real
 keystrokes through AppKit and reports where text landed; with
 `DRMD_PROBE_EXTERNAL=1` a human drives, and it photographs the painted caret
-with `screencapture`. It is marked TEMPORARY DIAGNOSTIC; whether it ships as a
-permanent gate or is stripped is a PR-time decision.
+with `screencapture`. Two variants isolate surfaces: `DRMD_PROBE_BARE=1` puts a
+bare contenteditable under CSS zoom, and `DRMD_PROBE_RAW=1|split` aims the same
+conversation at the raw-mode or split-source textarea. It is marked TEMPORARY
+DIAGNOSTIC; whether it ships as a permanent gate or is stripped is a PR-time
+decision.
 
-Known-unknowns: (1) whether the raw-mode and split-source textareas (also
-under the zoomed `#editor-host`) show the same displacement — a textarea has
-no DOM caret-rect API, so that answer would look different. (Checked and
-cleared 2026-09-10 by driving the real app at 130%: the selection HIGHLIGHT
-paints on the glyphs, and the caret reads as glued to the text.)
+Known-unknowns from the fix, both now cleared. (1) The selection HIGHLIGHT at
+zoom ≠ 100% — checked 2026-09-10 by driving the real app at 130%: the
+highlight paints on the glyphs, and the caret reads as glued to the text.
+(2) Whether the raw-mode and split-source textareas (also under the zoomed
+`#editor-host`) show the same displacement — answered 2026-09-10 with
+`DRMD_PROBE_RAW=1|split` at 130%. A textarea has no DOM caret-rect API, so the
+probe measures the expected caret position with the mirror-div technique,
+marks it with a red bar outside the zoom context, and photographs the painted
+caret against it: hit-testing exact (fixture offset 51 on both surfaces),
+typed text at byte 51, painted caret pixel-exact on both. The expected result,
+in hindsight: the defect was a JS-positioned plugin div, and a textarea caret
+is WebKit's own painting.
 
 ## Open threads
 
