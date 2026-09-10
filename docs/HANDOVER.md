@@ -32,9 +32,9 @@ nobody could install is not a version that happened.
 `develop` is `main` plus the post-release morph-sweep test PR (#151). No open PRs, nothing in flight.
 CI is green; the full local suite, e2e included, passes on this tree.
 
-## In flight: fix/wysiwyg-cursor-probe (2026-09-09/10)
+## Merged: fix/wysiwyg-cursor-probe (PR #156, into develop 2026-09-10)
 
-The branch fixes the reported WYSIWYG caret bug and carries the instrument that
+The branch fixed the reported WYSIWYG caret bug and carries the instrument that
 found it. Root cause, measured end to end: document zoom is CSS `zoom` on
 `#editor-host`; Crepe runs ProseMirror's virtual-cursor plugin, which suppresses
 the native caret and positions its own `.prosemirror-virtual-cursor` div in
