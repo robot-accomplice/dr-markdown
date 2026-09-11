@@ -4,9 +4,9 @@
   "name": "Desktop integration and packaging hardening",
   "status": "planned",
   "posture": "on-track",
-  "summary": "Approved scope, in progress. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. The stretch item has landed: the Go use cases are out of app.go, which is now a thin adapter over documentUseCase, imageUseCase, linkUseCase and defaultHandlerUseCase, pending release to users. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
+  "summary": "Being cut 2026-09-11. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. The stretch item has landed: the Go use cases are out of app.go, which is now a thin adapter over documentUseCase, imageUseCase, linkUseCase and defaultHandlerUseCase, pending release to users. Joined late by one defect repair: at any document zoom but 100% the WYSIWYG caret painted below-right of the insertion point — Crepe's virtual-cursor plugin div, double-scaled by WKWebView's CSS zoom — fixed by drawing the caret outside the zoom context and verified on the real host by a probe that clicks, types and photographs; the same probe cleared the raw-mode and split-source carets. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
   "targetWindow": "Next release",
-  "lastUpdated": "2026-09-07T00:00:00.000Z",
+  "lastUpdated": "2026-09-11T00:00:00.000Z",
   "updateSource": "maintainer",
   "scope": {
     "required": [
@@ -33,6 +33,18 @@
         "evidence": [],
         "source": "roadmap",
         "summary": "Signing and notarization already ship. The remainder, implemented 2026-09-02 per docs/decisions/2026-09-01-m12-remainder.md: publish-time SHA256SUMS.txt over the final-named DMGs, attached to the release and verified by download-and-check at close-out; tools/smoke-macos.sh, which mounts each staged DMG, runs the binary's own gates against the packaged build, and checks signature, notarization and Gatekeeper before publish; and the channel policy — stable releases from main, betas as GitHub pre-releases when external soak is wanted, alpha never published — recorded in RELEASE.md. Closes the last acceptance criteria of #11, which closes at v1.7.0 release close-out."
+      },
+      {
+        "id": "caret-paints-true-at-any-zoom",
+        "title": "The caret paints where you click at any document zoom",
+        "kind": "bug-fix",
+        "status": "in-progress",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-correctness",
+        "dependsOn": [],
+        "evidence": ["full-test-suite", "real-host-probe"],
+        "source": "ad-hoc",
+        "summary": "Found by a person clicking the first line at 130% zoom: at every zoom but 100% the caret painted below-right of the insertion point, though text always landed correctly. Root cause, measured on the real host: Crepe runs ProseMirror's virtual-cursor plugin, which positions its own caret div in viewport-convention coordinates inside the zoomed #editor-host, and WKWebView applies the CSS zoom to those coordinates a second time (at 130% the plugin div painted at 461.8,284.2 where the DOM selection rect was 433.1,268.2). Chrome keeps the plugin's math consistent, which is why no browser test ever saw it. Fixed by hiding the plugin div at zoom != 100% and drawing #virtual-caret, a fixed element on <body> outside the zoom context, at the collapsed selection's client rect. Verified by e2e/virtual_caret_test.go, by the -cursor-probe harness driving real AppKit clicks and photographing the painted caret, and by the maintainer's hands. The same probe (DRMD_PROBE_RAW=1|split) then cleared the last known-unknown: raw-mode and split-source textareas paint their native carets pixel-exact at 130%. PRs #156, #157, #158, #159."
       }
     ],
     "planned": [],
@@ -120,6 +132,16 @@
       "progress": 0,
       "summary": "Stretch only: use-case extraction out of app.go, sequenced last because it costs clarity, not safety.",
       "itemIds": ["go-use-cases-out-of-app"]
+    },
+    {
+      "id": "editor-correctness",
+      "name": "The caret paints where it is",
+      "owner": "Project maintainers",
+      "status": "planned",
+      "posture": "on-track",
+      "progress": 0,
+      "summary": "The zoomed-caret defect and the probe that now guards it — the release's only user-visible repair.",
+      "itemIds": ["caret-paints-true-at-any-zoom"]
     }
   ],
   "blockers": [],
