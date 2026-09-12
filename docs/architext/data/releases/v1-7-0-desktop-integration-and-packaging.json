@@ -4,7 +4,7 @@
   "name": "Desktop integration and packaging hardening",
   "status": "planned",
   "posture": "on-track",
-  "summary": "Being cut 2026-09-11. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. The stretch item has landed: the Go use cases are out of app.go, which is now a thin adapter over documentUseCase, imageUseCase, linkUseCase and defaultHandlerUseCase, pending release to users. Joined late by one defect repair: at any document zoom but 100% the WYSIWYG caret painted below-right of the insertion point — Crepe's virtual-cursor plugin div, double-scaled by WKWebView's CSS zoom — fixed by drawing the caret outside the zoom context and verified on the real host by a probe that clicks, types and photographs; the same probe cleared the raw-mode and split-source carets. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
+  "summary": "Being cut 2026-09-11. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. The stretch item has landed: the Go use cases are out of app.go, which is now a thin adapter over documentUseCase, imageUseCase, linkUseCase and defaultHandlerUseCase, pending release to users. Joined late by two defect repairs, both the same coordinate-convention mistake under CSS zoom: the WYSIWYG caret painted below-right of the insertion point (Crepe's virtual-cursor plugin div, double-scaled by WKWebView), and an image resize drag overshot by the zoom factor so object-fit cropped the image's sides — fixed by drawing the caret outside the zoom context and by measuring the drag in layout pixels, each verified on the real host by probes that click, drag and photograph; the caret probe also cleared the raw-mode and split-source carets. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
   "targetWindow": "Next release",
   "lastUpdated": "2026-09-11T00:00:00.000Z",
   "updateSource": "maintainer",
@@ -45,6 +45,18 @@
         "evidence": ["full-test-suite", "real-host-probe"],
         "source": "ad-hoc",
         "summary": "Found by a person clicking the first line at 130% zoom: at every zoom but 100% the caret painted below-right of the insertion point, though text always landed correctly. Root cause, measured on the real host: Crepe runs ProseMirror's virtual-cursor plugin, which positions its own caret div in viewport-convention coordinates inside the zoomed #editor-host, and WKWebView applies the CSS zoom to those coordinates a second time (at 130% the plugin div painted at 461.8,284.2 where the DOM selection rect was 433.1,268.2). Chrome keeps the plugin's math consistent, which is why no browser test ever saw it. Fixed by hiding the plugin div at zoom != 100% and drawing #virtual-caret, a fixed element on <body> outside the zoom context, at the collapsed selection's client rect. Verified by e2e/virtual_caret_test.go, by the -cursor-probe harness driving real AppKit clicks and photographing the painted caret, and by the maintainer's hands. The same probe (DRMD_PROBE_RAW=1|split) then cleared the last known-unknown: raw-mode and split-source textareas paint their native carets pixel-exact at 130%. PRs #156, #157, #158, #159."
+      },
+      {
+        "id": "image-resize-drag-under-zoom",
+        "title": "An image resize drag under document zoom does not overshoot",
+        "kind": "bug-fix",
+        "status": "in-progress",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-correctness",
+        "dependsOn": [],
+        "evidence": ["full-test-suite", "real-host-probe"],
+        "source": "ad-hoc",
+        "summary": "Found during this release's README eyeball: the banner came back clipped on both sides after work at 120% zoom, the mark half cut off. The Crepe image block's resize handle measured drags in viewport pixels — pointer clientY minus the image's getBoundingClientRect().top, both zoom-scaled — and wrote the result as a style height inside the zoomed context, which scales it again: a 5px drag at 120% set the height from 149.96px to 184.93px. The element box stays pane-wide, so object-fit: cover scaled the image up to the too-tall box and cropped the sides. The handle is 4px tall, invisible until hover, and parked on the image's bottom edge, so the drag needed no intent. The same coordinate-convention defect as the caret, one handler over from the #131 load-time fix. Fixed in the vendored bundle (tools/vendor.sh patch, digests refreshed): the drag delta is divided by the live zoom read from the image itself, correct in both engine conventions. Gate: e2e/image_resize_zoom_test.go, verified failing before the patch; real-host verification via DRMD_PROBE_IMG=1."
       }
     ],
     "planned": [],
@@ -140,8 +152,8 @@
       "status": "planned",
       "posture": "on-track",
       "progress": 0,
-      "summary": "The zoomed-caret defect and the probe that now guards it — the release's only user-visible repair.",
-      "itemIds": ["caret-paints-true-at-any-zoom"]
+      "summary": "The zoomed-caret defect and the zoomed image-resize drag — one coordinate-convention mistake in two Crepe handlers — and the probes that now guard both.",
+      "itemIds": ["caret-paints-true-at-any-zoom", "image-resize-drag-under-zoom"]
     }
   ],
   "blockers": [],
