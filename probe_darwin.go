@@ -462,6 +462,140 @@ post({
 })
 `
 
+// imgProbeModuleJS (DRMD_PROBE_IMG=1) is measurement-only: no clicks, no
+// keystrokes. It loads a document with one wide image, then reports every
+// width the image sizing code could read — clientWidth, offsetWidth,
+// getBoundingClientRect — for the img, its .milkdown-image-block and the
+// ProseMirror pane, plus the explicit pixel height the node view wrote, at
+// four moments: initial render at 100%, after zooming, after entering split,
+// and after returning to the formatted surface. The defect under
+// investigation: at 120% the README banner comes back from a split round trip
+// wider than its pane and stays that way, clipped on both sides by the
+// centered, overflow-clipping wrapper.
+const imgProbeModuleJS = `
+const post = (payload) =>
+  window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__probe', args: [payload] })
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+for (let i = 0; i < 200 && !globalThis.__app?.ready; i++) {
+  await sleep(50)
+}
+if (!globalThis.__app?.ready) {
+  post({ phase: 'error', message: 'app never became ready' })
+  throw new Error('app never became ready')
+}
+
+await globalThis.__app.setMode('wysiwyg')
+
+// A 1600x420 SVG, wide enough to fill the pane: an image narrower than the
+// pane is never measured short of it, and the defect is invisible (#131).
+const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420"><rect width="1600" height="420" fill="#2a6a9f"/><rect x="80" y="60" width="240" height="300" fill="#fff"/></svg>'
+const fixture = '# Wide\n\n![banner](data:image/svg+xml;base64,' + btoa(svg) + ')\n\ntext\n'
+await globalThis.__app.setMarkdown(fixture)
+
+let img = null
+for (let i = 0; i < 100; i++) {
+  img = document.querySelector('#wysiwyg img')
+  if (img && img.complete && img.naturalWidth > 0) break
+  await sleep(100)
+}
+if (!img || !img.naturalWidth) {
+  post({ phase: 'error', message: 'image never loaded' })
+  throw new Error('image never loaded')
+}
+
+const zoomLabel = () => {
+  const el = document.querySelector('[data-zoom-level]')
+  return el ? el.textContent : '?'
+}
+
+const measure = (label) => {
+  const im = document.querySelector('#wysiwyg img')
+  const block = im ? im.closest('.milkdown-image-block') : null
+  const wrapper = im ? im.closest('.image-wrapper') : null
+  const pm = document.querySelector('#wysiwyg .ProseMirror')
+  const host = document.getElementById('editor-host')
+  post({
+    phase: 'measure',
+    message: label,
+    text: JSON.stringify({
+      zoom: zoomLabel(),
+      styleHeight: im ? im.style.height : '',
+      dataHeight: im ? im.dataset.height : '',
+      dataOrigin: im ? im.dataset.origin : '',
+      natural: im ? im.naturalWidth + 'x' + im.naturalHeight : '',
+      imgClient: im ? im.clientWidth : -1,
+      imgOffset: im ? im.offsetWidth : -1,
+      imgRectW: im ? im.getBoundingClientRect().width : -1,
+      wrapperClient: wrapper ? wrapper.clientWidth : -1,
+      wrapperRectW: wrapper ? wrapper.getBoundingClientRect().width : -1,
+      blockClient: block ? block.clientWidth : -1,
+      blockRectW: block ? block.getBoundingClientRect().width : -1,
+      pmClient: pm ? pm.clientWidth : -1,
+      pmRectW: pm ? pm.getBoundingClientRect().width : -1,
+      hostClient: host ? host.clientWidth : -1,
+      hostRectW: host ? host.getBoundingClientRect().width : -1,
+    }),
+  })
+}
+
+await sleep(1600)
+measure('initial at 100%')
+
+const requested = globalThis.__drmdProbeZoom || '1.0'
+if (requested === '1.3') {
+  const inBtn = document.querySelector('[data-zoom="in"]')
+  for (let i = 0; i < 3; i++) { if (inBtn) inBtn.click() }
+}
+if (requested === '1.2') {
+  const inBtn = document.querySelector('[data-zoom="in"]')
+  for (let i = 0; i < 2; i++) { if (inBtn) inBtn.click() }
+}
+await sleep(900)
+measure('after zoom')
+
+await globalThis.__app.setMode('split')
+await sleep(1600)
+measure('in split')
+
+await globalThis.__app.setMode('wysiwyg')
+await sleep(1600)
+measure('after round trip')
+
+// The defect under test: the Crepe resize handle measures the drag in
+// VIEWPORT pixels (clientY minus getBoundingClientRect().top) and writes the
+// result as a style height INSIDE the zoomed context, which scales it again.
+// One short drag at 120% should therefore inflate the image by ~1.2x, and the
+// inflated ratio attr is what makes the inflation survive. Synthesized
+// PointerEvents are fair here: the suspect is the handler's arithmetic on
+// standard event fields, not the event delivery path.
+const handle = document.querySelector('#wysiwyg .image-resize-handle')
+const im0 = document.querySelector('#wysiwyg img')
+if (handle && im0) {
+  const hr = handle.getBoundingClientRect()
+  const cx = hr.x + hr.width / 2
+  const cy = hr.y + hr.height / 2
+  const opts = (y) => ({ bubbles: true, pointerId: 1, clientX: cx, clientY: y, button: 0, buttons: 1 })
+  handle.dispatchEvent(new PointerEvent('pointerdown', opts(cy)))
+  window.dispatchEvent(new PointerEvent('pointermove', opts(cy + 5)))
+  window.dispatchEvent(new PointerEvent('pointerup', opts(cy + 5)))
+  await sleep(300)
+  measure('after a 5px resize drag')
+
+  await globalThis.__app.setMode('split')
+  await sleep(1600)
+  measure('split after drag')
+
+  await globalThis.__app.setMode('wysiwyg')
+  await sleep(1600)
+  measure('round trip after drag')
+} else {
+  post({ phase: 'error', message: 'no resize handle found' })
+}
+
+post({ phase: 'result', why: 'image measurement complete', markdown: '', para: 0, offset: 0 })
+`
+
 // probeMessage is one phase report from the injected probe script. Every field
 // is optional in the payload — which phase populates which is visible in
 // probeModuleJS above.
@@ -521,6 +655,17 @@ var probeBare = os.Getenv("DRMD_PROBE_BARE") == "1"
 // photographic: daylight between the bar and the painted caret is the bug.
 var probeRaw = os.Getenv("DRMD_PROBE_RAW")
 
+// probeImg (DRMD_PROBE_IMG=1) measures rather than clicks: a wide image in
+// the WYSIWYG surface, measured at 100%, at the requested zoom, and across a
+// split round trip, reporting every width the sizing code could read —
+// clientWidth, offsetWidth, getBoundingClientRect — plus the explicit pixel
+// height the image node view writes. The 1.6.x image-distortion fix
+// (vendor.sh, #131) switched that measurement from getBoundingClientRect to
+// clientWidth and verified it in CHROME. The caret defect proved the two
+// engines apply CSS zoom differently, so this probe exists to say what
+// WKWebView actually returns for each of them under zoom.
+var probeImg = os.Getenv("DRMD_PROBE_IMG") == "1"
+
 // probeScreenshots photographs the screen around the last probe target. The
 // DOM selection is only half the story — the DEFECT report is about where the
 // caret is PAINTED. Shot 0 keeps the MOUSE CURSOR in frame (-C): with a human
@@ -561,6 +706,10 @@ func reportProbe(argsJSON string) {
 	msg := payload[0]
 
 	switch msg.Phase {
+	case "measure":
+		// The image probe reports measurement snapshots; print them verbatim.
+		fmt.Printf("PROBE measure [%s]: %s\n", msg.Message, msg.Text)
+
 	case "target":
 		fmt.Printf("PROBE target: x=%.1f y=%.1f viewport=%dx%d dpr=%.2f\n",
 			msg.X, msg.Y, msg.ViewW, msg.ViewH, msg.DPR)
@@ -687,6 +836,12 @@ func reportProbe(argsJSON string) {
 		freeReset()
 		time.Sleep(1200 * time.Millisecond)
 
+		if probeImg {
+			// Measurement-only run: no marker was typed, so the markdown check
+			// does not apply. The verdict is in the measure lines above.
+			fmt.Println("VERDICT: OBSERVE — compare img/block measurements across zoom and the split round trip")
+			os.Exit(0)
+		}
 		if cursorProbeExternal {
 			// A human drives external mode, and a human explores — clicking
 			// other paragraphs, typing lowercase. The "Second parXYZagraph"

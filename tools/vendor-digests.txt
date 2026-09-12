@@ -1,4 +1,4 @@
-b49426df682f08f6f4128a0b667cd807659746f9ec3734ad5218bee023e2de32  ./crepe.bundle.mjs
+5fb05bf6edbaab4a9c734c7630c525c3d87cf9d27094848a95c35d9635cd8030  ./crepe.bundle.mjs
 c4a399dd6f488bc97a3546e3476747b3e714c99c57b9473154c6fb8d259b9381  ./highlight.min.js
 65e39cb32b7be7f92290e853ca47d17b8c48cebe9bafbc4386b12ae62592a6aa  ./markdown-it-footnote.bundle.mjs
 bf883a408925b43e38f410bb174c7d18aa45e92137a970532b5839f828bd18ad  ./markdown-it-task-lists.bundle.mjs
