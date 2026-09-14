@@ -463,15 +463,16 @@ post({
 `
 
 // imgProbeModuleJS (DRMD_PROBE_IMG=1) is measurement-only: no clicks, no
-// keystrokes. It loads a document with one wide image, then reports every
-// width the image sizing code could read — clientWidth, offsetWidth,
-// getBoundingClientRect — for the img, its .milkdown-image-block and the
-// ProseMirror pane, plus the explicit pixel height the node view wrote, at
-// four moments: initial render at 100%, after zooming, after entering split,
-// and after returning to the formatted surface. The defect under
-// investigation: at 120% the README banner comes back from a split round trip
-// wider than its pane and stays that way, clipped on both sides by the
-// centered, overflow-clipping wrapper.
+// keystrokes. The fixture mirrors the README's top: one wide block image
+// (the banner) and a line of inline badge images wrapped in links, whose
+// https sources the CSP blocks — so they render as WebKit broken-image
+// placeholders, exactly as in the user's app. The probe normalizes zoom to
+// 100%, then sweeps 100 -> 130 -> 150, then does a split round trip at 150,
+// then a 5px resize drag (the BLOCKER-1 regression check). Every step reports
+// every image's complete/natural/style-height/client/offset/rect numbers, and
+// the Go side photographs the screen at each step. The defects under
+// investigation, both reported from the release eyeball: badge links vanish
+// at higher zoom (empty boxes), and the banner still crops its sides.
 const imgProbeModuleJS = `
 const post = (payload) =>
   window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__probe', args: [payload] })
@@ -487,21 +488,32 @@ if (!globalThis.__app?.ready) {
 
 await globalThis.__app.setMode('wysiwyg')
 
-// A 1600x420 SVG, wide enough to fill the pane: an image narrower than the
-// pane is never measured short of it, and the defect is invisible (#131).
+// The zoom persists in preferences; normalize through the real control so
+// '100%' means 100% regardless of the last session.
+document.querySelector('[data-zoom="reset"]')?.click()
+await sleep(400)
+
+// A 1600x420 SVG banner, wide enough to fill the pane (#131 needed width to
+// be visible at all), then the README's badge row verbatim: inline images,
+// https sources the CSP refuses, each inside a link.
 const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420"><rect width="1600" height="420" fill="#2a6a9f"/><rect x="80" y="60" width="240" height="300" fill="#fff"/></svg>'
-const fixture = '# Wide\n\n![banner](data:image/svg+xml;base64,' + btoa(svg) + ')\n\ntext\n'
+const fixture = '# Wide\n\n![banner](data:image/svg+xml;base64,' + btoa(svg) + ')\n\n' +
+  '[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ' +
+  '[![Go Version](https://img.shields.io/github/go-mod/go-version/robot-accomplice/dr-markdown)](go.mod) ' +
+  '[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/robot-accomplice/dr-markdown/issues)\n\ntext\n'
 await globalThis.__app.setMarkdown(fixture)
 
-let img = null
+// Wait until every image has SETTLED, loaded or broken: a broken image is
+// complete with naturalWidth 0, and that distinction is the measurement.
 for (let i = 0; i < 100; i++) {
-  img = document.querySelector('#wysiwyg img')
-  if (img && img.complete && img.naturalWidth > 0) break
+  const imgs = Array.from(document.querySelectorAll('#wysiwyg img'))
+  if (imgs.length >= 4 && imgs.every((im) => im.complete)) break
   await sleep(100)
 }
-if (!img || !img.naturalWidth) {
-  post({ phase: 'error', message: 'image never loaded' })
-  throw new Error('image never loaded')
+const imgs0 = Array.from(document.querySelectorAll('#wysiwyg img'))
+if (imgs0.length < 4 || !imgs0.every((im) => im.complete)) {
+  post({ phase: 'error', message: 'images never settled: ' + imgs0.length + ' found' })
+  throw new Error('images never settled')
 }
 
 const zoomLabel = () => {
@@ -510,68 +522,59 @@ const zoomLabel = () => {
 }
 
 const measure = (label) => {
-  const im = document.querySelector('#wysiwyg img')
-  const block = im ? im.closest('.milkdown-image-block') : null
-  const wrapper = im ? im.closest('.image-wrapper') : null
   const pm = document.querySelector('#wysiwyg .ProseMirror')
-  const host = document.getElementById('editor-host')
+  const shots = Array.from(document.querySelectorAll('#wysiwyg img')).map((im) => ({
+    alt: (im.alt || '').slice(0, 18),
+    parent: im.parentElement ? im.parentElement.className : '',
+    complete: im.complete,
+    natural: im.naturalWidth + 'x' + im.naturalHeight,
+    styleH: im.style.height || '',
+    dataH: im.dataset.height || '',
+    client: im.clientWidth + 'x' + im.clientHeight,
+    offset: im.offsetWidth + 'x' + im.offsetHeight,
+    rect: Math.round(im.getBoundingClientRect().width) + 'x' + Math.round(im.getBoundingClientRect().height),
+  }))
   post({
     phase: 'measure',
     message: label,
-    text: JSON.stringify({
-      zoom: zoomLabel(),
-      styleHeight: im ? im.style.height : '',
-      dataHeight: im ? im.dataset.height : '',
-      dataOrigin: im ? im.dataset.origin : '',
-      natural: im ? im.naturalWidth + 'x' + im.naturalHeight : '',
-      imgClient: im ? im.clientWidth : -1,
-      imgOffset: im ? im.offsetWidth : -1,
-      imgRectW: im ? im.getBoundingClientRect().width : -1,
-      wrapperClient: wrapper ? wrapper.clientWidth : -1,
-      wrapperRectW: wrapper ? wrapper.getBoundingClientRect().width : -1,
-      blockClient: block ? block.clientWidth : -1,
-      blockRectW: block ? block.getBoundingClientRect().width : -1,
-      pmClient: pm ? pm.clientWidth : -1,
-      pmRectW: pm ? pm.getBoundingClientRect().width : -1,
-      hostClient: host ? host.clientWidth : -1,
-      hostRectW: host ? host.getBoundingClientRect().width : -1,
-    }),
+    text: JSON.stringify({ zoom: zoomLabel(), pmClient: pm ? pm.clientWidth : -1, imgs: shots }),
   })
 }
 
-await sleep(1600)
-measure('initial at 100%')
+const zoomIn = (n) => {
+  const inBtn = document.querySelector('[data-zoom="in"]')
+  for (let i = 0; i < n; i++) { if (inBtn) inBtn.click() }
+}
 
-const requested = globalThis.__drmdProbeZoom || '1.0'
-if (requested === '1.3') {
-  const inBtn = document.querySelector('[data-zoom="in"]')
-  for (let i = 0; i < 3; i++) { if (inBtn) inBtn.click() }
-}
-if (requested === '1.2') {
-  const inBtn = document.querySelector('[data-zoom="in"]')
-  for (let i = 0; i < 2; i++) { if (inBtn) inBtn.click() }
-}
+await sleep(1200)
+measure('zoom-100')
+
+zoomIn(3)
 await sleep(900)
-measure('after zoom')
+measure('zoom-130')
+
+zoomIn(2)
+await sleep(900)
+measure('zoom-150')
 
 await globalThis.__app.setMode('split')
 await sleep(1600)
-measure('in split')
+measure('split-at-150')
 
 await globalThis.__app.setMode('wysiwyg')
 await sleep(1600)
-measure('after round trip')
+measure('roundtrip-at-150')
 
-// The defect under test: the Crepe resize handle measures the drag in
-// VIEWPORT pixels (clientY minus getBoundingClientRect().top) and writes the
-// result as a style height INSIDE the zoomed context, which scales it again.
-// One short drag at 120% should therefore inflate the image by ~1.2x, and the
-// inflated ratio attr is what makes the inflation survive. Synthesized
-// PointerEvents are fair here: the suspect is the handler's arithmetic on
-// standard event fields, not the event delivery path.
-const handle = document.querySelector('#wysiwyg .image-resize-handle')
-const im0 = document.querySelector('#wysiwyg img')
-if (handle && im0) {
+// The BLOCKER-1 regression check: a 5px drag at 150% must now add 5/1.5 = 3.3
+// layout px to the style height, not the pre-fix zoom-multiplied jump. The
+// handle is display:none in the app; show it for the drag, because the
+// vendored arithmetic is the thing under test.
+const banner = Array.from(document.querySelectorAll('#wysiwyg img'))
+  .find((im) => (im.dataset.origin || '') !== '')
+const handle = banner ? banner.closest('.milkdown-image-block').querySelector('.image-resize-handle') : null
+if (banner && handle) {
+  handle.style.display = 'block'
+  const before = parseFloat(banner.style.height)
   const hr = handle.getBoundingClientRect()
   const cx = hr.x + hr.width / 2
   const cy = hr.y + hr.height / 2
@@ -580,17 +583,9 @@ if (handle && im0) {
   window.dispatchEvent(new PointerEvent('pointermove', opts(cy + 5)))
   window.dispatchEvent(new PointerEvent('pointerup', opts(cy + 5)))
   await sleep(300)
-  measure('after a 5px resize drag')
-
-  await globalThis.__app.setMode('split')
-  await sleep(1600)
-  measure('split after drag')
-
-  await globalThis.__app.setMode('wysiwyg')
-  await sleep(1600)
-  measure('round trip after drag')
+  measure('after-5px-drag-at-150 (styleH was ' + before + ', want ~' + (before + 3.3).toFixed(1) + ')')
 } else {
-  post({ phase: 'error', message: 'no resize handle found' })
+  post({ phase: 'error', message: 'no banner resize handle found' })
 }
 
 post({ phase: 'result', why: 'image measurement complete', markdown: '', para: 0, offset: 0 })
@@ -707,8 +702,18 @@ func reportProbe(argsJSON string) {
 
 	switch msg.Phase {
 	case "measure":
-		// The image probe reports measurement snapshots; print them verbatim.
+		// The image probe reports measurement snapshots; print them verbatim,
+		// and photograph each: the defect report is about what is PAINTED.
 		fmt.Printf("PROBE measure [%s]: %s\n", msg.Message, msg.Text)
+		if probeImg {
+			tag := strings.NewReplacer(" ", "-", "%", "pct", "(", "", ")", "").Replace(msg.Message)
+			out := fmt.Sprintf("/tmp/probe-img-%s.png", tag)
+			if err := exec.Command("screencapture", "-x", out).Run(); err != nil {
+				fmt.Printf("PROBE screenshot %s failed: %v\n", out, err)
+			} else {
+				fmt.Printf("PROBE screenshot: %s\n", out)
+			}
+		}
 
 	case "target":
 		fmt.Printf("PROBE target: x=%.1f y=%.1f viewport=%dx%d dpr=%.2f\n",

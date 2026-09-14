@@ -26,6 +26,12 @@ import (
 //
 // Asserted as the invariant rather than the arithmetic: an 8px downward drag
 // grows the RENDERED height by 8px, whatever the zoom.
+//
+// The handle is display:none in the app (accidental drags cropped images
+// sideways even with correct math, and the result never survived a mode
+// switch). The test force-shows it: the vendored drag arithmetic is still
+// live code, still wrong without the patch, and still worth a gate if the
+// handle is ever re-enabled.
 func TestImageResizeHandleDragsInViewportPixelsUnderZoom(t *testing.T) {
 	ctx, cancel := newTestBrowser(t)
 	defer cancel()
@@ -53,6 +59,9 @@ func TestImageResizeHandleDragsInViewportPixelsUnderZoom(t *testing.T) {
 		const img = document.querySelector('#wysiwyg img')
 		const handle = document.querySelector('#wysiwyg .image-resize-handle')
 		if (!img || !handle) return { before: -1, after: -1, drag: -1 }
+		// The app hides the handle; this test measures the handler's arithmetic,
+		// so show it for the duration.
+		handle.style.display = 'block'
 		const before = img.getBoundingClientRect().height
 		const hr = handle.getBoundingClientRect()
 		const cx = hr.x + hr.width / 2

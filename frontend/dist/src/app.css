@@ -1042,6 +1042,19 @@ body.right-panel-hidden #outline-panel .panel-restore {
   outline-offset: 3px;
 }
 
+/* The Crepe image resize handle is disabled. It is a 4px strip, invisible
+   until hover, parked on the image's bottom edge — so a click that lands a
+   pixel low and moves is a resize nobody asked for. Worse, it resizes HEIGHT
+   only: the width stays pane-wide and object-fit: cover crops the SIDES,
+   which is how a banner loses its mark. And the ratio it writes lives in the
+   editor's node attrs, never in the markdown, so the result does not survive
+   a mode switch. Sizing stays declarative: <img width> in the source.
+   The handler's drag arithmetic is still patched and tested
+   (e2e/image_resize_zoom_test.go) in case this is ever re-enabled. */
+.milkdown-image-block .image-resize-handle {
+  display: none;
+}
+
 /* A lost asset must read as lost. Without a src the element collapses to its
    alt text, so the placeholder box is what makes the failure visible. */
 img[data-missing-asset] {
