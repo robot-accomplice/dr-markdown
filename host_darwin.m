@@ -798,6 +798,12 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"      if (globalThis.__drmdCloseDirty) {"
         @"        await globalThis.__app.setMarkdown('# unsaved work\\n');"
         @"        globalThis.__app.debugSimulateEdit('# unsaved work\\n');"
+        // The guard reads GO-side session state, fed by async bridge pushes
+        // that are dispatched to goroutines: a fixed sleep after the edit races
+        // them, and once reported a dirty document as clean (prompts=0 FAIL on
+        // a healthy guard). Awaiting THIS promise is the proof the push landed:
+        // the bridge resolves a call only after the Go method has run.
+        @"        await globalThis.drmd.native.SetDirty(true);"
         @"        await new Promise((r) => setTimeout(r, 250));"
         @"      }"
         @"      window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__closenow', args: [] });"
@@ -815,6 +821,9 @@ void hostRun(const char *title, int width, int height, int dropMode) {
         @"      if (globalThis.__drmdQuitDirty) {"
         @"        await globalThis.__app.setMarkdown('# unsaved work\\n');"
         @"        globalThis.__app.debugSimulateEdit('# unsaved work\\n');"
+        // Same awaited-ack as the close harness above: the quit gesture must
+        // not race the dirty push across the bridge.
+        @"        await globalThis.drmd.native.SetDirty(true);"
         @"        await new Promise((r) => setTimeout(r, 250));"
         @"      }"
         @"      window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__quitnow', args: [] });"
