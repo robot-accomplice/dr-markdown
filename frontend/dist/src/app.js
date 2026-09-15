@@ -895,13 +895,19 @@ async function resolveImageAssets(root) {
       // Remote images are never fetched — the CSP allows no network — so the
       // browser's broken-image placeholder was the only possible rendering,
       // and under document zoom WebKit sizes that placeholder in the zoomed
-      // space, collapsing it to an empty box (#160). Render the fact
-      // ourselves: a zoom-stable chip carrying the alt text, still inside
-      // its link.
-      img.dataset.remoteAsset = 'true'
-      if (!img.alt) img.alt = source
-      img.title = source
-      img.removeAttribute('src')
+      // space, collapsing it to an empty box (#160). An img with no src does
+      // NOT fall back to its alt text here — measured in the host: an empty
+      // lozenge — so the img becomes a chip span carrying the alt, laid out
+      // in ordinary CSS pixels, stable at every zoom, still inside its link.
+      // ProseMirror recreates the img if it ever redraws the node, and the
+      // next render pass re-chips it — the same re-application the local
+      // asset swap below already lives with.
+      const chip = document.createElement('span')
+      chip.className = 'remote-asset-chip'
+      chip.dataset.remoteAsset = 'true'
+      chip.textContent = img.alt || source
+      chip.title = source
+      img.replaceWith(chip)
       continue
     }
     img.dataset.assetPath = source

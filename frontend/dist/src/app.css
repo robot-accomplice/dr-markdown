@@ -1069,9 +1069,9 @@ body.right-panel-hidden #outline-panel .panel-restore {
    broken-image placeholder was the only possible rendering, and under
    document zoom it sizes that placeholder in the zoomed space: the box
    shrinks 1/zoom and collapses to a blank outline or bare text (#160). The
-   chip is the honest version: the alt text in a quiet lozenge, laid out in
-   ordinary CSS pixels, stable at every zoom, and still inside its link. */
-img[data-remote-asset] {
+   img becomes this chip instead: the alt text in a quiet lozenge, laid out
+   in ordinary CSS pixels, stable at every zoom, and still inside its link. */
+.remote-asset-chip {
   display: inline-flex;
   align-items: center;
   padding: 1px 8px;

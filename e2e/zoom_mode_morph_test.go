@@ -67,6 +67,10 @@ func TestReadmeContentDoesNotMorphAcrossZoomAndMode(t *testing.T) {
 			return r.width > 0 ? Math.round((r.width / z) * 10) / 10 : null
 		}
 		add('img', Array.from(host.querySelectorAll('img')), w)
+		// The remote-image chips are spans, not bitmaps, so they have no natural
+		// aspect to preserve and no entry in the aspect list below. Their WIDTHS
+		// are tracked here: a chip shrinking 1/zoom would be #160 come back.
+		add('chip', Array.from(host.querySelectorAll('.remote-asset-chip')), w)
 		add('table', Array.from(host.querySelectorAll('table')), w)
 		add('code', Array.from(host.querySelectorAll('.milkdown-code-block, pre')), w)
 		add('svg', Array.from(host.querySelectorAll('.mermaid-render svg')), w)
@@ -87,13 +91,7 @@ func TestReadmeContentDoesNotMorphAcrossZoomAndMode(t *testing.T) {
 		add('h2box', Array.from(host.querySelectorAll('h2')), w)
 		// Aspect ratio is tracked separately: a distorted image can keep its
 		// width while its height is wrong, which is what "morphing" looks like.
-		// Remote-asset chips are exempt: with no bitmap there is no natural
-		// aspect to preserve, and their box is text-sized — one pixel of font
-		// metric rounding on a 20px chip reads as a 5% aspect "drift" that is
-		// noise, not distortion. Their WIDTHS are still tracked above: a chip
-		// shrinking 1/zoom would be #160 come back.
 		Array.from(host.querySelectorAll('img')).forEach((el, i) => {
-			if (el.dataset.remoteAsset) return
 			const r = el.getBoundingClientRect()
 			if (r.width > 0 && r.height > 0) {
 				out['aspect:' + i] = Math.round((r.width / r.height) * 100) / 100

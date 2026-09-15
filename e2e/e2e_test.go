@@ -1561,26 +1561,32 @@ func TestRemoteImageAssetRendersChipNotBrokenPlaceholder(t *testing.T) {
 
 	var state struct {
 		Chip  bool   `json:"chip"`
-		Src   string `json:"src"`
-		Alt   string `json:"alt"`
+		Text  string `json:"text"`
+		Imgs  int    `json:"imgs"`
 		Calls int    `json:"calls"`
 	}
 	evalJS(t, ctx, `(async () => {
 		for (let i = 0; i < 100; i++) {
-			const img = document.querySelector('#wysiwyg img[data-remote-asset]')
-			if (img) return { chip: true, src: img.getAttribute('src') || '', alt: img.alt, calls: globalThis.__remoteLoadCalls }
+			const chip = document.querySelector('#wysiwyg .remote-asset-chip')
+			if (chip) return {
+				chip: true,
+				text: chip.textContent,
+				imgs: Array.from(document.querySelectorAll('#wysiwyg img'))
+				.filter((i) => /^https?:/.test(i.getAttribute('src') || '')).length,
+				calls: globalThis.__remoteLoadCalls,
+			}
 			await new Promise((resolve) => setTimeout(resolve, 20))
 		}
-		return { chip: false, src: '', alt: '', calls: globalThis.__remoteLoadCalls }
+		return { chip: false, text: '', imgs: -1, calls: globalThis.__remoteLoadCalls }
 	})()`, &state)
 	if !state.Chip {
-		t.Fatal("remote image should be marked with data-remote-asset for the chip rendering")
+		t.Fatal("remote image should be replaced by a .remote-asset-chip")
 	}
-	if state.Src != "" {
-		t.Errorf("remote image still carries a src %q the CSP can only refuse", state.Src)
+	if state.Imgs != 0 {
+		t.Errorf("the remote img is still in the DOM, where WebKit's placeholder can collapse it: %d imgs", state.Imgs)
 	}
-	if state.Alt != "License: MIT" {
-		t.Errorf("chip lost the alt text: %q", state.Alt)
+	if state.Text != "License: MIT" {
+		t.Errorf("chip lost the alt text: %q", state.Text)
 	}
 	if state.Calls != 0 {
 		t.Errorf("bridge was consulted %d times for a remote image that can never load", state.Calls)
