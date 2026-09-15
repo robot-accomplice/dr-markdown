@@ -4,7 +4,7 @@
   "name": "Desktop integration and packaging hardening",
   "status": "planned",
   "posture": "on-track",
-  "summary": "Being cut 2026-09-11. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. The stretch item has landed: the Go use cases are out of app.go, which is now a thin adapter over documentUseCase, imageUseCase, linkUseCase and defaultHandlerUseCase, pending release to users. Joined late by three defect repairs under CSS zoom, two the same coordinate-convention mistake: the WYSIWYG caret painted below-right of the insertion point (Crepe's virtual-cursor plugin div, double-scaled by WKWebView), and an image resize drag overshot by the zoom factor so object-fit cropped the image's sides — fixed by drawing the caret outside the zoom context and by measuring the drag in layout pixels, with the resize handle then disabled outright as an accident trap, and the image block's load-time pixel height — frozen at the block's width at load while the width keeps tracking the pane, so a zoom step in split mode cropped the banner's sides — replaced by a declarative aspect-ratio; each verified on the real host by probes that click, drag, measure and photograph, and the caret probe also cleared the raw-mode and split-source carets. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
+  "summary": "Being cut 2026-09-11. Finishes what 1.6.2 and 1.6.3 started on packaging: the M12 remainder (artifact checksums, a packaged-app smoke test run before publish, and an update-channel policy decision) plus offering to become the default .md application — a standing menu item, because macOS shows its own consent dialog for the Launch Services claim (measured 2026-08-31 on macOS 26.6.2), with two guards: already the default, and running from a disk image or app translocation. The stretch item has landed: the Go use cases are out of app.go, which is now a thin adapter over documentUseCase, imageUseCase, linkUseCase and defaultHandlerUseCase, pending release to users. Joined late by four defect repairs under CSS zoom, two the same coordinate-convention mistake: the WYSIWYG caret painted below-right of the insertion point (Crepe's virtual-cursor plugin div, double-scaled by WKWebView), and an image resize drag overshot by the zoom factor so object-fit cropped the image's sides — fixed by drawing the caret outside the zoom context and by measuring the drag in layout pixels, with the resize handle then disabled outright as an accident trap, and the image block's load-time pixel height — frozen at the block's width at load while the width keeps tracking the pane, so a zoom step in split mode cropped the banner's sides — replaced by a declarative aspect-ratio, and remote images — which the CSP keeps unloaded by design — taken away from WebKit's zoom-collapsing broken-image placeholder and rendered as alt-text chips (#160); each verified on the real host by probes that click, drag, measure and photograph, and the caret probe also cleared the raw-mode and split-source carets. M9, M10 and M11 are deferred: each is a design-led milestone that deserves its own release, with M10 the strongest candidate immediately after, because print and split now share the editor's one renderer.",
   "targetWindow": "Next release",
   "lastUpdated": "2026-09-15T00:00:00.000Z",
   "updateSource": "maintainer",
@@ -62,7 +62,7 @@
           "real-host-probe"
         ],
         "source": "ad-hoc",
-        "summary": "Found during this release's README eyeball: the banner came back clipped on both sides after work at 120% zoom, the mark half cut off. The Crepe image block's resize handle measured drags in viewport pixels — pointer clientY minus the image's getBoundingClientRect().top, both zoom-scaled — and wrote the result as a style height inside the zoomed context, which scales it again: a 5px drag at 120% set the height from 149.96px to 184.93px. The element box stays pane-wide, so object-fit: cover scaled the image up to the too-tall box and cropped the sides. The handle is 4px tall, invisible until hover, and parked on the image's bottom edge, so the drag needed no intent. The same coordinate-convention defect as the caret, one handler over from the #131 load-time fix. Fixed in the vendored bundle (tools/vendor.sh patch, digests refreshed): the drag delta is divided by the live zoom read from the image itself, correct in both engine conventions. The handle itself is then DISABLED (app.css): even with honest math it resized height only, cropping the sides on any accidental drag, and the ratio it wrote never survived a mode switch — a trap, not a feature. Sizing stays declarative via <img width>. A neighbouring finding from the same eyeball — external images collapse to empty boxes at higher zoom — measured as a pre-existing WebKit broken-image-placeholder quirk under CSS zoom and filed as #160 rather than expanded into this release. Gate: e2e/image_resize_zoom_test.go, verified failing before the patch; real-host verification via DRMD_PROBE_IMG=1."
+        "summary": "Found during this release's README eyeball: the banner came back clipped on both sides after work at 120% zoom, the mark half cut off. The Crepe image block's resize handle measured drags in viewport pixels — pointer clientY minus the image's getBoundingClientRect().top, both zoom-scaled — and wrote the result as a style height inside the zoomed context, which scales it again: a 5px drag at 120% set the height from 149.96px to 184.93px. The element box stays pane-wide, so object-fit: cover scaled the image up to the too-tall box and cropped the sides. The handle is 4px tall, invisible until hover, and parked on the image's bottom edge, so the drag needed no intent. The same coordinate-convention defect as the caret, one handler over from the #131 load-time fix. Fixed in the vendored bundle (tools/vendor.sh patch, digests refreshed): the drag delta is divided by the live zoom read from the image itself, correct in both engine conventions. The handle itself is then DISABLED (app.css): even with honest math it resized height only, cropping the sides on any accidental drag, and the ratio it wrote never survived a mode switch — a trap, not a feature. Sizing stays declarative via <img width>. A neighbouring finding from the same eyeball — external images collapse to empty boxes at higher zoom — measured as a WebKit broken-image-placeholder quirk under CSS zoom, filed as #160, and then fixed in this release after all (remote-image-chip) when the second eyeball reported it again. Gate: e2e/image_resize_zoom_test.go, verified failing before the patch; real-host verification via DRMD_PROBE_IMG=1."
       },
       {
         "id": "image-block-aspect-ratio",
@@ -78,6 +78,21 @@
         ],
         "source": "ad-hoc",
         "summary": "Found during this release's second README eyeball: split mode, zoom in, then stay or return to formatted — the banner cropped its sides and the mark stayed half cut off. The Crepe image block writes an explicit pixel style.height once at load, sized for the block width at that instant; the width keeps tracking the container while the height tracks nothing. Document zoom is CSS zoom, which participates in layout, so every zoom step re-lays out a percentage-width split pane: measured on the real host (DRMD_PROBE_IMG=1 against the real bridge asset path, the README banner loaded as a data URI), split at 130% took the block 506px -> 368px with the height frozen — box aspect 2.77 against a natural 3.81 — and object-fit: cover did the cutting. Mode switches only seemed to heal it: they re-render, and the load handler runs again against the new width, until the timing loses. Fixed in the vendored bundle (tools/vendor.sh patch, digests refreshed): the handler writes the natural aspect-ratio and no pixel height, so the box follows the width declaratively at any zoom; the theme's min-height floor is lifted for loaded block images (same crop class for short images). The resize drag still writes an explicit height, keeping e2e/image_resize_zoom_test.go's arithmetic gate live. Verified by the img probe replaying the exact eyeball sequence — split, zoom to 130, back to formatted — with the box aspect 3.81 at every step."
+      },
+      {
+        "id": "remote-image-chip",
+        "title": "A remote image renders as an alt-text chip at any zoom",
+        "kind": "bug-fix",
+        "status": "in-progress",
+        "owner": "Project maintainers",
+        "workstreamId": "editor-correctness",
+        "dependsOn": [],
+        "evidence": [
+          "full-test-suite",
+          "real-host-probe"
+        ],
+        "source": "ad-hoc",
+        "summary": "Filed as #160 from the first eyeball and deferred, then reported again from the second: the README's badge row blanked out at higher zoom. The CSP allows no network, so a remote image could only ever render as WebKit's broken-image placeholder, and under CSS zoom that placeholder is sized in the zoomed space — the box shrinks 1/zoom and collapses to a blank outline or bare alt text. resolveImageAssets now strips the src from http(s) images and marks them data-remote-asset: a zoom-stable chip carrying the alt text, still inside its link, laid out in ordinary CSS pixels, and the bridge is never consulted for them. Gate: e2e TestRemoteImageAssetRendersChipNotBrokenPlaceholder, alongside the missing-asset and print-export image tests; probe numbers show the badge row keeping its boxes at 100% and 130%, split and formatted."
       }
     ],
     "planned": [],
@@ -179,11 +194,12 @@
       "status": "planned",
       "posture": "on-track",
       "progress": 0,
-      "summary": "The zoomed-caret defect, the zoomed image-resize drag, and the image block's stale pixel height — two coordinate-convention mistakes and one sizing that could not survive layout — with the probes that now guard all three.",
+      "summary": "The zoomed-caret defect, the zoomed image-resize drag, the image block's stale pixel height, and the remote-image placeholder collapse — the eyeball's four repairs, with the probes and e2e gates that now guard them.",
       "itemIds": [
         "caret-paints-true-at-any-zoom",
         "image-resize-drag-under-zoom",
-        "image-block-aspect-ratio"
+        "image-block-aspect-ratio",
+        "remote-image-chip"
       ]
     }
   ],
