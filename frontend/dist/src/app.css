@@ -1065,6 +1065,25 @@ body.right-panel-hidden #outline-panel .panel-restore {
   min-height: 0;
 }
 
+/* A remote image is never fetched — the CSP allows no network — so WebKit's
+   broken-image placeholder was the only possible rendering, and under
+   document zoom it sizes that placeholder in the zoomed space: the box
+   shrinks 1/zoom and collapses to a blank outline or bare text (#160). The
+   chip is the honest version: the alt text in a quiet lozenge, laid out in
+   ordinary CSS pixels, stable at every zoom, and still inside its link. */
+img[data-remote-asset] {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  margin: 0 1px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font: 600 11px/1.8 var(--mono);
+  vertical-align: -2px;
+}
+
 /* A lost asset must read as lost. Without a src the element collapses to its
    alt text, so the placeholder box is what makes the failure visible. */
 img[data-missing-asset] {

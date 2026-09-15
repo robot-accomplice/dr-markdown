@@ -1538,6 +1538,55 @@ func TestMissingImageAssetRendersVisibleBrokenState(t *testing.T) {
 	}
 }
 
+// A remote image is never fetched — the CSP allows no network — so it must
+// not reach the browser's broken-image placeholder: under document zoom that
+// placeholder collapses to a blank box (#160). The app renders a chip with
+// the alt text instead, and never consults the bridge for it.
+func TestRemoteImageAssetRendersChipNotBrokenPlaceholder(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.__remoteLoadCalls = 0
+	globalThis.drmd = { native: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => { globalThis.__remoteLoadCalls++; return { dataURI: '', exists: false, absolutePath: '' } },
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } ; 'ok'`, &res)
+	evalJS(t, ctx,
+		"window.__app.setMarkdown('[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)\\n').then(() => 'ok')", &res)
+
+	var state struct {
+		Chip  bool   `json:"chip"`
+		Src   string `json:"src"`
+		Alt   string `json:"alt"`
+		Calls int    `json:"calls"`
+	}
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			const img = document.querySelector('#wysiwyg img[data-remote-asset]')
+			if (img) return { chip: true, src: img.getAttribute('src') || '', alt: img.alt, calls: globalThis.__remoteLoadCalls }
+			await new Promise((resolve) => setTimeout(resolve, 20))
+		}
+		return { chip: false, src: '', alt: '', calls: globalThis.__remoteLoadCalls }
+	})()`, &state)
+	if !state.Chip {
+		t.Fatal("remote image should be marked with data-remote-asset for the chip rendering")
+	}
+	if state.Src != "" {
+		t.Errorf("remote image still carries a src %q the CSP can only refuse", state.Src)
+	}
+	if state.Alt != "License: MIT" {
+		t.Errorf("chip lost the alt text: %q", state.Alt)
+	}
+	if state.Calls != 0 {
+		t.Errorf("bridge was consulted %d times for a remote image that can never load", state.Calls)
+	}
+}
+
 // Print and PDF export render from the preview pipeline, so images must be
 // inlined there too or exported artifacts lose every local image.
 func TestPrintExportInlinesImageAssets(t *testing.T) {

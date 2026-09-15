@@ -890,7 +890,20 @@ async function resolveImageAssets(root) {
   const documentPath = activeDoc()?.path ?? ''
   for (const img of Array.from(root.querySelectorAll('img[src]'))) {
     const source = img.getAttribute('src') ?? ''
-    if (!source || /^(?:https?:|data:|file:|blob:)/i.test(source)) continue
+    if (!source || /^(?:data:|file:|blob:)/i.test(source)) continue
+    if (/^https?:/i.test(source)) {
+      // Remote images are never fetched — the CSP allows no network — so the
+      // browser's broken-image placeholder was the only possible rendering,
+      // and under document zoom WebKit sizes that placeholder in the zoomed
+      // space, collapsing it to an empty box (#160). Render the fact
+      // ourselves: a zoom-stable chip carrying the alt text, still inside
+      // its link.
+      img.dataset.remoteAsset = 'true'
+      if (!img.alt) img.alt = source
+      img.title = source
+      img.removeAttribute('src')
+      continue
+    }
     img.dataset.assetPath = source
     let loaded = null
     try {
