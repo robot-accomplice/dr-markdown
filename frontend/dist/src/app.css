@@ -1055,6 +1055,16 @@ body.right-panel-hidden #outline-panel .panel-restore {
   display: none;
 }
 
+/* The theme's min-height gives a LOADING image a box, but it never lifts: a
+   loaded image shorter than 100px gets a box taller than its content, and
+   object-fit: cover converts that mismatch into cropping — the same defect
+   class as the stale pixel height, for short images at any zoom. The vendored
+   load handler now sizes by aspect-ratio (tools/vendor.sh), so the box needs
+   no floor; the missing-asset placeholder keeps its own. */
+#wysiwyg .milkdown-image-block .image-wrapper img:not([data-missing-asset]) {
+  min-height: 0;
+}
+
 /* A lost asset must read as lost. Without a src the element collapses to its
    alt text, so the placeholder box is what makes the failure visible. */
 img[data-missing-asset] {

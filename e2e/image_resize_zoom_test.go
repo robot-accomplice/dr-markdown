@@ -51,7 +51,7 @@ func TestImageResizeHandleDragsInViewportPixelsUnderZoom(t *testing.T) {
 	evalJS(t, ctx, `(async () => {
 		const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 		const img0 = document.querySelector('#wysiwyg img')
-		for (let i = 0; i < 100 && !(img0 && img0.complete && img0.naturalWidth > 0 && img0.style.height); i++) {
+		for (let i = 0; i < 100 && !(img0 && img0.complete && img0.naturalWidth > 0 && img0.style.aspectRatio); i++) {
 			await sleep(100)
 		}
 		document.documentElement.style.setProperty('--doc-zoom', '1.2')

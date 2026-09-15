@@ -463,16 +463,19 @@ post({
 `
 
 // imgProbeModuleJS (DRMD_PROBE_IMG=1) is measurement-only: no clicks, no
-// keystrokes. The fixture mirrors the README's top: one wide block image
-// (the banner) and a line of inline badge images wrapped in links, whose
-// https sources the CSP blocks — so they render as WebKit broken-image
-// placeholders, exactly as in the user's app. The probe normalizes zoom to
-// 100%, then sweeps 100 -> 130 -> 150, then does a split round trip at 150,
-// then a 5px resize drag (the BLOCKER-1 regression check). Every step reports
-// every image's complete/natural/style-height/client/offset/rect numbers, and
-// the Go side photographs the screen at each step. The defects under
-// investigation, both reported from the release eyeball: badge links vanish
-// at higher zoom (empty boxes), and the banner still crops its sides.
+// keystrokes. The fixture mirrors the README's top through the REAL asset
+// path: the banner is a relative source (docs/assets/banner.png) routed
+// through resolveImageAssets -> bridge.loadImageAsset, so its data-URI swap
+// lands after the first render and its load event fires late — the timing the
+// inline-data-URI fixture could not reproduce. The badge row is verbatim
+// README: inline https images the CSP refuses, each wrapped in a link. The
+// probe normalizes zoom to 100%, loads in formatted mode, then replays the
+// eyeball report exactly: split, zoom to 130, then back to wysiwyg. Every
+// step reports every image's complete/natural/style/dataset/block/computed
+// numbers and every link's rect and child-image state, and the Go side
+// photographs the screen at each step. The defects under investigation, both
+// reported from the release eyeball: the banner crops its SIDES after
+// split -> zoom -> (stay|wysiwyg), and badge links do not survive zoom.
 const imgProbeModuleJS = `
 const post = (payload) =>
   window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__probe', args: [payload] })
@@ -493,27 +496,29 @@ await globalThis.__app.setMode('wysiwyg')
 document.querySelector('[data-zoom="reset"]')?.click()
 await sleep(400)
 
-// A 1600x420 SVG banner, wide enough to fill the pane (#131 needed width to
-// be visible at all), then the README's badge row verbatim: inline images,
-// https sources the CSP refuses, each inside a link.
-const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420"><rect width="1600" height="420" fill="#2a6a9f"/><rect x="80" y="60" width="240" height="300" fill="#fff"/></svg>'
-const fixture = '# Wide\n\n![banner](data:image/svg+xml;base64,' + btoa(svg) + ')\n\n' +
+// Point the active doc at the real README so the relative banner source
+// resolves through the bridge against real bytes on disk.
+globalThis.__app.state.docs[0].path = '/Users/jmachen/code/dr-markdown-md/README.md'
+const fixture = '# Wide\n\n![banner](docs/assets/banner.png)\n\n' +
   '[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ' +
   '[![Go Version](https://img.shields.io/github/go-mod/go-version/robot-accomplice/dr-markdown)](go.mod) ' +
   '[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/robot-accomplice/dr-markdown/issues)\n\ntext\n'
 await globalThis.__app.setMarkdown(fixture)
 
-// Wait until every image has SETTLED, loaded or broken: a broken image is
-// complete with naturalWidth 0, and that distinction is the measurement.
-for (let i = 0; i < 100; i++) {
-  const imgs = Array.from(document.querySelectorAll('#wysiwyg img'))
-  if (imgs.length >= 4 && imgs.every((im) => im.complete)) break
-  await sleep(100)
-}
-const imgs0 = Array.from(document.querySelectorAll('#wysiwyg img'))
-if (imgs0.length < 4 || !imgs0.every((im) => im.complete)) {
-  post({ phase: 'error', message: 'images never settled: ' + imgs0.length + ' found' })
-  throw new Error('images never settled')
+const bannerImg = () => Array.from(document.querySelectorAll('#wysiwyg img'))
+  .find((im) => (im.dataset.assetPath || '').indexOf('banner.png') >= 0 ||
+    (im.getAttribute('src') || '').indexOf('data:image/png') === 0)
+
+// A render recreates the img; the bridge swap then replaces its src
+// asynchronously. SETTLED means the data URI has landed and decoded.
+const waitBanner = async () => {
+  for (let i = 0; i < 100; i++) {
+    const b = bannerImg()
+    if (b && b.complete && b.naturalWidth > 0 &&
+        (b.getAttribute('src') || '').indexOf('data:') === 0) return b
+    await sleep(100)
+  }
+  return bannerImg()
 }
 
 const zoomLabel = () => {
@@ -523,22 +528,47 @@ const zoomLabel = () => {
 
 const measure = (label) => {
   const pm = document.querySelector('#wysiwyg .ProseMirror')
-  const shots = Array.from(document.querySelectorAll('#wysiwyg img')).map((im) => ({
-    alt: (im.alt || '').slice(0, 18),
-    parent: im.parentElement ? im.parentElement.className : '',
-    complete: im.complete,
-    natural: im.naturalWidth + 'x' + im.naturalHeight,
-    styleH: im.style.height || '',
-    dataH: im.dataset.height || '',
-    client: im.clientWidth + 'x' + im.clientHeight,
-    offset: im.offsetWidth + 'x' + im.offsetHeight,
-    rect: Math.round(im.getBoundingClientRect().width) + 'x' + Math.round(im.getBoundingClientRect().height),
-  }))
+  const shots = Array.from(document.querySelectorAll('#wysiwyg img')).map((im) => {
+    const block = im.closest('.milkdown-image-block')
+    const cs = getComputedStyle(im)
+    return {
+      alt: (im.alt || '').slice(0, 18),
+      srcKind: (im.getAttribute('src') || '').slice(0, 12),
+      complete: im.complete,
+      natural: im.naturalWidth + 'x' + im.naturalHeight,
+      styleH: im.style.height || '',
+      styleW: im.style.width || '',
+      maxW: im.style.maxWidth || '',
+      origin: im.dataset.origin || '',
+      blockW: block ? block.clientWidth : -1,
+      fit: cs.objectFit,
+      ar: cs.aspectRatio,
+      client: im.clientWidth + 'x' + im.clientHeight,
+      rect: Math.round(im.getBoundingClientRect().width) + 'x' + Math.round(im.getBoundingClientRect().height),
+    }
+  })
+  const links = Array.from(document.querySelectorAll('#wysiwyg a')).map((a) => {
+    const r = a.getBoundingClientRect()
+    const ai = a.querySelector('img')
+    return {
+      text: (a.textContent || '').slice(0, 18),
+      href: (a.getAttribute('href') || '').slice(0, 24),
+      rect: Math.round(r.width) + 'x' + Math.round(r.height),
+      img: ai ? (ai.complete + '/' + ai.naturalWidth + 'x' + ai.naturalHeight + '/' + getComputedStyle(ai).display) : 'none',
+    }
+  })
   post({
     phase: 'measure',
     message: label,
-    text: JSON.stringify({ zoom: zoomLabel(), pmClient: pm ? pm.clientWidth : -1, imgs: shots }),
+    text: JSON.stringify({ zoom: zoomLabel(), pmClient: pm ? pm.clientWidth : -1, imgs: shots, links: links }),
   })
+}
+
+// The Go side photographs the screen when a measure lands; give screencapture
+// its beat BEFORE the next mutation, or the photo shows the NEXT state.
+const measureAndHold = async (label) => {
+  measure(label)
+  await sleep(1400)
 }
 
 const zoomIn = (n) => {
@@ -546,49 +576,46 @@ const zoomIn = (n) => {
   for (let i = 0; i < n; i++) { if (inBtn) inBtn.click() }
 }
 
-await sleep(1200)
-measure('zoom-100')
+const b0 = await waitBanner()
+if (!b0 || !b0.complete || b0.naturalWidth === 0) {
+  const st = globalThis.__app.state
+  const diag = {
+    docs: st.docs.length,
+    activeId: st.activeDocId,
+    paths: st.docs.map((d) => d.id + ':' + (d.path || 'NONE')),
+    imgAlts: Array.from(document.querySelectorAll('#wysiwyg img')).map((im) => (im.alt || '?') + '|' + (im.getAttribute('src') || 'nosrc').slice(0, 20) + '|missing:' + (im.dataset.missingAsset || 'no')),
+    bridge: typeof globalThis.__app,
+  }
+  let bridgeResult = 'untested'
+  try {
+    const r = await globalThis.drmd.native.LoadImageAsset(
+      '/Users/jmachen/code/dr-markdown-md/README.md', 'docs/assets/banner.png')
+    bridgeResult = JSON.stringify(r).slice(0, 120)
+  } catch (e) { bridgeResult = 'throw:' + e.message }
+  post({ phase: 'error', message: 'banner never settled: ' + JSON.stringify(diag) + ' bridgeImport=' + bridgeResult })
+  throw new Error('banner never settled')
+}
+await sleep(600)
+await measureAndHold('loaded-100')
+
+await globalThis.__app.setMode('split')
+await waitBanner()
+await sleep(600)
+await measureAndHold('split-100')
 
 zoomIn(3)
 await sleep(900)
-measure('zoom-130')
-
-zoomIn(2)
-await sleep(900)
-measure('zoom-150')
-
-await globalThis.__app.setMode('split')
-await sleep(1600)
-measure('split-at-150')
+await measureAndHold('split-130')
 
 await globalThis.__app.setMode('wysiwyg')
-await sleep(1600)
-measure('roundtrip-at-150')
+await waitBanner()
+await sleep(600)
+await measureAndHold('wysiwyg-130')
 
-// The BLOCKER-1 regression check: a 5px drag at 150% must now add 5/1.5 = 3.3
-// layout px to the style height, not the pre-fix zoom-multiplied jump. The
-// handle is display:none in the app; show it for the drag, because the
-// vendored arithmetic is the thing under test.
-const banner = Array.from(document.querySelectorAll('#wysiwyg img'))
-  .find((im) => (im.dataset.origin || '') !== '')
-const handle = banner ? banner.closest('.milkdown-image-block').querySelector('.image-resize-handle') : null
-if (banner && handle) {
-  handle.style.display = 'block'
-  const before = parseFloat(banner.style.height)
-  const hr = handle.getBoundingClientRect()
-  const cx = hr.x + hr.width / 2
-  const cy = hr.y + hr.height / 2
-  const opts = (y) => ({ bubbles: true, pointerId: 1, clientX: cx, clientY: y, button: 0, buttons: 1 })
-  handle.dispatchEvent(new PointerEvent('pointerdown', opts(cy)))
-  window.dispatchEvent(new PointerEvent('pointermove', opts(cy + 5)))
-  window.dispatchEvent(new PointerEvent('pointerup', opts(cy + 5)))
-  await sleep(300)
-  measure('after-5px-drag-at-150 (styleH was ' + before + ', want ~' + (before + 3.3).toFixed(1) + ')')
-} else {
-  post({ phase: 'error', message: 'no banner resize handle found' })
-}
-
-post({ phase: 'result', why: 'image measurement complete', markdown: '', para: 0, offset: 0 })
+// The badge row's fate lives in the SERIALIZATION: if a mode/zoom round trip
+// rewrites [![alt](src)](href) into something else, that is the "links do
+// not survive zoom" report. Ship the editor's own markdown for the record.
+post({ phase: 'result', why: 'image measurement complete', markdown: globalThis.__app.getEditorMarkdown(), para: 0, offset: 0 })
 `
 
 // probeMessage is one phase report from the injected probe script. Every field

@@ -325,6 +325,42 @@ io.open(path, 'w', encoding='utf-8').write(s.replace(old, new, 1))
 PYEOF
 echo "measured the image resize drag in layout pixels, so zoom is not counted twice there either"
 
+# Keep the image block's PROPORTIONS instead of a pixel height.
+#
+# The load handler sizes the image once: measure the block, compute the height
+# that preserves the natural aspect at that width, write it as an explicit
+# pixel style.height. The width then keeps tracking the container
+# (max-width: 100%) while the height tracks NOTHING, so any post-load width
+# change — and this app's document zoom is CSS `zoom`, which participates in
+# layout, so every zoom step re-lays out a percentage-width pane — breaks the
+# box's aspect, and object-fit: cover converts the mismatch into cropping.
+# Measured on the real host with DRMD_PROBE_IMG=1: in split mode at 130% the
+# block went 506px -> 368px while style.height stayed at the 506-wide value,
+# box aspect 2.77 against a natural 3.81, and the banner's mark was cut in
+# half. Mode switches only SEEMED to heal it: they re-render, and the load
+# handler runs again against the new width — until the timing loses.
+#
+# aspect-ratio makes the box follow the width declaratively, at any width, so
+# there is no stale pixel height to go wrong. dataset.height is still written:
+# the resize drag's pointerup reads it for the ratio attribute, and the drag
+# still writes its own explicit height (the handle is display:none in the app;
+# e2e/image_resize_zoom_test.go force-shows it to gate the arithmetic).
+size_anchor='Z.dataset.origin=z.toFixed(2),Z.dataset.height=I,Z.style.height=`${I}px`'
+if ! grep -qF "$size_anchor" "$VENDOR/crepe.bundle.mjs"; then
+    echo "error: the image block no longer writes its load-time size the same way." >&2
+    echo "       Without this patch the explicit pixel height goes stale on any" >&2
+    echo "       post-load width change (document zoom re-lays out a split pane)," >&2
+    echo "       and object-fit: cover crops the image's sides." >&2
+    exit 1
+fi
+python3 - "$VENDOR/crepe.bundle.mjs" "$size_anchor" 'Z.dataset.origin=z.toFixed(2),Z.dataset.height=I,Z.style.aspectRatio=W+"/"+q,Z.style.height=""' <<'PYEOF'
+import sys, io
+path, old, new = sys.argv[1], sys.argv[2], sys.argv[3]
+s = io.open(path, encoding='utf-8').read()
+io.open(path, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYEOF
+echo "kept the image block's aspect ratio instead of a pixel height, so width changes cannot crop it"
+
 # Highlight.js common browser build: syntax highlighting for markdown source
 # overlays and language-tagged fenced code blocks.
 fetch "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@${HIGHLIGHT_VERSION}/build/highlight.min.js" \
