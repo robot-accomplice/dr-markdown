@@ -1538,6 +1538,138 @@ func TestMissingImageAssetRendersVisibleBrokenState(t *testing.T) {
 	}
 }
 
+// A remote image is never fetched — the CSP allows no network — so it must
+// not reach the browser's broken-image placeholder: under document zoom that
+// placeholder collapses to a blank box (#160). The app renders a chip with
+// the alt text instead, and never consults the bridge for it.
+func TestRemoteImageAssetRendersChipNotBrokenPlaceholder(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	var res string
+	evalJS(t, ctx, `globalThis.__remoteLoadCalls = 0
+	globalThis.drmd = { native: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => { globalThis.__remoteLoadCalls++; return { dataURI: '', exists: false, absolutePath: '' } },
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } ; 'ok'`, &res)
+	evalJS(t, ctx,
+		"window.__app.setMarkdown('[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)\\n').then(() => 'ok')", &res)
+
+	var state struct {
+		Chip  bool   `json:"chip"`
+		Text  string `json:"text"`
+		Imgs  int    `json:"imgs"`
+		Calls int    `json:"calls"`
+	}
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			const chip = document.querySelector('#wysiwyg .remote-asset-chip')
+			if (chip) return {
+				chip: true,
+				text: chip.textContent,
+				imgs: Array.from(document.querySelectorAll('#wysiwyg img'))
+				.filter((i) => /^https?:/.test(i.getAttribute('src') || '')).length,
+				calls: globalThis.__remoteLoadCalls,
+			}
+			await new Promise((resolve) => setTimeout(resolve, 20))
+		}
+		return { chip: false, text: '', imgs: -1, calls: globalThis.__remoteLoadCalls }
+	})()`, &state)
+	if !state.Chip {
+		t.Fatal("remote image should be replaced by a .remote-asset-chip")
+	}
+	if state.Imgs != 0 {
+		t.Errorf("the remote img is still in the DOM, where WebKit's placeholder can collapse it: %d imgs", state.Imgs)
+	}
+	if state.Text != "License: MIT" {
+		t.Errorf("chip lost the alt text: %q", state.Text)
+	}
+	if state.Calls != 0 {
+		t.Errorf("bridge was consulted %d times for a remote image that can never load", state.Calls)
+	}
+}
+
+// The chip is foreign DOM inside ProseMirror's live inline content: the img it
+// replaced is still in the editor's document model, and an edit in the badge
+// paragraph must serialize from THAT — not read the chip back as text. If the
+// editor ever reconciles the mutation the other way, saved files silently lose
+// the badge image or gain stray alt text, so this guards the round-trip, not
+// the rendering.
+func TestRemoteImageChipSurvivesEditInSameParagraph(t *testing.T) {
+	ctx, cancel := newTestBrowser(t)
+	defer cancel()
+	url := serveFrontend(t)
+	bootApp(t, ctx, url)
+
+	const badge = "[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)"
+
+	var res string
+	evalJS(t, ctx, `globalThis.drmd = { native: {
+		LoadPreferences: async () => ({ settings: {}, rawOptions: {}, recents: [] }),
+		LoadImageAsset: async () => ({ dataURI: '', exists: false, absolutePath: '' }),
+		SetDirty: async () => {},
+		UpdateContent: async () => {}
+	} } ; 'ok'`, &res)
+	evalJS(t, ctx,
+		"window.__app.setMarkdown('"+badge+"\\n').then(() => 'ok')", &res)
+
+	if !waitForJS(t, ctx, `document.querySelector('#wysiwyg .remote-asset-chip') !== null`) {
+		t.Fatal("remote image should be replaced by a .remote-asset-chip")
+	}
+
+	// A real edit through the browser's editing pipeline: caret at the end of
+	// the chip's paragraph, then insert text. ProseMirror must treat the chip
+	// as foreign DOM and keep the image node in its document.
+	var edited bool
+	evalJS(t, ctx, `(async () => {
+		const chip = document.querySelector('#wysiwyg .remote-asset-chip')
+		const pm = document.querySelector('#wysiwyg .ProseMirror')
+		pm.focus()
+		const range = document.createRange()
+		range.selectNodeContents(chip.closest('p'))
+		range.collapse(false)
+		const sel = window.getSelection()
+		sel.removeAllRanges()
+		sel.addRange(range)
+		return document.execCommand('insertText', false, ' edited')
+	})()`, &edited)
+	if !edited {
+		t.Fatal("the browser refused the edit; the test is not exercising the editor")
+	}
+
+	var markdown string
+	evalJS(t, ctx, `(async () => {
+		for (let i = 0; i < 100; i++) {
+			const md = window.__app.getEditorMarkdown()
+			if (md.includes('edited')) return md
+			await new Promise((resolve) => setTimeout(resolve, 20))
+		}
+		return window.__app.getEditorMarkdown()
+	})()`, &markdown)
+
+	// The caret at the paragraph's end sits on the link's trailing edge, so the
+	// inserted text may land inside the link — ordinary link-edge behaviour for
+	// any link, chip or not, and not part of the assertion. What must hold is
+	// that the image node, its alt and its URL serialize verbatim.
+	const image = "![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)"
+	if !strings.Contains(markdown, image) {
+		t.Errorf("editing the badge paragraph destroyed the remote image:\n want %s\n got  %q", image, markdown)
+	}
+	if !strings.Contains(markdown, "](LICENSE)") {
+		t.Errorf("editing the badge paragraph destroyed the link around the image: %q", markdown)
+	}
+	if !strings.Contains(markdown, "edited") {
+		t.Errorf("the edit itself did not land: %q", markdown)
+	}
+	if strings.Count(markdown, "License: MIT") != 1 {
+		t.Errorf("the chip's alt text leaked into the document as text: %q", markdown)
+	}
+}
+
 // Print and PDF export render from the preview pipeline, so images must be
 // inlined there too or exported artifacts lose every local image.
 func TestPrintExportInlinesImageAssets(t *testing.T) {

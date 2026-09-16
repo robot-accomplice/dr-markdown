@@ -1042,6 +1042,48 @@ body.right-panel-hidden #outline-panel .panel-restore {
   outline-offset: 3px;
 }
 
+/* The Crepe image resize handle is disabled. It is a 4px strip, invisible
+   until hover, parked on the image's bottom edge — so a click that lands a
+   pixel low and moves is a resize nobody asked for. Worse, it resizes HEIGHT
+   only: the width stays pane-wide and object-fit: cover crops the SIDES,
+   which is how a banner loses its mark. And the ratio it writes lives in the
+   editor's node attrs, never in the markdown, so the result does not survive
+   a mode switch. Sizing stays declarative: <img width> in the source.
+   The handler's drag arithmetic is still patched and tested
+   (e2e/image_resize_zoom_test.go) in case this is ever re-enabled. */
+.milkdown-image-block .image-resize-handle {
+  display: none;
+}
+
+/* The theme's min-height gives a LOADING image a box, but it never lifts: a
+   loaded image shorter than 100px gets a box taller than its content, and
+   object-fit: cover converts that mismatch into cropping — the same defect
+   class as the stale pixel height, for short images at any zoom. The vendored
+   load handler now sizes by aspect-ratio (tools/vendor.sh), so the box needs
+   no floor; the missing-asset placeholder keeps its own. */
+#wysiwyg .milkdown-image-block .image-wrapper img:not([data-missing-asset]) {
+  min-height: 0;
+}
+
+/* A remote image is never fetched — the CSP allows no network — so WebKit's
+   broken-image placeholder was the only possible rendering, and under
+   document zoom it sizes that placeholder in the zoomed space: the box
+   shrinks 1/zoom and collapses to a blank outline or bare text (#160). The
+   img becomes this chip instead: the alt text in a quiet lozenge, laid out
+   in ordinary CSS pixels, stable at every zoom, and still inside its link. */
+.remote-asset-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  margin: 0 1px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font: 600 11px/1.8 var(--mono);
+  vertical-align: -2px;
+}
+
 /* A lost asset must read as lost. Without a src the element collapses to its
    alt text, so the placeholder box is what makes the failure visible. */
 img[data-missing-asset] {

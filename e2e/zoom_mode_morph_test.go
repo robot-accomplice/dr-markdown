@@ -67,6 +67,10 @@ func TestReadmeContentDoesNotMorphAcrossZoomAndMode(t *testing.T) {
 			return r.width > 0 ? Math.round((r.width / z) * 10) / 10 : null
 		}
 		add('img', Array.from(host.querySelectorAll('img')), w)
+		// The remote-image chips are spans, not bitmaps, so they have no natural
+		// aspect to preserve and no entry in the aspect list below. Their WIDTHS
+		// are tracked here: a chip shrinking 1/zoom would be #160 come back.
+		add('chip', Array.from(host.querySelectorAll('.remote-asset-chip')), w)
 		add('table', Array.from(host.querySelectorAll('table')), w)
 		add('code', Array.from(host.querySelectorAll('.milkdown-code-block, pre')), w)
 		add('svg', Array.from(host.querySelectorAll('.mermaid-render svg')), w)

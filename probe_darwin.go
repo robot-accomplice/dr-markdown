@@ -462,6 +462,162 @@ post({
 })
 `
 
+// imgProbeModuleJS (DRMD_PROBE_IMG=1) is measurement-only: no clicks, no
+// keystrokes. The fixture mirrors the README's top through the REAL asset
+// path: the banner is a relative source (docs/assets/banner.png) routed
+// through resolveImageAssets -> bridge.loadImageAsset, so its data-URI swap
+// lands after the first render and its load event fires late — the timing the
+// inline-data-URI fixture could not reproduce. The badge row is verbatim
+// README: inline https images the CSP refuses, each wrapped in a link. The
+// probe normalizes zoom to 100%, loads in formatted mode, then replays the
+// eyeball report exactly: split, zoom to 130, then back to wysiwyg. Every
+// step reports every image's complete/natural/style/dataset/block/computed
+// numbers and every link's rect and child-image state, and the Go side
+// photographs the screen at each step. The defects under investigation, both
+// reported from the release eyeball: the banner crops its SIDES after
+// split -> zoom -> (stay|wysiwyg), and badge links do not survive zoom.
+const imgProbeModuleJS = `
+const post = (payload) =>
+  window.webkit.messageHandlers.drmd.postMessage({ id: 0, method: '__probe', args: [payload] })
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+for (let i = 0; i < 200 && !globalThis.__app?.ready; i++) {
+  await sleep(50)
+}
+if (!globalThis.__app?.ready) {
+  post({ phase: 'error', message: 'app never became ready' })
+  throw new Error('app never became ready')
+}
+
+await globalThis.__app.setMode('wysiwyg')
+
+// The zoom persists in preferences; normalize through the real control so
+// '100%' means 100% regardless of the last session.
+document.querySelector('[data-zoom="reset"]')?.click()
+await sleep(400)
+
+// Point the active doc at the real README so the relative banner source
+// resolves through the bridge against real bytes on disk.
+globalThis.__app.state.docs[0].path = '/Users/jmachen/code/dr-markdown-md/README.md'
+const fixture = '# Wide\n\n![banner](docs/assets/banner.png)\n\n' +
+  '[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ' +
+  '[![Go Version](https://img.shields.io/github/go-mod/go-version/robot-accomplice/dr-markdown)](go.mod) ' +
+  '[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/robot-accomplice/dr-markdown/issues)\n\ntext\n'
+await globalThis.__app.setMarkdown(fixture)
+
+const bannerImg = () => Array.from(document.querySelectorAll('#wysiwyg img'))
+  .find((im) => (im.dataset.assetPath || '').indexOf('banner.png') >= 0 ||
+    (im.getAttribute('src') || '').indexOf('data:image/png') === 0)
+
+// A render recreates the img; the bridge swap then replaces its src
+// asynchronously. SETTLED means the data URI has landed and decoded.
+const waitBanner = async () => {
+  for (let i = 0; i < 100; i++) {
+    const b = bannerImg()
+    if (b && b.complete && b.naturalWidth > 0 &&
+        (b.getAttribute('src') || '').indexOf('data:') === 0) return b
+    await sleep(100)
+  }
+  return bannerImg()
+}
+
+const zoomLabel = () => {
+  const el = document.querySelector('[data-zoom-level]')
+  return el ? el.textContent : '?'
+}
+
+const measure = (label) => {
+  const pm = document.querySelector('#wysiwyg .ProseMirror')
+  const shots = Array.from(document.querySelectorAll('#wysiwyg img')).map((im) => {
+    const block = im.closest('.milkdown-image-block')
+    const cs = getComputedStyle(im)
+    return {
+      alt: (im.alt || '').slice(0, 18),
+      srcKind: (im.getAttribute('src') || '').slice(0, 12),
+      complete: im.complete,
+      natural: im.naturalWidth + 'x' + im.naturalHeight,
+      styleH: im.style.height || '',
+      styleW: im.style.width || '',
+      maxW: im.style.maxWidth || '',
+      origin: im.dataset.origin || '',
+      blockW: block ? block.clientWidth : -1,
+      fit: cs.objectFit,
+      ar: cs.aspectRatio,
+      client: im.clientWidth + 'x' + im.clientHeight,
+      rect: Math.round(im.getBoundingClientRect().width) + 'x' + Math.round(im.getBoundingClientRect().height),
+    }
+  })
+  const links = Array.from(document.querySelectorAll('#wysiwyg a')).map((a) => {
+    const r = a.getBoundingClientRect()
+    const ai = a.querySelector('img')
+    return {
+      text: (a.textContent || '').slice(0, 18),
+      href: (a.getAttribute('href') || '').slice(0, 24),
+      rect: Math.round(r.width) + 'x' + Math.round(r.height),
+      img: ai ? (ai.complete + '/' + ai.naturalWidth + 'x' + ai.naturalHeight + '/' + getComputedStyle(ai).display) : 'none',
+    }
+  })
+  post({
+    phase: 'measure',
+    message: label,
+    text: JSON.stringify({ zoom: zoomLabel(), pmClient: pm ? pm.clientWidth : -1, imgs: shots, links: links }),
+  })
+}
+
+// The Go side photographs the screen when a measure lands; give screencapture
+// its beat BEFORE the next mutation, or the photo shows the NEXT state.
+const measureAndHold = async (label) => {
+  measure(label)
+  await sleep(1400)
+}
+
+const zoomIn = (n) => {
+  const inBtn = document.querySelector('[data-zoom="in"]')
+  for (let i = 0; i < n; i++) { if (inBtn) inBtn.click() }
+}
+
+const b0 = await waitBanner()
+if (!b0 || !b0.complete || b0.naturalWidth === 0) {
+  const st = globalThis.__app.state
+  const diag = {
+    docs: st.docs.length,
+    activeId: st.activeDocId,
+    paths: st.docs.map((d) => d.id + ':' + (d.path || 'NONE')),
+    imgAlts: Array.from(document.querySelectorAll('#wysiwyg img')).map((im) => (im.alt || '?') + '|' + (im.getAttribute('src') || 'nosrc').slice(0, 20) + '|missing:' + (im.dataset.missingAsset || 'no')),
+    bridge: typeof globalThis.__app,
+  }
+  let bridgeResult = 'untested'
+  try {
+    const r = await globalThis.drmd.native.LoadImageAsset(
+      '/Users/jmachen/code/dr-markdown-md/README.md', 'docs/assets/banner.png')
+    bridgeResult = JSON.stringify(r).slice(0, 120)
+  } catch (e) { bridgeResult = 'throw:' + e.message }
+  post({ phase: 'error', message: 'banner never settled: ' + JSON.stringify(diag) + ' bridgeImport=' + bridgeResult })
+  throw new Error('banner never settled')
+}
+await sleep(600)
+await measureAndHold('loaded-100')
+
+await globalThis.__app.setMode('split')
+await waitBanner()
+await sleep(600)
+await measureAndHold('split-100')
+
+zoomIn(3)
+await sleep(900)
+await measureAndHold('split-130')
+
+await globalThis.__app.setMode('wysiwyg')
+await waitBanner()
+await sleep(600)
+await measureAndHold('wysiwyg-130')
+
+// The badge row's fate lives in the SERIALIZATION: if a mode/zoom round trip
+// rewrites [![alt](src)](href) into something else, that is the "links do
+// not survive zoom" report. Ship the editor's own markdown for the record.
+post({ phase: 'result', why: 'image measurement complete', markdown: globalThis.__app.getEditorMarkdown(), para: 0, offset: 0 })
+`
+
 // probeMessage is one phase report from the injected probe script. Every field
 // is optional in the payload — which phase populates which is visible in
 // probeModuleJS above.
@@ -521,6 +677,17 @@ var probeBare = os.Getenv("DRMD_PROBE_BARE") == "1"
 // photographic: daylight between the bar and the painted caret is the bug.
 var probeRaw = os.Getenv("DRMD_PROBE_RAW")
 
+// probeImg (DRMD_PROBE_IMG=1) measures rather than clicks: a wide image in
+// the WYSIWYG surface, measured at 100%, at the requested zoom, and across a
+// split round trip, reporting every width the sizing code could read —
+// clientWidth, offsetWidth, getBoundingClientRect — plus the explicit pixel
+// height the image node view writes. The 1.6.x image-distortion fix
+// (vendor.sh, #131) switched that measurement from getBoundingClientRect to
+// clientWidth and verified it in CHROME. The caret defect proved the two
+// engines apply CSS zoom differently, so this probe exists to say what
+// WKWebView actually returns for each of them under zoom.
+var probeImg = os.Getenv("DRMD_PROBE_IMG") == "1"
+
 // probeScreenshots photographs the screen around the last probe target. The
 // DOM selection is only half the story — the DEFECT report is about where the
 // caret is PAINTED. Shot 0 keeps the MOUSE CURSOR in frame (-C): with a human
@@ -561,6 +728,20 @@ func reportProbe(argsJSON string) {
 	msg := payload[0]
 
 	switch msg.Phase {
+	case "measure":
+		// The image probe reports measurement snapshots; print them verbatim,
+		// and photograph each: the defect report is about what is PAINTED.
+		fmt.Printf("PROBE measure [%s]: %s\n", msg.Message, msg.Text)
+		if probeImg {
+			tag := strings.NewReplacer(" ", "-", "%", "pct", "(", "", ")", "").Replace(msg.Message)
+			out := fmt.Sprintf("/tmp/probe-img-%s.png", tag)
+			if err := exec.Command("screencapture", "-x", out).Run(); err != nil {
+				fmt.Printf("PROBE screenshot %s failed: %v\n", out, err)
+			} else {
+				fmt.Printf("PROBE screenshot: %s\n", out)
+			}
+		}
+
 	case "target":
 		fmt.Printf("PROBE target: x=%.1f y=%.1f viewport=%dx%d dpr=%.2f\n",
 			msg.X, msg.Y, msg.ViewW, msg.ViewH, msg.DPR)
@@ -687,6 +868,12 @@ func reportProbe(argsJSON string) {
 		freeReset()
 		time.Sleep(1200 * time.Millisecond)
 
+		if probeImg {
+			// Measurement-only run: no marker was typed, so the markdown check
+			// does not apply. The verdict is in the measure lines above.
+			fmt.Println("VERDICT: OBSERVE — compare img/block measurements across zoom and the split round trip")
+			os.Exit(0)
+		}
 		if cursorProbeExternal {
 			// A human drives external mode, and a human explores — clicking
 			// other paragraphs, typing lowercase. The "Second parXYZagraph"
